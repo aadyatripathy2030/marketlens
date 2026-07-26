@@ -18,6 +18,13 @@
     <button type="submit" class="btn btn-primary" id="goBtn">Analyze</button>
   </form>
   <div class="examples" id="examples"></div>
+
+  <div class="strat" id="strat" role="tablist" aria-label="Analysis strategy">
+    <button class="strat-btn active" data-mode="daytrade" role="tab">⚡ Day trading<small>Short-term momentum</small></button>
+    <button class="strat-btn" data-mode="longterm" role="tab">🌱 Long-term<small>50 / 200-day trend</small></button>
+    <button class="strat-btn" data-mode="short" role="tab">🔻 Shorting<small>Downside setups</small></button>
+  </div>
+
   <div class="error hidden" id="error"></div>
 
   <section class="result hidden" id="result">
@@ -33,14 +40,16 @@
     <div class="card chart-card">
       <div class="legend">
         <span class="lg"><i style="background:var(--accent)"></i>Price</span>
-        <span class="lg"><i style="background:var(--sma20)"></i>SMA 20</span>
-        <span class="lg"><i style="background:var(--sma50)"></i>SMA 50</span>
+        <span class="lg"><i style="background:var(--sma20)"></i><span id="lgFast">SMA 20</span></span>
+        <span class="lg"><i style="background:var(--sma50)"></i><span id="lgSlow">SMA 50</span></span>
         <span class="lg"><i class="dashed" style="background:var(--forecast)"></i>Trend projection</span>
       </div>
       <canvas id="chart" height="280"></canvas>
     </div>
 
     <div class="tiles" id="tiles"></div>
+
+    <p class="risk hidden" id="risk"></p>
 
     <div class="card ai-card">
       <div class="ai-head">🤖 Analysis <span class="tag" id="aiTag"></span></div>

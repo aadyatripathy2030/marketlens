@@ -11,6 +11,15 @@
   $('examples').querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => { $('symbol').value = b.dataset.s; run(b.dataset.s); }));
 
   let lastData = null;
+  let strategy = 'daytrade';
+  // Strategy selector — switching re-runs the current ticker through the new lens.
+  $('strat').querySelectorAll('.strat-btn').forEach(b => b.addEventListener('click', () => {
+    $('strat').querySelectorAll('.strat-btn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    strategy = b.dataset.mode;
+    if (lastData) run(lastData.symbol);
+  }));
+
   window.addEventListener('resize', () => { if (lastData) drawChart(lastData); });
 
   function sma(a, n) { const out = a.map((_, i) => i >= n - 1 ? a.slice(i - n + 1, i + 1).reduce((x, y) => x + y, 0) / n : null); return out; }
@@ -48,8 +57,10 @@
       vals.forEach((v, i) => { if (v == null) return; const x = X(i + offset), y = Y(v); if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y); });
       ctx.stroke(); ctx.setLineDash([]);
     }
-    line(sma(closes, 50), 0, col('--sma50'));
-    line(sma(closes, 20), 0, col('--sma20'));
+    const fastN = d.maFast ? d.maFast.period : 20;
+    const slowN = d.maSlow ? d.maSlow.period : 50;
+    line(sma(closes, slowN), 0, col('--sma50'));
+    line(sma(closes, fastN), 0, col('--sma20'));
     line(closes, 0, col('--accent'));
     // forecast: connect last real point to projection
     if (fc.length) line([closes[closes.length - 1]].concat(fc), closes.length - 1, col('--forecast'), true);
@@ -67,10 +78,12 @@
     const proj = d.forecast && d.forecast.length ? d.forecast[d.forecast.length - 1] : null;
     const projCls = proj == null ? '' : proj > d.latest ? 'up' : 'down';
     const fmt = (v) => v == null ? '—' : v.toFixed(2);
+    const fastLbl = d.maFast ? d.maFast.label : 'SMA 20';
+    const slowLbl = d.maSlow ? d.maSlow.label : 'SMA 50';
     $('tiles').innerHTML = `
-      <div class="tile"><div class="tile-val ${rsiCls}">${r == null ? '—' : r}</div><div class="tile-lbl">RSI (14)</div></div>
-      <div class="tile"><div class="tile-val">${fmt(d.indicators.sma20)}</div><div class="tile-lbl">SMA 20</div></div>
-      <div class="tile"><div class="tile-val">${fmt(d.indicators.sma50)}</div><div class="tile-lbl">SMA 50</div></div>
+      <div class="tile"><div class="tile-val ${rsiCls}">${r == null ? '—' : r}</div><div class="tile-lbl">RSI (${d.indicators.rsiPeriod})</div></div>
+      <div class="tile"><div class="tile-val">${fmt(d.indicators.maFast)}</div><div class="tile-lbl">${fastLbl}</div></div>
+      <div class="tile"><div class="tile-val">${fmt(d.indicators.maSlow)}</div><div class="tile-lbl">${slowLbl}</div></div>
       <div class="tile"><div class="tile-val ${projCls}">${fmt(proj)}</div><div class="tile-lbl">${d.forecast.length}-day proj.</div></div>`;
   }
 
@@ -80,7 +93,7 @@
     $('error').classList.add('hidden');
     $('goBtn').disabled = true; $('goBtn').textContent = 'Loading…';
     try {
-      const r = await fetch('/api/stock?symbol=' + encodeURIComponent(symbol));
+      const r = await fetch('/api/stock?symbol=' + encodeURIComponent(symbol) + '&strategy=' + encodeURIComponent(strategy));
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Could not load');
       lastData = d;
@@ -90,8 +103,12 @@
       const up = d.change >= 0;
       $('chg').textContent = (up ? '▲ ' : '▼ ') + Math.abs(d.change).toFixed(2) + ' (' + d.changePct.toFixed(2) + '%)';
       $('chg').className = 'chg ' + (up ? 'up' : 'down');
-      $('signal').textContent = d.signal.label; $('signal').className = 'signal ' + d.signal.label;
+      $('signal').textContent = d.signal.label; $('signal').className = 'signal ' + (d.signal.tone || 'neutral');
       $('reason').textContent = d.signal.reason;
+      $('lgFast').textContent = d.maFast ? d.maFast.label : 'SMA 20';
+      $('lgSlow').textContent = d.maSlow ? d.maSlow.label : 'SMA 50';
+      if (d.risk) { $('risk').textContent = d.risk; $('risk').className = 'risk' + (d.strategy === 'short' ? ' danger' : ''); }
+      else $('risk').className = 'risk hidden';
       $('note').textContent = d.note || '';
       $('result').classList.remove('hidden');
       drawChart(d); tiles(d);
@@ -113,4 +130,8 @@
   }
 
   $('searchForm').addEventListener('submit', (ev) => { ev.preventDefault(); run(); });
+
+  // Deep link: /?symbol=AAPL auto-loads that ticker.
+  const initial = new URLSearchParams(location.search).get('symbol');
+  if (initial) { $('symbol').value = initial.toUpperCase(); run(initial); }
 })();
