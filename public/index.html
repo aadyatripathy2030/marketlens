@@ -15,7 +15,10 @@
 <main class="app">
   <div class="controls">
     <form class="search" id="searchForm">
-      <input type="text" id="symbol" class="input" placeholder="Enter a ticker — e.g. AAPL, TSLA, MSFT" autocomplete="off" maxlength="12" />
+      <div class="search-box">
+        <input type="text" id="symbol" class="input" placeholder="Enter a ticker — e.g. AAPL, TSLA, MSFT" autocomplete="off" maxlength="12" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest" />
+        <div class="suggest hidden" id="suggest" role="listbox"></div>
+      </div>
       <button type="submit" class="btn btn-primary" id="goBtn">Analyze</button>
     </form>
     <div class="examples" id="examples"></div>
@@ -62,6 +65,8 @@
               <button class="range-btn" data-bars="63">3M</button>
               <button class="range-btn active" data-bars="126">6M</button>
               <button class="range-btn" data-bars="252">1Y</button>
+              <button class="range-btn" data-bars="504">2Y</button>
+              <button class="range-btn" data-bars="1260">5Y</button>
               <button class="range-btn" data-bars="0">All</button>
             </div>
           </div>

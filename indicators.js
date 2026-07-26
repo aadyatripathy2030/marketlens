@@ -183,12 +183,15 @@ function demoCandles(symbol, n) {
   function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
   const r2 = (x) => Math.round(x * 100) / 100;
   let price = 40 + (seed % 360);
-  const drift = (rnd() - 0.45) * 0.35;
+  const base = price;                        // anchor for gentle mean-reversion
+  const drift = (rnd() - 0.45) * 0.15;
   const vol = 0.8 + rnd() * 1.6;
   const out = [];
   for (let i = 0; i < n; i++) {
     const open = price;
-    const change = drift + (rnd() - 0.5) * vol * 2;
+    // Pull weakly toward the anchor so multi-year series stay realistic.
+    const revert = ((base - price) / price) * 1.2;
+    const change = drift + revert + (rnd() - 0.5) * vol * 2;
     price = Math.max(1, price * (1 + change / 100));
     const close = price;
     const hi = Math.max(open, close) * (1 + rnd() * vol / 200);

@@ -17,7 +17,7 @@ const PUBLIC = path.join(__dirname, 'public');
 const STOCK_API_KEY = process.env.STOCK_API_KEY || '';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const AI_MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
-const HISTORY = 260; // enough bars for the 200-day average (long-term lens)
+const HISTORY = 1300; // ~5 trading years, so long chart ranges have real data
 function stratLabel(strategy, direction) {
   if (strategy === 'longterm') return 'long-term investing';
   return direction === 'short' ? 'day trading (sell side)' : 'day trading (buy side)';
