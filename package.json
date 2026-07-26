@@ -1,0 +1,8 @@
+{
+  "name": "stock-analyzer",
+  "version": "0.1.0",
+  "description": "Stock analysis tool — real price data, technical indicators, and an AI-written read. Educational, not financial advice.",
+  "main": "server.js",
+  "scripts": { "start": "node server.js", "dev": "node server.js" },
+  "engines": { "node": ">=18" }
+}

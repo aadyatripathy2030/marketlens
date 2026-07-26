@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stock Analyzer</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="brand-dot">📈</span> Stock Analyzer</div>
+  <span class="tag" id="modeTag"></span>
+</header>
+
+<main class="wrap">
+  <form class="search" id="searchForm">
+    <input type="text" id="symbol" class="input" placeholder="Enter a ticker — e.g. AAPL, TSLA, MSFT" autocomplete="off" maxlength="12" />
+    <button type="submit" class="btn btn-primary" id="goBtn">Analyze</button>
+  </form>
+  <div class="examples" id="examples"></div>
+  <div class="error hidden" id="error"></div>
+
+  <section class="result hidden" id="result">
+    <div class="head">
+      <div>
+        <div class="sym" id="symName"></div>
+        <div class="price"><span id="price"></span> <span class="chg" id="chg"></span></div>
+      </div>
+      <div class="signal" id="signal"></div>
+    </div>
+    <p class="reason" id="reason"></p>
+
+    <div class="card chart-card">
+      <div class="legend">
+        <span class="lg"><i style="background:var(--accent)"></i>Price</span>
+        <span class="lg"><i style="background:var(--sma20)"></i>SMA 20</span>
+        <span class="lg"><i style="background:var(--sma50)"></i>SMA 50</span>
+        <span class="lg"><i class="dashed" style="background:var(--forecast)"></i>Trend projection</span>
+      </div>
+      <canvas id="chart" height="280"></canvas>
+    </div>
+
+    <div class="tiles" id="tiles"></div>
+
+    <div class="card ai-card">
+      <div class="ai-head">🤖 Analysis <span class="tag" id="aiTag"></span></div>
+      <p class="ai-body" id="aiBody">Loading…</p>
+    </div>
+
+    <p class="note" id="note"></p>
+  </section>
+
+  <p class="disclaimer">⚠️ For education and analysis only — <strong>not financial advice</strong>. No tool reliably predicts stock prices; the "trend projection" is a naive statistical line and can be wrong. Never invest based on this alone.</p>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
