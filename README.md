@@ -1,4 +1,4 @@
-# Stock Analyzer
+# Market IQ
 
 A web tool that pulls stock price data, computes technical indicators
 (SMA 20/50, RSI), draws a chart with a naive trend projection, and writes a

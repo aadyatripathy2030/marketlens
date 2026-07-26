@@ -20,7 +20,7 @@ const AI_MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
 const HISTORY = 260; // enough bars for the 200-day average (long-term lens)
 function stratLabel(strategy, direction) {
   if (strategy === 'longterm') return 'long-term investing';
-  return direction === 'short' ? 'day trading (short side)' : 'day trading (long side)';
+  return direction === 'short' ? 'day trading (sell side)' : 'day trading (buy side)';
 }
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -210,4 +210,4 @@ http.createServer(async (req, res) => {
     if (url === '/api/analyze-image' && req.method === 'POST') return await handleAnalyzeImage(req, res);
     serveStatic(req, res);
   } catch (e) { console.error('server error:', e); json(res, 500, { error: 'Internal error' }); }
-}).listen(PORT, () => console.log(`Stock tool running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'})`));
+}).listen(PORT, () => console.log(`Market IQ running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'})`));

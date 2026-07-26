@@ -88,7 +88,7 @@ const RISK = {
   daytrade: 'High risk. Most day traders lose money over time. This model reads DAILY bars — real day trading needs intraday (minute/hour) data, which you can enable with a market-data key.',
   longterm: 'Even long-term trends reverse, and past performance does not guarantee future returns. Diversify; do your own research.',
 };
-const SHORT_RISK = ' ⚠️ Shorting adds UNLIMITED loss potential — a stock can keep rising with no ceiling — plus borrow fees, margin calls, and short-squeeze risk.';
+const SHORT_RISK = ' ⚠️ Selling short adds UNLIMITED loss potential — a stock can keep rising with no ceiling — plus borrow fees, margin calls, and short-squeeze risk.';
 
 // Normalize a direction; long-term is always long.
 function dirOf(strategy, direction) { return strategy === 'longterm' ? 'long' : (direction === 'short' ? 'short' : 'long'); }
@@ -105,10 +105,10 @@ function signalFor(strategy, direction, fast, slow, r) {
   if (fast == null || slow == null || r == null) return { label: 'Not enough data', tone: 'neutral', reason: 'Need more history.' };
   const down = fast < slow;
   if (dirOf(strategy, direction) === 'short') {
-    if (down && r >= 70) return { label: 'Short setup: Elevated', tone: 'bearish', reason: 'Short-term downtrend with an overbought bounce (RSI > 70) — the kind of spot short-sellers look to fade. Watch for a squeeze if momentum flips.' };
-    if (down && r > 45) return { label: 'Short setup: Elevated', tone: 'bearish', reason: 'The 5-day average is below the 10-day and momentum is not oversold yet — room to keep falling.' };
-    if (down) return { label: 'Short setup: Moderate', tone: 'neutral', reason: 'Short-term downtrend, but RSI is nearing oversold — shorting here fights a possible bounce.' };
-    return { label: 'Short setup: Weak', tone: 'neutral', reason: 'Short-term momentum is up — shorting fights the trend, which is dangerous.' };
+    if (down && r >= 70) return { label: 'Sell setup: Elevated', tone: 'bearish', reason: 'Short-term downtrend with an overbought bounce (RSI > 70) — the kind of spot sellers look to fade. Watch for a squeeze if momentum flips.' };
+    if (down && r > 45) return { label: 'Sell setup: Elevated', tone: 'bearish', reason: 'The 5-day average is below the 10-day and momentum is not oversold yet — room to keep falling.' };
+    if (down) return { label: 'Sell setup: Moderate', tone: 'neutral', reason: 'Short-term downtrend, but RSI is nearing oversold — selling here fights a possible bounce.' };
+    return { label: 'Sell setup: Weak', tone: 'neutral', reason: 'Short-term momentum is up — selling fights the trend, which is dangerous.' };
   }
   if (r >= 75) return { label: 'Overbought', tone: 'neutral', reason: 'RSI(7) is very high (> 75) — short-term price is stretched, pullback risk.' };
   if (r <= 25) return { label: 'Oversold', tone: 'neutral', reason: 'RSI(7) is very low (< 25) — short-term price is stretched, possible bounce.' };
@@ -142,8 +142,8 @@ function verdict(strategy, direction, fast, slow, r, slope, last) {
   const TH = 22;
 
   if (dirOf(strategy, direction) === 'short') {
-    // A negative score (downside expected) is the favourable case for a short.
-    if (score <= -TH) return { action: 'Short', strength, tone: 'bearish', score, rationale };
+    // A negative score (downside expected) is the favourable case for a sell/short.
+    if (score <= -TH) return { action: 'Sell', strength, tone: 'bearish', score, rationale };
     if (score >= TH) return { action: 'Avoid', strength: '', tone: 'neutral', score, rationale };
     return { action: 'Wait', strength: '', tone: 'neutral', score, rationale };
   }
