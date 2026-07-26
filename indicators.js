@@ -77,42 +77,44 @@ function demoCloses(symbol, n) {
 // Each strategy reads the same price history through a different lens:
 // which moving averages matter, which RSI period, how far to project, and how
 // to interpret the setup. Every strategy carries its own risk note.
+// Two timeframes. Day trading can be traded long OR short (a direction);
+// long-term investing is long-only.
 const STRAT = {
   daytrade: { fast: 5,  slow: 10,  rsiP: 7,  horizon: 3,  fwWindow: 15,  fastLabel: 'SMA 5',  slowLabel: 'SMA 10' },
   longterm: { fast: 50, slow: 200, rsiP: 14, horizon: 30, fwWindow: 120, fastLabel: 'SMA 50', slowLabel: 'SMA 200' },
-  short:    { fast: 20, slow: 50,  rsiP: 14, horizon: 10, fwWindow: 30,  fastLabel: 'SMA 20', slowLabel: 'SMA 50' },
 };
 
 const RISK = {
   daytrade: 'High risk. Most day traders lose money over time. This model reads DAILY bars — real day trading needs intraday (minute/hour) data, which you can enable with a market-data key.',
   longterm: 'Even long-term trends reverse, and past performance does not guarantee future returns. Diversify; do your own research.',
-  short: '⚠️ Shorting has UNLIMITED loss potential — a stock can keep rising with no ceiling — plus borrow fees, margin calls, and short-squeeze risk. Among the riskiest strategies there is.',
 };
+const SHORT_RISK = ' ⚠️ Shorting adds UNLIMITED loss potential — a stock can keep rising with no ceiling — plus borrow fees, margin calls, and short-squeeze risk.';
 
-function signalFor(strategy, fast, slow, r) {
+// Normalize a direction; long-term is always long.
+function dirOf(strategy, direction) { return strategy === 'longterm' ? 'long' : (direction === 'short' ? 'short' : 'long'); }
+function riskFor(strategy, direction) { return RISK[strategy] + (dirOf(strategy, direction) === 'short' ? SHORT_RISK : ''); }
+
+function signalFor(strategy, direction, fast, slow, r) {
   if (strategy === 'longterm') {
     if (fast == null || slow == null) return { label: 'Not enough history', tone: 'neutral', reason: 'Need ~200 days of data for a long-term read.' };
-    const golden = fast > slow;
-    return golden
+    return fast > slow
       ? { label: 'Long-term uptrend', tone: 'bullish', reason: 'The 50-day average is above the 200-day (a "golden cross" regime) — the long-term trend is up.' }
       : { label: 'Long-term downtrend', tone: 'bearish', reason: 'The 50-day average is below the 200-day (a "death cross" regime) — the long-term trend is down.' };
   }
-  if (strategy === 'short') {
-    if (fast == null || slow == null || r == null) return { label: 'Short setup: n/a', tone: 'neutral', reason: 'Not enough data.' };
-    const down = fast < slow;
-    if (down && r >= 70) return { label: 'Short setup: Elevated', tone: 'bearish', reason: 'Downtrend with an overbought bounce (RSI > 70) — the kind of spot short-sellers look to fade. But watch for a squeeze if momentum flips.' };
-    if (down && r > 45) return { label: 'Short setup: Elevated', tone: 'bearish', reason: 'Price is in a downtrend (20-day below 50-day) and momentum is not oversold yet — room to keep falling.' };
-    if (down) return { label: 'Short setup: Moderate', tone: 'neutral', reason: 'Downtrend, but RSI is nearing oversold — shorting here fights a possible bounce.' };
-    return { label: 'Short setup: Weak', tone: 'neutral', reason: 'Price is in an uptrend — shorting fights the trend, which is dangerous.' };
-  }
-  // daytrade
+  // day trading
   if (fast == null || slow == null || r == null) return { label: 'Not enough data', tone: 'neutral', reason: 'Need more history.' };
-  const up = fast > slow;
+  const down = fast < slow;
+  if (dirOf(strategy, direction) === 'short') {
+    if (down && r >= 70) return { label: 'Short setup: Elevated', tone: 'bearish', reason: 'Short-term downtrend with an overbought bounce (RSI > 70) — the kind of spot short-sellers look to fade. Watch for a squeeze if momentum flips.' };
+    if (down && r > 45) return { label: 'Short setup: Elevated', tone: 'bearish', reason: 'The 5-day average is below the 10-day and momentum is not oversold yet — room to keep falling.' };
+    if (down) return { label: 'Short setup: Moderate', tone: 'neutral', reason: 'Short-term downtrend, but RSI is nearing oversold — shorting here fights a possible bounce.' };
+    return { label: 'Short setup: Weak', tone: 'neutral', reason: 'Short-term momentum is up — shorting fights the trend, which is dangerous.' };
+  }
   if (r >= 75) return { label: 'Overbought', tone: 'neutral', reason: 'RSI(7) is very high (> 75) — short-term price is stretched, pullback risk.' };
   if (r <= 25) return { label: 'Oversold', tone: 'neutral', reason: 'RSI(7) is very low (< 25) — short-term price is stretched, possible bounce.' };
-  return up
-    ? { label: 'Momentum: Up', tone: 'bullish', reason: 'The 5-day average is above the 10-day — short-term momentum is up.' }
-    : { label: 'Momentum: Down', tone: 'bearish', reason: 'The 5-day average is below the 10-day — short-term momentum is down.' };
+  return down
+    ? { label: 'Momentum: Down', tone: 'bearish', reason: 'The 5-day average is below the 10-day — short-term momentum is down.' }
+    : { label: 'Momentum: Up', tone: 'bullish', reason: 'The 5-day average is above the 10-day — short-term momentum is up.' };
 }
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -121,7 +123,7 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 // This is a weighted score of trend (MA gap), momentum (RSI), and the naive
 // projection slope — the same kind of "technical rating" trading sites show.
 // It is NOT advice and is frequently wrong; the score is just transparency.
-function verdict(strategy, fast, slow, r, slope, last) {
+function verdict(strategy, direction, fast, slow, r, slope, last) {
   // Three sub-signals, each squashed to [-1, 1], then weighted into a
   // −100…+100 score: trend (MA gap), momentum (RSI), projection (slope).
   let trendSig = 0, momSig = 0, projSig = 0;
@@ -139,7 +141,8 @@ function verdict(strategy, fast, slow, r, slope, last) {
   const strength = mag >= 60 ? 'Strong' : mag >= 38 ? 'Moderate' : 'Weak';
   const TH = 22;
 
-  if (strategy === 'short') {
+  if (dirOf(strategy, direction) === 'short') {
+    // A negative score (downside expected) is the favourable case for a short.
     if (score <= -TH) return { action: 'Short', strength, tone: 'bearish', score, rationale };
     if (score >= TH) return { action: 'Avoid', strength: '', tone: 'neutral', score, rationale };
     return { action: 'Wait', strength: '', tone: 'neutral', score, rationale };
@@ -149,8 +152,9 @@ function verdict(strategy, fast, slow, r, slope, last) {
   return { action: 'Hold', strength: '', tone: 'neutral', score, rationale };
 }
 
-function analyze(closes, strategy) {
+function analyze(closes, strategy, direction) {
   const cfg = STRAT[strategy] ? strategy : 'daytrade';
+  const dir = dirOf(cfg, direction);
   const c = STRAT[cfg];
   const fastVal = sma(closes, c.fast);
   const slowVal = sma(closes, c.slow);
@@ -158,14 +162,14 @@ function analyze(closes, strategy) {
   const { forecast, slope } = linearForecast(closes.slice(-c.fwWindow), c.horizon);
   const last = closes[closes.length - 1];
   return {
-    strategy: cfg,
+    strategy: cfg, direction: dir,
     maFast: { period: c.fast, label: c.fastLabel, value: fastVal },
     maSlow: { period: c.slow, label: c.slowLabel, value: slowVal },
     rsi: r, rsiPeriod: c.rsiP,
     forecast, slope, horizon: c.horizon,
-    signal: signalFor(cfg, fastVal, slowVal, r),
-    verdict: verdict(cfg, fastVal, slowVal, r, slope, last),
-    risk: RISK[cfg],
+    signal: signalFor(cfg, dir, fastVal, slowVal, r),
+    verdict: verdict(cfg, dir, fastVal, slowVal, r, slope, last),
+    risk: riskFor(cfg, dir),
   };
 }
 

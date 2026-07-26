@@ -12,67 +12,87 @@
   <span class="tag" id="modeTag"></span>
 </header>
 
-<main class="wrap">
-  <form class="search" id="searchForm">
-    <input type="text" id="symbol" class="input" placeholder="Enter a ticker — e.g. AAPL, TSLA, MSFT" autocomplete="off" maxlength="12" />
-    <button type="submit" class="btn btn-primary" id="goBtn">Analyze</button>
-  </form>
-  <div class="examples" id="examples"></div>
+<main class="app">
+  <div class="controls">
+    <form class="search" id="searchForm">
+      <input type="text" id="symbol" class="input" placeholder="Enter a ticker — e.g. AAPL, TSLA, MSFT" autocomplete="off" maxlength="12" />
+      <button type="submit" class="btn btn-primary" id="goBtn">Analyze</button>
+    </form>
+    <div class="examples" id="examples"></div>
 
-  <div class="strat" id="strat" role="tablist" aria-label="Analysis strategy">
-    <button class="strat-btn active" data-mode="daytrade" role="tab">⚡ Day trading<small>Short-term momentum</small></button>
-    <button class="strat-btn" data-mode="longterm" role="tab">🌱 Long-term<small>50 / 200-day trend</small></button>
-    <button class="strat-btn" data-mode="short" role="tab">🔻 Shorting<small>Downside setups</small></button>
+    <div class="control-row">
+      <div class="strat" id="strat" role="tablist" aria-label="Strategy">
+        <button class="strat-btn active" data-mode="daytrade" role="tab">⚡ Day trading<small>Short-term momentum</small></button>
+        <button class="strat-btn" data-mode="longterm" role="tab">🌱 Long-term<small>50 / 200-day trend</small></button>
+      </div>
+      <div class="direction" id="direction" aria-label="Direction">
+        <button class="dir-btn active" data-dir="long">Long</button>
+        <button class="dir-btn" data-dir="short">🔻 Short</button>
+      </div>
+    </div>
+    <div class="error hidden" id="error"></div>
   </div>
 
-  <div class="error hidden" id="error"></div>
-
   <section class="result hidden" id="result">
-    <div class="head">
-      <div>
-        <div class="sym" id="symName"></div>
-        <div class="price"><span id="price"></span> <span class="chg" id="chg"></span></div>
+    <div class="layout">
+      <div class="primary">
+        <div class="head">
+          <div>
+            <div class="sym" id="symName"></div>
+            <div class="price"><span id="price"></span> <span class="chg" id="chg"></span></div>
+          </div>
+          <div class="verdict" id="verdict">
+            <div class="verdict-action" id="vAction"></div>
+            <div class="verdict-meta" id="vMeta"></div>
+          </div>
+        </div>
+        <p class="reason" id="reason"></p>
+
+        <div class="card chart-card">
+          <div class="chart-top">
+            <div class="legend">
+              <span class="lg"><i style="background:var(--good)"></i>Up</span>
+              <span class="lg"><i style="background:var(--bad)"></i>Down</span>
+              <span class="lg"><i style="background:var(--sma20)"></i><span id="lgFast">SMA 20</span></span>
+              <span class="lg"><i style="background:var(--sma50)"></i><span id="lgSlow">SMA 50</span></span>
+              <span class="lg"><i class="dashed" style="background:var(--forecast)"></i>Projection</span>
+            </div>
+            <div class="range" id="range" role="tablist" aria-label="Chart range">
+              <button class="range-btn" data-bars="21">1M</button>
+              <button class="range-btn" data-bars="63">3M</button>
+              <button class="range-btn active" data-bars="126">6M</button>
+              <button class="range-btn" data-bars="252">1Y</button>
+              <button class="range-btn" data-bars="0">All</button>
+            </div>
+          </div>
+          <canvas id="chart"></canvas>
+          <p class="chart-hint">Drag to pan · scroll to zoom · double-click to reset</p>
+        </div>
+
+        <div class="tiles" id="tiles"></div>
+        <p class="risk hidden" id="risk"></p>
       </div>
-      <div class="verdict" id="verdict">
-        <div class="verdict-action" id="vAction"></div>
-        <div class="verdict-meta" id="vMeta"></div>
-      </div>
+
+      <aside class="sidebar">
+        <div class="card ai-card">
+          <div class="ai-head">🤖 Analysis <span class="tag" id="aiTag"></span></div>
+          <p class="ai-body" id="aiBody">Loading…</p>
+        </div>
+        <p class="note" id="note"></p>
+
+        <div class="card upload-card">
+          <div class="ai-head">🖼️ Analyze a chart image</div>
+          <p class="upload-sub">Upload a screenshot of any chart and Claude will read the trend and give a Buy / Sell / Hold lean.</p>
+          <label class="dropzone" id="dropzone">
+            <input type="file" id="imgInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
+            <span id="dropText">Click to choose an image, or drag one here</span>
+            <img id="imgPreview" class="hidden" alt="chart preview" />
+          </label>
+          <button class="btn btn-primary btn-block hidden" id="imgBtn">Analyze image</button>
+          <p class="ai-body img-result hidden" id="imgResult"></p>
+        </div>
+      </aside>
     </div>
-    <p class="reason" id="reason"></p>
-
-    <div class="card chart-card">
-      <div class="legend">
-        <span class="lg"><i style="background:var(--good)"></i>Up candle</span>
-        <span class="lg"><i style="background:var(--bad)"></i>Down candle</span>
-        <span class="lg"><i style="background:var(--sma20)"></i><span id="lgFast">SMA 20</span></span>
-        <span class="lg"><i style="background:var(--sma50)"></i><span id="lgSlow">SMA 50</span></span>
-        <span class="lg"><i class="dashed" style="background:var(--forecast)"></i>Trend projection</span>
-      </div>
-      <canvas id="chart" height="280"></canvas>
-    </div>
-
-    <div class="tiles" id="tiles"></div>
-
-    <p class="risk hidden" id="risk"></p>
-
-    <div class="card ai-card">
-      <div class="ai-head">🤖 Analysis <span class="tag" id="aiTag"></span></div>
-      <p class="ai-body" id="aiBody">Loading…</p>
-    </div>
-
-    <p class="note" id="note"></p>
-  </section>
-
-  <section class="card upload-card">
-    <div class="ai-head">🖼️ Analyze a chart image</div>
-    <p class="upload-sub">Upload a screenshot of any chart and Claude will read the trend and give a Buy / Sell / Hold lean.</p>
-    <label class="dropzone" id="dropzone">
-      <input type="file" id="imgInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
-      <span id="dropText">Click to choose an image, or drag one here</span>
-      <img id="imgPreview" class="hidden" alt="chart preview" />
-    </label>
-    <button class="btn btn-primary btn-block hidden" id="imgBtn">Analyze image</button>
-    <p class="ai-body img-result hidden" id="imgResult"></p>
   </section>
 
   <p class="disclaimer">⚠️ For education only — <strong>not financial advice</strong>. The Buy / Sell / Hold verdict is a mechanical score from past-price indicators (and, for images, a read of one picture). Signals like these are wrong <em>often</em> — no tool reliably predicts markets. This is not a recommendation to trade; decisions and their consequences are yours alone. Never trade based on this tool.</p>

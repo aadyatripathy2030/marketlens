@@ -18,7 +18,10 @@ const STOCK_API_KEY = process.env.STOCK_API_KEY || '';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const AI_MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
 const HISTORY = 260; // enough bars for the 200-day average (long-term lens)
-const STRAT_LABEL = { daytrade: 'day trading (short-term)', longterm: 'long-term investing', short: 'short-selling' };
+function stratLabel(strategy, direction) {
+  if (strategy === 'longterm') return 'long-term investing';
+  return direction === 'short' ? 'day trading (short side)' : 'day trading (long side)';
+}
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
@@ -77,10 +80,11 @@ function buildDemo(symbol) {
   return { name: symbol, currency: 'USD', prices };
 }
 
-async function handleStock(req, res, symbol, strategy) {
+async function handleStock(req, res, symbol, strategy, direction) {
   symbol = String(symbol || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
   if (!symbol) return json(res, 400, { error: 'Enter a ticker symbol.' });
   strategy = I.STRAT[strategy] ? strategy : 'daytrade';
+  direction = direction === 'short' ? 'short' : 'long';
   let source = 'demo', note = '', data;
   if (STOCK_API_KEY) {
     try { data = await fetchLive(symbol); source = 'live'; }
@@ -90,12 +94,12 @@ async function handleStock(req, res, symbol, strategy) {
     note = 'Demo data — set STOCK_API_KEY (twelvedata.com, free) for real prices.';
   }
   const closes = data.prices.map(p => p.close);
-  const a = I.analyze(closes, strategy);
+  const a = I.analyze(closes, strategy, direction);
   const last = closes[closes.length - 1];
   const prev = closes[closes.length - 2] || last;
   json(res, 200, {
     symbol, name: data.name, currency: data.currency, source, note,
-    strategy, strategyLabel: STRAT_LABEL[strategy],
+    strategy, direction: a.direction, strategyLabel: stratLabel(strategy, a.direction),
     prices: data.prices,
     latest: last, change: last - prev, changePct: prev ? ((last - prev) / prev) * 100 : 0,
     maFast: a.maFast, maSlow: a.maSlow,
@@ -200,7 +204,7 @@ http.createServer(async (req, res) => {
     const url = req.url.split('?')[0];
     if (url === '/api/stock' && req.method === 'GET') {
       const q = new URLSearchParams(req.url.split('?')[1] || '');
-      return await handleStock(req, res, q.get('symbol'), q.get('strategy'));
+      return await handleStock(req, res, q.get('symbol'), q.get('strategy'), q.get('direction'));
     }
     if (url === '/api/analyze' && req.method === 'POST') return await handleAnalyze(req, res);
     if (url === '/api/analyze-image' && req.method === 'POST') return await handleAnalyzeImage(req, res);
