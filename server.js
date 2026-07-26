@@ -14,9 +14,11 @@ const I = require('./indicators');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, 'public');
-const STOCK_API_KEY = process.env.STOCK_API_KEY || '';
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
-const AI_MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
+// Strip ALL whitespace — keys are never spaced, and a stray newline pasted into
+// a hosting dashboard otherwise produces "Invalid character in header content".
+const STOCK_API_KEY = (process.env.STOCK_API_KEY || '').replace(/\s/g, '');
+const ANTHROPIC_API_KEY = (process.env.ANTHROPIC_API_KEY || '').replace(/\s/g, '');
+const AI_MODEL = (process.env.ANTHROPIC_MODEL || 'claude-opus-4-8').trim();
 const HISTORY = 1300; // ~5 trading years, so long chart ranges have real data
 function stratLabel(strategy, direction) {
   if (strategy === 'longterm') return 'long-term investing';
