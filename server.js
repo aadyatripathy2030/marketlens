@@ -110,32 +110,48 @@ async function handleStock(req, res, symbol, strategy, direction) {
 }
 
 // ---- AI (or rule-based) summary ----
+// Turns the numbers into clean, plain-English prose. The projection direction
+// is taken from the trend slope so it never contradicts the verdict rationale.
 function ruleBasedSummary(p) {
-  const strat = p.strategyLabel || 'day trading (short-term)';
-  const dir = p.forecast && p.forecast.length ? (p.forecast[p.forecast.length - 1] > p.latest ? 'higher' : 'lower') : 'flat';
-  const rsiTxt = p.indicators.rsi == null ? 'unavailable'
-    : p.indicators.rsi >= 70 ? `overbought (${p.indicators.rsi})`
-    : p.indicators.rsi <= 30 ? `oversold (${p.indicators.rsi})`
-    : `neutral (${p.indicators.rsi})`;
-  const fast = p.maFast ? p.maFast.label : 'fast average';
-  const slow = p.maSlow ? p.maSlow.label : 'slow average';
-  const v = p.verdict;
-  const vTxt = v ? `The mechanical rating lands on ${v.action}${v.strength ? ' (' + v.strength + ')' : ''} — score ${v.score} on a −100…+100 scale (${v.rationale}). ` : '';
-  return `Through a ${strat} lens, ${p.symbol} shows a "${p.signal.label}" setup. ${p.signal.reason} `
-    + `Momentum (RSI) is ${rsiTxt}, and the ${fast}/${slow} pair frames the trend. `
-    + `A naive projection points slightly ${dir} over the next ${p.forecast.length} sessions. `
-    + vTxt
-    + `${p.risk ? p.risk + ' ' : ''}`
-    + `This rating is a formula on past prices, not advice — such signals are wrong often, so never trade on it alone.`;
+  const sym = p.symbol;
+  const v = p.verdict || {};
+  const horizon = p.strategy === 'longterm' ? 'long-term' : 'day-trading';
+  const rsi = p.indicators.rsi;
+  const slope = p.indicators.trendSlope || 0;
+
+  // Headline takeaway.
+  const str = v.strength ? v.strength.toLowerCase() + ' ' : '';
+  let lead;
+  if (v.action === 'Buy') lead = `On a ${horizon} timeframe, ${sym} is flashing a ${str}buy signal.`;
+  else if (v.action === 'Sell') lead = `On a ${horizon} timeframe, ${sym} is flashing a ${str}sell signal.`;
+  else if (v.action === 'Hold') lead = `On a ${horizon} timeframe, ${sym} looks like a hold — no clear edge either way right now.`;
+  else if (v.action === 'Avoid') lead = `On a ${horizon} timeframe, ${sym} isn't a compelling sell — price strength argues against it.`;
+  else lead = `On a ${horizon} timeframe, ${sym} has no clean setup yet — better to wait.`;
+
+  // Trend + momentum, conversational.
+  const trend = p.signal.reason;
+  let mom = '';
+  if (rsi != null) {
+    mom = rsi >= 70 ? `Momentum is running hot — RSI at ${rsi} is overbought, so a pullback wouldn't be a surprise. `
+      : rsi <= 30 ? `Momentum looks washed out — RSI at ${rsi} is oversold, which sometimes sets up a bounce. `
+      : `Momentum is steady, with RSI balanced around ${rsi}. `;
+  }
+  // Projection direction from the slope, so it agrees with the score.
+  const proj = slope > 0 ? `From here the trend projection edges higher. ` : slope < 0 ? `From here the trend projection edges lower. ` : `The trend projection is essentially flat. `;
+
+  const closer = `Composite read: ${v.score >= 0 ? '+' : ''}${v.score} out of ±100 — a quick starting point for your own research, not a call to act.`;
+  return `${lead} ${trend} ${mom}${proj}${closer}`;
 }
 async function callClaude(p) {
   const strat = p.strategyLabel || 'day trading (short-term)';
   const v = p.verdict || {};
-  const system = `You are a cautious market-analysis assistant. The user is looking at this stock through a ${strat} lens, and a mechanical indicator model has produced a "${v.action}" rating. Write a brief (3-4 sentence) plain-English read of the trend and momentum AS THEY MATTER FOR ${strat.toUpperCase()}. Explain what is driving that "${v.action}" rating and note the single most important risk of acting on it. Be balanced and explicit that the rating is a mechanical technical signal, frequently wrong, and NOT financial advice — the user must make their own decision. Do not phrase it as a personal recommendation to the user.`;
-  const user = `SYMBOL: ${p.symbol}\nSTRATEGY LENS: ${strat}\nLatest: ${p.latest} ${p.currency} (${p.changePct.toFixed(2)}% vs prior day)\n`
+  const slope = p.indicators.trendSlope || 0;
+  const projDir = slope > 0 ? 'edging higher' : slope < 0 ? 'edging lower' : 'flat';
+  const system = `You are a sharp, engaging market-analysis writer. A mechanical indicator model has rated this stock "${v.action}" on a ${strat} timeframe. Write 3-4 flowing, plain-English sentences a curious beginner would enjoy reading. Open with the headline takeaway (the ${v.action} read), then explain in everyday language what the trend and momentum are doing to drive it, and close with the single biggest risk. Keep it lively but grounded. DO NOT dump raw jargon, indicator names, formulas, or the numeric score into the prose, and do not contradict the stated projection direction. Make clear it is a mechanical signal that is often wrong and NOT financial advice — never a personal recommendation to the user.`;
+  const user = `SYMBOL: ${p.symbol}\nTIMEFRAME: ${strat}\nLatest: ${p.latest} ${p.currency} (${p.changePct.toFixed(2)}% vs prior day)\n`
     + `${p.maFast ? p.maFast.label : 'fast'}: ${p.indicators.maFast}\n${p.maSlow ? p.maSlow.label : 'slow'}: ${p.indicators.maSlow}\nRSI(${p.indicators.rsiPeriod}): ${p.indicators.rsi}\n`
-    + `Signal: ${p.signal.label} — ${p.signal.reason}\nMechanical rating: ${v.action}${v.strength ? ' (' + v.strength + ')' : ''}, score ${v.score}/100 (${v.rationale})\n`
-    + `Known risk of this strategy: ${p.risk}\nTrend projection (next ${p.forecast.length} days): ${p.forecast.join(', ')}\nWrite the summary.`;
+    + `Signal: ${p.signal.label} — ${p.signal.reason}\nMechanical rating: ${v.action}${v.strength ? ' (' + v.strength + ')' : ''} (${v.rationale})\n`
+    + `Projection is ${projDir} over the next ${p.forecast.length} sessions.\nKey risk: ${p.risk}\nWrite the summary now.`;
   const body = JSON.stringify({ model: AI_MODEL, max_tokens: 400,
     system, messages: [{ role: 'user', content: user }] });
   const { json: j } = await httpsJson({ method: 'POST', hostname: 'api.anthropic.com', path: '/v1/messages',
@@ -210,4 +226,4 @@ http.createServer(async (req, res) => {
     if (url === '/api/analyze-image' && req.method === 'POST') return await handleAnalyzeImage(req, res);
     serveStatic(req, res);
   } catch (e) { console.error('server error:', e); json(res, 500, { error: 'Internal error' }); }
-}).listen(PORT, () => console.log(`Market IQ running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'})`));
+}).listen(PORT, () => console.log(`MarketIQ running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'})`));
