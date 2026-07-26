@@ -1,0 +1,17 @@
+# Render Blueprint — deploy MarketIQ as a free web service.
+# In Render: New → Blueprint → pick this repo. The two API keys are marked
+# sync:false, so Render will PROMPT for them in the dashboard — never commit
+# keys to the repo.
+services:
+  - type: web
+    name: marketiq
+    runtime: node
+    plan: free
+    startCommand: node server.js
+    envVars:
+      - key: STOCK_API_KEY        # Twelve Data key (twelvedata.com, free tier) — real prices
+        sync: false
+      - key: ANTHROPIC_API_KEY    # Anthropic key (console.anthropic.com) — AI text + image analysis
+        sync: false
+      - key: ANTHROPIC_MODEL      # optional; a cheaper model (e.g. claude-haiku-4-5) lowers cost
+        value: claude-opus-4-8
