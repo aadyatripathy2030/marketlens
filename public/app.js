@@ -76,8 +76,15 @@
   let lastData = null;
   let strategy = 'daytrade';
   let direction = 'long';
-  let rangeBars = 126;      // active range button (0 = All)
+  let interval = '1day';    // candle size (1min … 1month)
+  let rangeDays = 126;      // active range button, in trading days (0 = All)
   let view = null;          // {start, end} indices into prices for zoom/pan
+  let chartType = 'candle'; // 'candle' | 'line'
+  const show = { fast: true, slow: true, proj: true }; // overlay visibility
+
+  // Approx bars per trading day per interval, so a range like "6M" spans ~6
+  // months of history regardless of the candle size.
+  const BARS_PER_DAY = { '1min': 390, '5min': 78, '15min': 26, '30min': 13, '1h': 7, '4h': 2, '1day': 1, '1week': 0.2, '1month': 1 / 21 };
 
   // Strategy tabs (Day trading / Long-term). Long-term is long-only, so the
   // Long/Short toggle only shows for day trading.
@@ -95,12 +102,26 @@
     direction = b.dataset.dir;
     if (lastData) run(lastData.symbol);
   }));
-  // Chart range buttons
+  // Chart range buttons (how far back to view)
   $('range').querySelectorAll('.range-btn').forEach(b => b.addEventListener('click', () => {
     $('range').querySelectorAll('.range-btn').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
-    rangeBars = parseInt(b.dataset.bars, 10);
+    rangeDays = parseInt(b.dataset.days, 10);
     resetView(); drawChart();
+  }));
+  // Candle interval (refetches at the new granularity)
+  $('interval').addEventListener('change', () => { interval = $('interval').value; if (lastData) run(lastData.symbol); });
+  // Overlay toggles: candles/line, each SMA, projection (redraw only, no refetch)
+  $('overlays').querySelectorAll('.ov').forEach(b => b.addEventListener('click', () => {
+    const k = b.dataset.k;
+    if (k === 'type') {
+      chartType = chartType === 'candle' ? 'line' : 'candle';
+      $('ovType').textContent = chartType === 'candle' ? '📊 Candles' : '📈 Line';
+    } else {
+      show[k] = !show[k];
+      b.classList.toggle('active', show[k]);
+    }
+    drawChart();
   }));
 
   window.addEventListener('resize', drawChart);
@@ -110,7 +131,8 @@
   function resetView() {
     if (!lastData) { view = null; return; }
     const len = lastData.prices.length;
-    const n = rangeBars > 0 ? Math.min(rangeBars, len) : len;
+    const bars = Math.round(rangeDays * (BARS_PER_DAY[interval] || 1));
+    const n = rangeDays > 0 ? Math.min(Math.max(bars, 10), len) : len;
     view = { start: len - n, end: len };
   }
 
@@ -128,14 +150,14 @@
     let end = Math.min(len, Math.ceil(view.end));
     if (end - start < 3) return;
     const bars = prices.slice(start, end);
-    const showForecast = end >= len;
+    const showForecast = show.proj && end >= len;
     const fc = showForecast ? (d.forecast || []) : [];
 
     const fastN = d.maFast ? d.maFast.period : 20;
     const slowN = d.maSlow ? d.maSlow.period : 50;
     const closes = prices.map(p => p.close);
-    const smaFastFull = sma(closes, fastN), smaSlowFull = sma(closes, slowN);
-    const visFast = smaFastFull.slice(start, end), visSlow = smaSlowFull.slice(start, end);
+    const visFast = show.fast ? sma(closes, fastN).slice(start, end) : [];
+    const visSlow = show.slow ? sma(closes, slowN).slice(start, end) : [];
 
     // y-range from visible highs/lows, visible SMA values, and forecast
     const vals = [];
@@ -165,19 +187,22 @@
       ctx.stroke(); ctx.setLineDash([]);
     }
 
-    // candlesticks
-    const cw = Math.max(1, (plotW / total) * 0.7);
-    const upCol = col('--good'), downCol = col('--bad');
-    bars.forEach((p, j) => {
-      const x = X(j), up = p.close >= p.open, c = up ? upCol : downCol;
-      ctx.strokeStyle = c; ctx.fillStyle = c; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(x, Y(p.high)); ctx.lineTo(x, Y(p.low)); ctx.stroke();
-      const yO = Y(p.open), yC = Y(p.close);
-      ctx.fillRect(x - cw / 2, Math.min(yO, yC), cw, Math.max(1, Math.abs(yC - yO)));
-    });
+    if (chartType === 'candle') {
+      const cw = Math.max(1, (plotW / total) * 0.7);
+      const upCol = col('--good'), downCol = col('--bad');
+      bars.forEach((p, j) => {
+        const x = X(j), up = p.close >= p.open, c = up ? upCol : downCol;
+        ctx.strokeStyle = c; ctx.fillStyle = c; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x, Y(p.high)); ctx.lineTo(x, Y(p.low)); ctx.stroke();
+        const yO = Y(p.open), yC = Y(p.close);
+        ctx.fillRect(x - cw / 2, Math.min(yO, yC), cw, Math.max(1, Math.abs(yC - yO)));
+      });
+    } else {
+      line(bars.map(p => p.close), 0, col('--accent'));
+    }
 
-    line(visSlow, 0, col('--sma50'));
-    line(visFast, 0, col('--sma20'));
+    if (show.slow) line(visSlow, 0, col('--sma50'));
+    if (show.fast) line(visFast, 0, col('--sma20'));
     if (fc.length) line([bars[bars.length - 1].close].concat(fc), bars.length - 1, col('--forecast'), true);
 
     // x labels (first + last visible date)
@@ -234,7 +259,7 @@
       <div class="tile"><div class="tile-val ${rsiCls}">${r == null ? '—' : r}</div><div class="tile-lbl">RSI (${d.indicators.rsiPeriod})</div></div>
       <div class="tile"><div class="tile-val">${fmt(d.indicators.maFast)}</div><div class="tile-lbl">${fastLbl}</div></div>
       <div class="tile"><div class="tile-val">${fmt(d.indicators.maSlow)}</div><div class="tile-lbl">${slowLbl}</div></div>
-      <div class="tile"><div class="tile-val ${projCls}">${fmt(proj)}</div><div class="tile-lbl">${d.forecast.length}-day proj.</div></div>`;
+      <div class="tile"><div class="tile-val ${projCls}">${fmt(proj)}</div><div class="tile-lbl">${d.forecast.length}-bar proj.</div></div>`;
   }
 
   async function run(symbol) {
@@ -243,7 +268,7 @@
     $('error').classList.add('hidden');
     $('goBtn').disabled = true; $('goBtn').textContent = 'Loading…';
     try {
-      const r = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&direction=${encodeURIComponent(direction)}`);
+      const r = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&direction=${encodeURIComponent(direction)}&interval=${encodeURIComponent(interval)}`);
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || 'Could not load');
       lastData = d;
@@ -258,8 +283,8 @@
       $('vMeta').textContent = v.strength ? v.strength + ' · ' + v.score : (v.score != null ? 'score ' + v.score : '');
       $('verdict').className = 'verdict ' + (v.tone || 'neutral');
       $('reason').textContent = d.signal.reason + (v.rationale ? '  ·  ' + v.rationale : '');
-      $('lgFast').textContent = d.maFast ? d.maFast.label : 'SMA 20';
-      $('lgSlow').textContent = d.maSlow ? d.maSlow.label : 'SMA 50';
+      $('ovFast').textContent = d.maFast ? d.maFast.label : 'SMA 20';
+      $('ovSlow').textContent = d.maSlow ? d.maSlow.label : 'SMA 50';
       if (d.risk) { $('risk').textContent = d.risk; $('risk').className = 'risk' + (d.direction === 'short' ? ' danger' : ''); }
       else $('risk').className = 'risk hidden';
       $('note').textContent = d.note || '';

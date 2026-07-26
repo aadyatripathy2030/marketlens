@@ -78,10 +78,15 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 
 .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
 .chart-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
-.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
-.lg { display: inline-flex; align-items: center; gap: 6px; }
-.lg i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
-.lg i.dashed { background: none !important; border-top: 2px dashed var(--forecast); height: 0; }
+.overlays { display: flex; gap: 6px; flex-wrap: wrap; }
+.ov { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font); font-size: 12px; font-weight: 600; color: var(--muted); background: var(--card-hi); border: 1px solid var(--border-strong); border-radius: 999px; padding: 5px 12px; cursor: pointer; transition: opacity .15s, border-color .15s; }
+.ov i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+.ov i.dashed { background: none !important; border-top: 2px dashed var(--forecast); height: 0; }
+.ov.active { color: var(--text); border-color: var(--accent); }
+.ov:not(.active) { opacity: .45; text-decoration: line-through; }
+.chart-time { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sel { font-family: var(--font); font-size: 12px; font-weight: 700; color: var(--text); background: var(--card-hi); border: 1px solid var(--border-strong); border-radius: 9px; padding: 6px 10px; cursor: pointer; }
+.sel:focus { outline: none; border-color: var(--accent); }
 .range { display: flex; gap: 4px; background: var(--card-hi); border: 1px solid var(--border); border-radius: 9px; padding: 3px; max-width: 100%; overflow-x: auto; }
 .range-btn { font-family: var(--font); font-size: 12px; font-weight: 700; color: var(--muted); background: none; border: none; border-radius: 6px; padding: 5px 11px; cursor: pointer; white-space: nowrap; }
 .range-btn.active { color: #fff; background: var(--accent); }

@@ -19,7 +19,12 @@ const PUBLIC = path.join(__dirname, 'public');
 const STOCK_API_KEY = (process.env.STOCK_API_KEY || '').replace(/\s/g, '');
 const ANTHROPIC_API_KEY = (process.env.ANTHROPIC_API_KEY || '').replace(/\s/g, '');
 const AI_MODEL = (process.env.ANTHROPIC_MODEL || 'claude-opus-4-8').trim();
-const HISTORY = 1300; // ~5 trading years, so long chart ranges have real data
+// Candle intervals, from 1-minute up to monthly. outputsize = how many bars to
+// pull (capped at Twelve Data's 5000 free-tier max); the daily/weekly/monthly
+// intervals reach back the stock's whole life. INTERVAL_MS spaces demo bars.
+const INTERVALS = ['1min', '5min', '15min', '30min', '1h', '4h', '1day', '1week', '1month'];
+const OUTPUTSIZE = { '1min': 780, '5min': 780, '15min': 650, '30min': 650, '1h': 840, '4h': 900, '1day': 5000, '1week': 2000, '1month': 600 };
+const INTERVAL_MS = { '1min': 60e3, '5min': 300e3, '15min': 900e3, '30min': 1800e3, '1h': 3600e3, '4h': 14400e3, '1day': 86400e3, '1week': 604800e3, '1month': 2629800e3 };
 function stratLabel(strategy, direction) {
   if (strategy === 'longterm') return 'long-term investing';
   return direction === 'short' ? 'day trading (sell side)' : 'day trading (buy side)';
@@ -52,9 +57,10 @@ function httpsJson(options, body) {
 }
 
 // ---- Market data ----
-async function fetchLive(symbol) {
-  // Twelve Data: /time_series?symbol=AAPL&interval=1day&outputsize=150&apikey=KEY
-  const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=1day&outputsize=${HISTORY}&apikey=${STOCK_API_KEY}`;
+async function fetchLive(symbol, interval) {
+  // Twelve Data: /time_series?symbol=AAPL&interval=1day&outputsize=N&apikey=KEY
+  const size = OUTPUTSIZE[interval] || 1300;
+  const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${size}&apikey=${STOCK_API_KEY}`;
   const { json: j } = await httpsJson({ method: 'GET', hostname: 'api.twelvedata.com',
     path: url.replace('https://api.twelvedata.com', '') });
   if (!j || j.status === 'error' || !Array.isArray(j.values)) throw new Error(j && j.message ? j.message : 'No data for that symbol');
@@ -69,30 +75,34 @@ async function fetchLive(symbol) {
     })).filter(p => Number.isFinite(p.close)),
   };
 }
-function buildDemo(symbol) {
-  const candles = I.demoCandles(symbol, HISTORY);
-  // Attach recent business-ish dates (calendar days back is fine for demo).
+function buildDemo(symbol, interval) {
+  const n = OUTPUTSIZE[interval] || 1300;
+  const step = INTERVAL_MS[interval] || 86400000;
+  const intraday = step < 86400000;
+  const candles = I.demoCandles(symbol, n);
   const prices = [];
-  const today = new Date();
+  const now = Date.now();
   for (let i = 0; i < candles.length; i++) {
-    const dt = new Date(today.getTime() - (candles.length - 1 - i) * 86400000);
+    const iso = new Date(now - (candles.length - 1 - i) * step).toISOString();
+    const date = intraday ? iso.slice(0, 16).replace('T', ' ') : iso.slice(0, 10);
     const k = candles[i];
-    prices.push({ date: dt.toISOString().slice(0, 10), open: k.o, high: k.h, low: k.l, close: k.c });
+    prices.push({ date, open: k.o, high: k.h, low: k.l, close: k.c });
   }
   return { name: symbol, currency: 'USD', prices };
 }
 
-async function handleStock(req, res, symbol, strategy, direction) {
+async function handleStock(req, res, symbol, strategy, direction, interval) {
   symbol = String(symbol || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
   if (!symbol) return json(res, 400, { error: 'Enter a ticker symbol.' });
   strategy = I.STRAT[strategy] ? strategy : 'daytrade';
   direction = direction === 'short' ? 'short' : 'long';
+  interval = INTERVALS.includes(interval) ? interval : '1day';
   let source = 'demo', note = '', data;
   if (STOCK_API_KEY) {
-    try { data = await fetchLive(symbol); source = 'live'; }
-    catch (e) { data = buildDemo(symbol); note = 'Live data unavailable (' + e.message + ') — showing demo data.'; }
+    try { data = await fetchLive(symbol, interval); source = 'live'; }
+    catch (e) { data = buildDemo(symbol, interval); note = 'Live data unavailable (' + e.message + ') — showing demo data.'; }
   } else {
-    data = buildDemo(symbol);
+    data = buildDemo(symbol, interval);
     note = 'Demo data — set STOCK_API_KEY (twelvedata.com, free) for real prices.';
   }
   const closes = data.prices.map(p => p.close);
@@ -101,7 +111,7 @@ async function handleStock(req, res, symbol, strategy, direction) {
   const prev = closes[closes.length - 2] || last;
   json(res, 200, {
     symbol, name: data.name, currency: data.currency, source, note,
-    strategy, direction: a.direction, strategyLabel: stratLabel(strategy, a.direction),
+    strategy, direction: a.direction, strategyLabel: stratLabel(strategy, a.direction), interval,
     prices: data.prices,
     latest: last, change: last - prev, changePct: prev ? ((last - prev) / prev) * 100 : 0,
     maFast: a.maFast, maSlow: a.maSlow,
@@ -222,7 +232,7 @@ http.createServer(async (req, res) => {
     const url = req.url.split('?')[0];
     if (url === '/api/stock' && req.method === 'GET') {
       const q = new URLSearchParams(req.url.split('?')[1] || '');
-      return await handleStock(req, res, q.get('symbol'), q.get('strategy'), q.get('direction'));
+      return await handleStock(req, res, q.get('symbol'), q.get('strategy'), q.get('direction'), q.get('interval'));
     }
     if (url === '/api/analyze' && req.method === 'POST') return await handleAnalyze(req, res);
     if (url === '/api/analyze-image' && req.method === 'POST') return await handleAnalyzeImage(req, res);
