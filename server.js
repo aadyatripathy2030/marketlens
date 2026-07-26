@@ -25,9 +25,10 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=u
   '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 
 function json(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); }
-function readBody(req) {
+function readBody(req, maxBytes) {
+  const cap = maxBytes || 1e6;
   return new Promise((resolve) => {
-    let d = ''; req.on('data', c => { d += c; if (d.length > 1e6) req.destroy(); });
+    let d = ''; req.on('data', c => { d += c; if (d.length > cap) req.destroy(); });
     req.on('end', () => { try { resolve(d ? JSON.parse(d) : {}); } catch { resolve({}); } });
     req.on('error', () => resolve({}));
   });
@@ -57,17 +58,21 @@ async function fetchLive(symbol) {
   return {
     name: (j.meta && j.meta.symbol) || symbol,
     currency: (j.meta && j.meta.currency) || 'USD',
-    prices: rows.map(v => ({ date: v.datetime, close: Number(v.close) })).filter(p => Number.isFinite(p.close)),
+    prices: rows.map(v => ({
+      date: v.datetime,
+      open: Number(v.open), high: Number(v.high), low: Number(v.low), close: Number(v.close),
+    })).filter(p => Number.isFinite(p.close)),
   };
 }
 function buildDemo(symbol) {
-  const closes = I.demoCloses(symbol, HISTORY);
+  const candles = I.demoCandles(symbol, HISTORY);
   // Attach recent business-ish dates (calendar days back is fine for demo).
   const prices = [];
   const today = new Date();
-  for (let i = 0; i < closes.length; i++) {
-    const dt = new Date(today.getTime() - (closes.length - 1 - i) * 86400000);
-    prices.push({ date: dt.toISOString().slice(0, 10), close: closes[i] });
+  for (let i = 0; i < candles.length; i++) {
+    const dt = new Date(today.getTime() - (candles.length - 1 - i) * 86400000);
+    const k = candles[i];
+    prices.push({ date: dt.toISOString().slice(0, 10), open: k.o, high: k.h, low: k.l, close: k.c });
   }
   return { name: symbol, currency: 'USD', prices };
 }
@@ -95,7 +100,7 @@ async function handleStock(req, res, symbol, strategy) {
     latest: last, change: last - prev, changePct: prev ? ((last - prev) / prev) * 100 : 0,
     maFast: a.maFast, maSlow: a.maSlow,
     indicators: { maFast: a.maFast.value, maSlow: a.maSlow.value, rsi: a.rsi, rsiPeriod: a.rsiPeriod, trendSlope: a.slope },
-    signal: a.signal, risk: a.risk,
+    signal: a.signal, verdict: a.verdict, risk: a.risk,
     forecast: a.forecast, horizon: a.horizon,
   });
 }
@@ -110,18 +115,23 @@ function ruleBasedSummary(p) {
     : `neutral (${p.indicators.rsi})`;
   const fast = p.maFast ? p.maFast.label : 'fast average';
   const slow = p.maSlow ? p.maSlow.label : 'slow average';
+  const v = p.verdict;
+  const vTxt = v ? `The mechanical rating lands on ${v.action}${v.strength ? ' (' + v.strength + ')' : ''} — score ${v.score} on a −100…+100 scale (${v.rationale}). ` : '';
   return `Through a ${strat} lens, ${p.symbol} shows a "${p.signal.label}" setup. ${p.signal.reason} `
     + `Momentum (RSI) is ${rsiTxt}, and the ${fast}/${slow} pair frames the trend. `
     + `A naive projection points slightly ${dir} over the next ${p.forecast.length} sessions. `
+    + vTxt
     + `${p.risk ? p.risk + ' ' : ''}`
-    + `This is a mechanical read of past prices, not a forecast to trust for decisions — it can be wrong.`;
+    + `This rating is a formula on past prices, not advice — such signals are wrong often, so never trade on it alone.`;
 }
 async function callClaude(p) {
   const strat = p.strategyLabel || 'day trading (short-term)';
-  const system = `You are a cautious market-analysis assistant. The user is looking at this stock specifically through a ${strat} lens. Given the symbol and its technical indicators, write a brief (3-4 sentence) plain-English read of the trend and momentum AS THEY MATTER FOR ${strat.toUpperCase()}, plus the single most important risk of that approach. Be balanced and explicitly note uncertainty. This is educational analysis, NOT financial advice. Do not tell the user to buy, sell, or short.`;
+  const v = p.verdict || {};
+  const system = `You are a cautious market-analysis assistant. The user is looking at this stock through a ${strat} lens, and a mechanical indicator model has produced a "${v.action}" rating. Write a brief (3-4 sentence) plain-English read of the trend and momentum AS THEY MATTER FOR ${strat.toUpperCase()}. Explain what is driving that "${v.action}" rating and note the single most important risk of acting on it. Be balanced and explicit that the rating is a mechanical technical signal, frequently wrong, and NOT financial advice — the user must make their own decision. Do not phrase it as a personal recommendation to the user.`;
   const user = `SYMBOL: ${p.symbol}\nSTRATEGY LENS: ${strat}\nLatest: ${p.latest} ${p.currency} (${p.changePct.toFixed(2)}% vs prior day)\n`
     + `${p.maFast ? p.maFast.label : 'fast'}: ${p.indicators.maFast}\n${p.maSlow ? p.maSlow.label : 'slow'}: ${p.indicators.maSlow}\nRSI(${p.indicators.rsiPeriod}): ${p.indicators.rsi}\n`
-    + `Signal: ${p.signal.label} — ${p.signal.reason}\nKnown risk of this strategy: ${p.risk}\nTrend projection (next ${p.forecast.length} days): ${p.forecast.join(', ')}\nWrite the summary.`;
+    + `Signal: ${p.signal.label} — ${p.signal.reason}\nMechanical rating: ${v.action}${v.strength ? ' (' + v.strength + ')' : ''}, score ${v.score}/100 (${v.rationale})\n`
+    + `Known risk of this strategy: ${p.risk}\nTrend projection (next ${p.forecast.length} days): ${p.forecast.join(', ')}\nWrite the summary.`;
   const body = JSON.stringify({ model: AI_MODEL, max_tokens: 400,
     system, messages: [{ role: 'user', content: user }] });
   const { json: j } = await httpsJson({ method: 'POST', hostname: 'api.anthropic.com', path: '/v1/messages',
@@ -138,6 +148,39 @@ async function handleAnalyze(req, res) {
     catch (e) { return json(res, 200, { summary: ruleBasedSummary(p), source: 'rule', note: 'AI unavailable (' + e.message + ') — rule-based summary.' }); }
   }
   return json(res, 200, { summary: ruleBasedSummary(p), source: 'rule', note: 'Set ANTHROPIC_API_KEY for an AI-written analysis.' });
+}
+
+// ---- Uploaded-chart analysis (Claude vision) ----
+async function callClaudeVision(base64, mediaType) {
+  const system = 'You are a cautious technical-analysis assistant reading a stock chart image. Describe what you see: overall trend, notable support/resistance levels, chart patterns, and what the visible momentum suggests. Then give a single mechanical lean — "Buy", "Sell", or "Hold/Neutral" — based ONLY on the visible price action, and explain why in one sentence. Be explicit that this is a mechanical read of one image, is frequently wrong, and is NOT financial advice. Keep it to 4-6 sentences. If the image is not a stock/price chart, say so instead.';
+  const user = 'Analyze this chart and give your read plus a Buy/Sell/Hold lean.';
+  const body = JSON.stringify({
+    model: AI_MODEL, max_tokens: 500, system,
+    messages: [{ role: 'user', content: [
+      { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+      { type: 'text', text: user },
+    ] }],
+  });
+  const { json: j } = await httpsJson({ method: 'POST', hostname: 'api.anthropic.com', path: '/v1/messages',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) } }, body);
+  const text = j && j.content && j.content[0] && j.content[0].text;
+  if (!text) throw new Error(j && j.error ? (j.error.message || 'AI error') : 'No AI response');
+  return text.trim();
+}
+async function handleAnalyzeImage(req, res) {
+  const p = await readBody(req, 8e6); // allow up to ~8MB base64 payloads
+  const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+  if (!p || !p.image || !allowed.includes(p.mediaType)) {
+    return json(res, 400, { error: 'Upload a PNG, JPEG, GIF, or WebP image.' });
+  }
+  // Base64 payload guard: ~5MB decoded is Anthropic's per-image ceiling.
+  if (p.image.length > 7e6) return json(res, 413, { error: 'Image too large — please use one under ~5 MB.' });
+  if (!ANTHROPIC_API_KEY) {
+    return json(res, 200, { source: 'none',
+      summary: 'Image analysis needs Claude vision. Set ANTHROPIC_API_KEY on the server to analyze uploaded charts. (Ticker analysis above works without a key.)' });
+  }
+  try { return json(res, 200, { summary: await callClaudeVision(p.image, p.mediaType), source: 'ai' }); }
+  catch (e) { return json(res, 200, { source: 'error', summary: 'Could not analyze the image (' + e.message + ').' }); }
 }
 
 function serveStatic(req, res) {
@@ -160,6 +203,7 @@ http.createServer(async (req, res) => {
       return await handleStock(req, res, q.get('symbol'), q.get('strategy'));
     }
     if (url === '/api/analyze' && req.method === 'POST') return await handleAnalyze(req, res);
+    if (url === '/api/analyze-image' && req.method === 'POST') return await handleAnalyzeImage(req, res);
     serveStatic(req, res);
   } catch (e) { console.error('server error:', e); json(res, 500, { error: 'Internal error' }); }
 }).listen(PORT, () => console.log(`Stock tool running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'})`));

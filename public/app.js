@@ -32,15 +32,16 @@
     const ctx = canvas.getContext('2d'); ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, w, h);
 
-    const closes = d.prices.map(p => p.close);
+    const bars = d.prices;
+    const closes = bars.map(p => p.close);
     const fc = d.forecast || [];
-    const all = closes.concat(fc);
-    const min = Math.min(...all), max = Math.max(...all);
+    const min = Math.min(...bars.map(p => p.low), ...fc);
+    const max = Math.max(...bars.map(p => p.high), ...fc);
     const pad = (max - min) * 0.08 || 1;
     const lo = min - pad, hi = max + pad;
     const padL = 46, padR = 10, padT = 12, padB = 22;
     const plotW = w - padL - padR, plotH = h - padT - padB;
-    const total = closes.length + fc.length;
+    const total = bars.length + fc.length;
     const X = (i) => padL + (plotW * i) / (total - 1);
     const Y = (v) => padT + plotH * (1 - (v - lo) / (hi - lo));
 
@@ -57,12 +58,23 @@
       vals.forEach((v, i) => { if (v == null) return; const x = X(i + offset), y = Y(v); if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y); });
       ctx.stroke(); ctx.setLineDash([]);
     }
+
+    // candlesticks: wick from high→low, body from open→close (green up / red down)
+    const cw = Math.max(1, (plotW / total) * 0.7);
+    const upCol = col('--good'), downCol = col('--bad');
+    bars.forEach((p, i) => {
+      const x = X(i), up = p.close >= p.open, c = up ? upCol : downCol;
+      ctx.strokeStyle = c; ctx.fillStyle = c; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, Y(p.high)); ctx.lineTo(x, Y(p.low)); ctx.stroke();
+      const yO = Y(p.open), yC = Y(p.close);
+      ctx.fillRect(x - cw / 2, Math.min(yO, yC), cw, Math.max(1, Math.abs(yC - yO)));
+    });
+
     const fastN = d.maFast ? d.maFast.period : 20;
     const slowN = d.maSlow ? d.maSlow.period : 50;
     line(sma(closes, slowN), 0, col('--sma50'));
     line(sma(closes, fastN), 0, col('--sma20'));
-    line(closes, 0, col('--accent'));
-    // forecast: connect last real point to projection
+    // forecast: connect last real close to projection
     if (fc.length) line([closes[closes.length - 1]].concat(fc), closes.length - 1, col('--forecast'), true);
 
     // x labels (first + last date)
@@ -103,8 +115,11 @@
       const up = d.change >= 0;
       $('chg').textContent = (up ? '▲ ' : '▼ ') + Math.abs(d.change).toFixed(2) + ' (' + d.changePct.toFixed(2) + '%)';
       $('chg').className = 'chg ' + (up ? 'up' : 'down');
-      $('signal').textContent = d.signal.label; $('signal').className = 'signal ' + (d.signal.tone || 'neutral');
-      $('reason').textContent = d.signal.reason;
+      const v = d.verdict || { action: d.signal.label, strength: '', tone: d.signal.tone };
+      $('vAction').textContent = v.action;
+      $('vMeta').textContent = v.strength ? v.strength + ' · ' + v.score : (v.score != null ? 'score ' + v.score : '');
+      $('verdict').className = 'verdict ' + (v.tone || 'neutral');
+      $('reason').textContent = d.signal.reason + (v.rationale ? '  ·  ' + v.rationale : '');
       $('lgFast').textContent = d.maFast ? d.maFast.label : 'SMA 20';
       $('lgSlow').textContent = d.maSlow ? d.maSlow.label : 'SMA 50';
       if (d.risk) { $('risk').textContent = d.risk; $('risk').className = 'risk' + (d.strategy === 'short' ? ' danger' : ''); }
@@ -130,6 +145,41 @@
   }
 
   $('searchForm').addEventListener('submit', (ev) => { ev.preventDefault(); run(); });
+
+  // ---- Image upload: read a chart screenshot, send to Claude vision ----
+  let imgData = null; // { base64, mediaType }
+  const dz = $('dropzone');
+  function loadFile(file) {
+    if (!file || !/^image\/(png|jpeg|gif|webp)$/.test(file.type)) {
+      $('imgResult').textContent = 'Please choose a PNG, JPEG, GIF, or WebP image.';
+      $('imgResult').classList.remove('hidden'); return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      imgData = { base64: dataUrl.split(',')[1], mediaType: file.type };
+      const prev = $('imgPreview'); prev.src = dataUrl; prev.classList.remove('hidden');
+      $('dropText').classList.add('hidden');
+      $('imgBtn').classList.remove('hidden');
+      $('imgResult').classList.add('hidden');
+    };
+    reader.readAsDataURL(file);
+  }
+  $('imgInput').addEventListener('change', (e) => loadFile(e.target.files[0]));
+  ['dragover', 'dragenter'].forEach(ev => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add('drag'); }));
+  ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.remove('drag'); }));
+  dz.addEventListener('drop', (e) => { if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); });
+  $('imgBtn').addEventListener('click', async () => {
+    if (!imgData) return;
+    $('imgBtn').disabled = true; $('imgBtn').textContent = 'Analyzing…';
+    $('imgResult').textContent = ''; $('imgResult').classList.add('hidden');
+    try {
+      const r = await fetch('/api/analyze-image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: imgData.base64, mediaType: imgData.mediaType }) });
+      const j = await r.json();
+      $('imgResult').textContent = j.summary || j.error || 'No analysis available.';
+    } catch (e) { $('imgResult').textContent = 'Analysis unavailable.'; }
+    finally { $('imgResult').classList.remove('hidden'); $('imgBtn').disabled = false; $('imgBtn').textContent = 'Analyze image'; }
+  });
 
   // Deep link: /?symbol=AAPL auto-loads that ticker.
   const initial = new URLSearchParams(location.search).get('symbol');

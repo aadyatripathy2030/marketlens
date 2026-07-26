@@ -33,13 +33,17 @@
         <div class="sym" id="symName"></div>
         <div class="price"><span id="price"></span> <span class="chg" id="chg"></span></div>
       </div>
-      <div class="signal" id="signal"></div>
+      <div class="verdict" id="verdict">
+        <div class="verdict-action" id="vAction"></div>
+        <div class="verdict-meta" id="vMeta"></div>
+      </div>
     </div>
     <p class="reason" id="reason"></p>
 
     <div class="card chart-card">
       <div class="legend">
-        <span class="lg"><i style="background:var(--accent)"></i>Price</span>
+        <span class="lg"><i style="background:var(--good)"></i>Up candle</span>
+        <span class="lg"><i style="background:var(--bad)"></i>Down candle</span>
         <span class="lg"><i style="background:var(--sma20)"></i><span id="lgFast">SMA 20</span></span>
         <span class="lg"><i style="background:var(--sma50)"></i><span id="lgSlow">SMA 50</span></span>
         <span class="lg"><i class="dashed" style="background:var(--forecast)"></i>Trend projection</span>
@@ -59,7 +63,19 @@
     <p class="note" id="note"></p>
   </section>
 
-  <p class="disclaimer">⚠️ For education and analysis only — <strong>not financial advice</strong>. No tool reliably predicts stock prices; the "trend projection" is a naive statistical line and can be wrong. Never invest based on this alone.</p>
+  <section class="card upload-card">
+    <div class="ai-head">🖼️ Analyze a chart image</div>
+    <p class="upload-sub">Upload a screenshot of any chart and Claude will read the trend and give a Buy / Sell / Hold lean.</p>
+    <label class="dropzone" id="dropzone">
+      <input type="file" id="imgInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
+      <span id="dropText">Click to choose an image, or drag one here</span>
+      <img id="imgPreview" class="hidden" alt="chart preview" />
+    </label>
+    <button class="btn btn-primary btn-block hidden" id="imgBtn">Analyze image</button>
+    <p class="ai-body img-result hidden" id="imgResult"></p>
+  </section>
+
+  <p class="disclaimer">⚠️ For education only — <strong>not financial advice</strong>. The Buy / Sell / Hold verdict is a mechanical score from past-price indicators (and, for images, a read of one picture). Signals like these are wrong <em>often</em> — no tool reliably predicts markets. This is not a recommendation to trade; decisions and their consequences are yours alone. Never trade based on this tool.</p>
 </main>
 
 <script src="app.js"></script>

@@ -115,6 +115,40 @@ function signalFor(strategy, fast, slow, r) {
     : { label: 'Momentum: Down', tone: 'bearish', reason: 'The 5-day average is below the 10-day — short-term momentum is down.' };
 }
 
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+// Aggregate the indicators into a single mechanical Buy/Sell/Hold rating.
+// This is a weighted score of trend (MA gap), momentum (RSI), and the naive
+// projection slope — the same kind of "technical rating" trading sites show.
+// It is NOT advice and is frequently wrong; the score is just transparency.
+function verdict(strategy, fast, slow, r, slope, last) {
+  // Three sub-signals, each squashed to [-1, 1], then weighted into a
+  // −100…+100 score: trend (MA gap), momentum (RSI), projection (slope).
+  let trendSig = 0, momSig = 0, projSig = 0;
+  if (fast != null && slow != null && slow !== 0) trendSig = Math.tanh(((fast - slow) / slow) * 100 / 1.5);
+  if (r != null) { momSig = clamp((r - 50) / 20, -1, 1); if (r > 72) momSig *= 0.6; } // haircut when overbought
+  if (slope != null && last) projSig = Math.tanh((slope / last) * 100 * 5);
+  const score = Math.round(clamp((0.5 * trendSig + 0.3 * momSig + 0.2 * projSig) * 100, -100, 100));
+
+  const parts = [];
+  if (fast != null && slow != null) parts.push(fast > slow ? 'trend up' : 'trend down');
+  if (r != null) parts.push(r >= 70 ? 'overbought' : r <= 30 ? 'oversold' : r > 50 ? 'firm momentum' : 'soft momentum');
+  if (slope != null) parts.push(slope > 0 ? 'projection higher' : 'projection lower');
+  const rationale = parts.join(', ');
+  const mag = Math.abs(score);
+  const strength = mag >= 60 ? 'Strong' : mag >= 38 ? 'Moderate' : 'Weak';
+  const TH = 22;
+
+  if (strategy === 'short') {
+    if (score <= -TH) return { action: 'Short', strength, tone: 'bearish', score, rationale };
+    if (score >= TH) return { action: 'Avoid', strength: '', tone: 'neutral', score, rationale };
+    return { action: 'Wait', strength: '', tone: 'neutral', score, rationale };
+  }
+  if (score >= TH) return { action: 'Buy', strength, tone: 'bullish', score, rationale };
+  if (score <= -TH) return { action: 'Sell', strength, tone: 'bearish', score, rationale };
+  return { action: 'Hold', strength: '', tone: 'neutral', score, rationale };
+}
+
 function analyze(closes, strategy) {
   const cfg = STRAT[strategy] ? strategy : 'daytrade';
   const c = STRAT[cfg];
@@ -122,6 +156,7 @@ function analyze(closes, strategy) {
   const slowVal = sma(closes, c.slow);
   const r = rsi(closes, c.rsiP);
   const { forecast, slope } = linearForecast(closes.slice(-c.fwWindow), c.horizon);
+  const last = closes[closes.length - 1];
   return {
     strategy: cfg,
     maFast: { period: c.fast, label: c.fastLabel, value: fastVal },
@@ -129,9 +164,35 @@ function analyze(closes, strategy) {
     rsi: r, rsiPeriod: c.rsiP,
     forecast, slope, horizon: c.horizon,
     signal: signalFor(cfg, fastVal, slowVal, r),
+    verdict: verdict(cfg, fastVal, slowVal, r, slope, last),
     risk: RISK[cfg],
   };
 }
 
-module.exports = { sma, rsi, linearForecast, computeSignal, demoCloses, analyze, STRAT, RISK };
+// Deterministic demo OHLC candles (seeded walk) — used when no market-data key
+// is set. Same seeding idea as demoCloses but emits open/high/low/close.
+function demoCandles(symbol, n) {
+  n = n || 260;
+  let seed = 0;
+  const str = String(symbol || 'DEMO').toUpperCase();
+  for (let i = 0; i < str.length; i++) seed = (seed * 31 + str.charCodeAt(i)) >>> 0;
+  function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
+  const r2 = (x) => Math.round(x * 100) / 100;
+  let price = 40 + (seed % 360);
+  const drift = (rnd() - 0.45) * 0.35;
+  const vol = 0.8 + rnd() * 1.6;
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const open = price;
+    const change = drift + (rnd() - 0.5) * vol * 2;
+    price = Math.max(1, price * (1 + change / 100));
+    const close = price;
+    const hi = Math.max(open, close) * (1 + rnd() * vol / 200);
+    const lo = Math.min(open, close) * (1 - rnd() * vol / 200);
+    out.push({ o: r2(open), h: r2(hi), l: r2(lo), c: r2(close) });
+  }
+  return out;
+}
+
+module.exports = { sma, rsi, linearForecast, computeSignal, demoCloses, demoCandles, analyze, verdict, STRAT, RISK };
 
