@@ -1,4 +1,4 @@
-# MarketIQ
+# MarketLens
 
 A web tool that pulls stock price data, computes technical indicators
 (SMA 20/50, RSI), draws a chart with a naive trend projection, and writes a
@@ -33,7 +33,7 @@ This repo ships a `render.yaml` blueprint.
 2. Render → **New → Blueprint** → select this repo → **Apply**.
 3. Render prompts for `STOCK_API_KEY` and `ANTHROPIC_API_KEY` (entered in the
    dashboard, never committed). Leave them blank to run in demo mode.
-4. First deploy gives a public `https://marketiq-*.onrender.com` URL.
+4. First deploy gives a public `https://marketlens-*.onrender.com` URL.
 
 Free tier sleeps after ~15 min idle, so the first hit after a nap is slow
 (~50 s cold start); it's snappy afterward.

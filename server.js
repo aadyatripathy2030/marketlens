@@ -226,4 +226,4 @@ http.createServer(async (req, res) => {
     if (url === '/api/analyze-image' && req.method === 'POST') return await handleAnalyzeImage(req, res);
     serveStatic(req, res);
   } catch (e) { console.error('server error:', e); json(res, 500, { error: 'Internal error' }); }
-}).listen(PORT, () => console.log(`MarketIQ running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'})`));
+}).listen(PORT, () => console.log(`MarketLens running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'})`));

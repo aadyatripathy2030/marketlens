@@ -1,10 +1,10 @@
-# Render Blueprint — deploy MarketIQ as a free web service.
+# Render Blueprint — deploy MarketLens as a free web service.
 # In Render: New → Blueprint → pick this repo. The two API keys are marked
 # sync:false, so Render will PROMPT for them in the dashboard — never commit
 # keys to the repo.
 services:
   - type: web
-    name: marketiq
+    name: marketlens
     runtime: node
     plan: free
     startCommand: node server.js
