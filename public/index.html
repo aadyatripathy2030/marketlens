@@ -46,6 +46,10 @@
           </div>
         </div>
         <p class="reason" id="reason"></p>
+        <div class="rating-strip" id="ratingStrip">
+          <div class="rating-bar"><div class="rating-fill" id="ratingFill"></div></div>
+          <div class="rating-nums"><span>AI score <b id="ratingScore">—</b></span><span>Confidence <b id="ratingConf">—</b></span><span>Risk <b id="ratingRisk">—</b></span></div>
+        </div>
 
         <div class="card chart-card">
           <div class="chart-top">
@@ -90,6 +94,25 @@
 
         <div class="tiles" id="tiles"></div>
         <p class="risk hidden" id="risk"></p>
+
+        <div class="card">
+          <div class="section-h">📊 Technical analysis <span class="sub">plain-English read of every signal</span></div>
+          <div class="tech-grid" id="techGrid"></div>
+        </div>
+
+        <div class="card">
+          <div class="section-h">🔮 AI price forecast <span class="sub">±1σ ≈ 68% range · model estimate, not a promise</span></div>
+          <div class="bands" id="bands"></div>
+        </div>
+
+        <div class="card">
+          <div class="section-h">🧠 AI investment thesis</div>
+          <div class="thesis">
+            <div class="thesis-col bull"><div class="thesis-h">▲ Bull case</div><ul id="bullList"></ul></div>
+            <div class="thesis-col bear"><div class="thesis-h">▼ Bear case</div><ul id="bearList"></ul></div>
+          </div>
+          <p class="thesis-concl" id="conclusion"></p>
+        </div>
       </div>
 
       <aside class="sidebar">

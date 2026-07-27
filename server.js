@@ -72,6 +72,7 @@ async function fetchLive(symbol, interval) {
     prices: rows.map(v => ({
       date: v.datetime,
       open: Number(v.open), high: Number(v.high), low: Number(v.low), close: Number(v.close),
+      volume: Number(v.volume) || 0,
     })).filter(p => Number.isFinite(p.close)),
   };
 }
@@ -86,7 +87,7 @@ function buildDemo(symbol, interval) {
     const iso = new Date(now - (candles.length - 1 - i) * step).toISOString();
     const date = intraday ? iso.slice(0, 16).replace('T', ' ') : iso.slice(0, 10);
     const k = candles[i];
-    prices.push({ date, open: k.o, high: k.h, low: k.l, close: k.c });
+    prices.push({ date, open: k.o, high: k.h, low: k.l, close: k.c, volume: k.v });
   }
   return { name: symbol, currency: 'USD', prices };
 }
@@ -107,6 +108,11 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   }
   const closes = data.prices.map(p => p.close);
   const a = I.analyze(closes, strategy, direction);
+  // Deep-analysis suite (only meaningful on daily-or-longer bars with enough history)
+  const candles = data.prices.map(p => ({ open: p.open, high: p.high, low: p.low, close: p.close, volume: p.volume || 0 }));
+  const tech = I.techReport(candles);
+  const rating = I.overallRating(tech);
+  const bands = I.forecastBands(closes);
   const last = closes[closes.length - 1];
   const prev = closes[closes.length - 2] || last;
   json(res, 200, {
@@ -118,68 +124,81 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
     indicators: { maFast: a.maFast.value, maSlow: a.maSlow.value, rsi: a.rsi, rsiPeriod: a.rsiPeriod, trendSlope: a.slope },
     signal: a.signal, verdict: a.verdict, risk: a.risk,
     forecast: a.forecast, horizon: a.horizon,
+    tech, rating, bands,
   });
 }
 
 // ---- AI (or rule-based) summary ----
-// Turns the numbers into clean, plain-English prose. The projection direction
-// is taken from the trend slope so it never contradicts the verdict rationale.
+// Keyed off the comprehensive rating so it never contradicts the headline badge.
 function ruleBasedSummary(p) {
   const sym = p.symbol;
-  const v = p.verdict || {};
-  const horizon = p.strategy === 'longterm' ? 'long-term' : 'day-trading';
-  const rsi = p.indicators.rsi;
-  const slope = p.indicators.trendSlope || 0;
-
-  // Headline takeaway.
-  const str = v.strength ? v.strength.toLowerCase() + ' ' : '';
-  let lead;
-  if (v.action === 'Buy') lead = `On a ${horizon} timeframe, ${sym} is flashing a ${str}buy signal.`;
-  else if (v.action === 'Sell') lead = `On a ${horizon} timeframe, ${sym} is flashing a ${str}sell signal.`;
-  else if (v.action === 'Hold') lead = `On a ${horizon} timeframe, ${sym} looks like a hold — no clear edge either way right now.`;
-  else if (v.action === 'Avoid') lead = `On a ${horizon} timeframe, ${sym} isn't a compelling sell — price strength argues against it.`;
-  else lead = `On a ${horizon} timeframe, ${sym} has no clean setup yet — better to wait.`;
-
-  // Trend + momentum, conversational.
-  const trend = p.signal.reason;
-  let mom = '';
-  if (rsi != null) {
-    mom = rsi >= 70 ? `Momentum is running hot — RSI at ${rsi} is overbought, so a pullback wouldn't be a surprise. `
-      : rsi <= 30 ? `Momentum looks washed out — RSI at ${rsi} is oversold, which sometimes sets up a bounce. `
-      : `Momentum is steady, with RSI balanced around ${rsi}. `;
-  }
-  // Projection direction from the slope, so it agrees with the score.
-  const proj = slope > 0 ? `From here the trend projection edges higher. ` : slope < 0 ? `From here the trend projection edges lower. ` : `The trend projection is essentially flat. `;
-
-  const closer = `Composite read: ${v.score >= 0 ? '+' : ''}${v.score} out of ±100 — a quick starting point for your own research, not a call to act.`;
-  return `${lead} ${trend} ${mom}${proj}${closer}`;
+  const r = p.rating || {};
+  const t = p.tech || {};
+  const sma = t.sma || {};
+  const trendUp = sma[50] != null && sma[200] != null ? sma[50] > sma[200] : null;
+  const rsi = t.rsi14;
+  const lead = `${sym} earns an AI technical score of ${r.score}/100 — a "${r.label}" read, with ${r.confidence}% of the signals in agreement. `;
+  const trend = trendUp == null ? '' : trendUp ? 'The long-term trend is up (50-day above the 200-day), ' : 'The long-term trend is down (50-day below the 200-day), ';
+  const mom = rsi == null ? '' : rsi >= 70 ? `and momentum is hot — RSI at ${rsi} is overbought, so a pullback wouldn't surprise. `
+    : rsi <= 30 ? `and momentum is washed out — RSI at ${rsi} is oversold, which can precede a bounce. `
+    : rsi >= 50 ? `and momentum is firm (RSI ${rsi}). ` : `but momentum is soft (RSI ${rsi}). `;
+  const volTxt = t.volatility ? `Volatility is ${t.volatility.annual < 25 ? 'low' : t.volatility.annual < 45 ? 'moderate' : 'elevated'} (~${Math.round(t.volatility.annual)}% annualized). ` : '';
+  const closer = `It's a mechanical blend of trend, momentum, and volatility — a starting point for your research, not a call to act.`;
+  return `${lead}${trend}${mom}${volTxt}${closer}`;
 }
-async function callClaude(p) {
-  const strat = p.strategyLabel || 'day trading (short-term)';
-  const v = p.verdict || {};
-  const slope = p.indicators.trendSlope || 0;
-  const projDir = slope > 0 ? 'edging higher' : slope < 0 ? 'edging lower' : 'flat';
-  const system = `You are a sharp, engaging market-analysis writer. A mechanical indicator model has rated this stock "${v.action}" on a ${strat} timeframe. Write 3-4 flowing, plain-English sentences a curious beginner would enjoy reading. Open with the headline takeaway (the ${v.action} read), then explain in everyday language what the trend and momentum are doing to drive it, and close with the single biggest risk. Keep it lively but grounded. DO NOT dump raw jargon, indicator names, formulas, or the numeric score into the prose, and do not contradict the stated projection direction. Make clear it is a mechanical signal that is often wrong and NOT financial advice — never a personal recommendation to the user.`;
-  const user = `SYMBOL: ${p.symbol}\nTIMEFRAME: ${strat}\nLatest: ${p.latest} ${p.currency} (${p.changePct.toFixed(2)}% vs prior day)\n`
-    + `${p.maFast ? p.maFast.label : 'fast'}: ${p.indicators.maFast}\n${p.maSlow ? p.maSlow.label : 'slow'}: ${p.indicators.maSlow}\nRSI(${p.indicators.rsiPeriod}): ${p.indicators.rsi}\n`
-    + `Signal: ${p.signal.label} — ${p.signal.reason}\nMechanical rating: ${v.action}${v.strength ? ' (' + v.strength + ')' : ''} (${v.rationale})\n`
-    + `Projection is ${projDir} over the next ${p.forecast.length} sessions.\nKey risk: ${p.risk}\nWrite the summary now.`;
-  const body = JSON.stringify({ model: AI_MODEL, max_tokens: 400,
-    system, messages: [{ role: 'user', content: user }] });
+// Rule-based bull/bear/conclusion from the computed technicals (no AI needed).
+function ruleBasedReport(p) {
+  const t = p.tech || {}, r = p.rating || {};
+  const bull = [], bear = [];
+  const sma = t.sma || {}, macd = t.macd, bb = t.bollinger, trend = t.trend;
+  if (sma[20] != null && sma[50] != null) (sma[20] > sma[50] ? bull : bear).push(`Short-term trend is ${sma[20] > sma[50] ? 'up' : 'down'} (20-day ${sma[20] > sma[50] ? 'above' : 'below'} 50-day average).`);
+  if (sma[50] != null && sma[200] != null) (sma[50] > sma[200] ? bull : bear).push(`Long-term trend is ${sma[50] > sma[200] ? 'up (golden-cross regime)' : 'down (death-cross regime)'}.`);
+  if (macd && macd.hist != null) (macd.hist > 0 ? bull : bear).push(`MACD momentum ${macd.hist > 0 ? 'favors buyers (histogram positive)' : 'favors sellers (histogram negative)'}.`);
+  if (t.vwap != null && t.price != null) (t.price > t.vwap ? bull : bear).push(`Price is trading ${t.price > t.vwap ? 'above' : 'below'} VWAP.`);
+  if (t.rsi14 != null) { if (t.rsi14 >= 70) bear.push(`RSI is overbought (${t.rsi14}) — pullback risk.`); else if (t.rsi14 <= 30) bull.push(`RSI is oversold (${t.rsi14}) — possible bounce.`); else (t.rsi14 >= 50 ? bull : bear).push(`RSI momentum is ${t.rsi14 >= 50 ? 'firm' : 'soft'} (${t.rsi14}).`); }
+  if (trend && trend.strength >= 45) (trend.direction === 'up' ? bull : bear).push(`Price is trending ${trend.direction} cleanly (trend strength ${trend.strength}/100).`);
+  if (t.volatility) (t.volatility.annual >= 45 ? bear : bull).push(`Volatility is ${t.volatility.annual >= 45 ? 'elevated' : 'contained'} (~${Math.round(t.volatility.annual)}% annualized).`);
+  if (!bull.length) bull.push('No clear bullish signals right now.');
+  if (!bear.length) bear.push('No glaring red flags in the technicals right now.');
+  const conclusion = `The technical model scores ${p.symbol} ${r.score}/100 — a "${r.label}" read with ${r.confidence}% signal agreement and ${String(r.risk).toLowerCase()} risk. This is a mechanical read of price action, not advice; confirm with your own research.`;
+  return { summary: ruleBasedSummary(p), bull: bull.slice(0, 4), bear: bear.slice(0, 4), conclusion };
+}
+
+async function callClaudeReport(p) {
+  const t = p.tech || {}, r = p.rating || {}, sma = t.sma || {};
+  const fmt = (x) => x == null ? 'n/a' : (typeof x === 'number' ? x.toFixed(2) : x);
+  const system = 'You are a sharp, balanced equity analyst writing for curious beginners. You will be given a stock and a set of already-computed technical indicators plus a mechanical rating. Respond with ONLY a JSON object (no markdown, no prose outside it) of the form: {"summary": string (3-4 lively plain-English sentences on where the stock stands and what is driving the rating), "bull": [3 short bullet strings — the strongest reasons it could go up], "bear": [3 short bullet strings — the strongest risks], "conclusion": string (2 sentences tying it together)}. Ground every point in the numbers provided; do not invent fundamentals, news, or price targets. Be explicit in the conclusion that this is a mechanical technical read, often wrong, and NOT financial advice.';
+  const user = `SYMBOL: ${p.symbol} @ ${fmt(p.latest)} ${p.currency} (${p.changePct.toFixed(2)}% today)\n`
+    + `RATING: ${r.label} — score ${r.score}/100, confidence ${r.confidence}%, risk ${r.risk}\n`
+    + `RSI14: ${fmt(t.rsi14)} | SMA20 ${fmt(sma[20])} / SMA50 ${fmt(sma[50])} / SMA200 ${fmt(sma[200])}\n`
+    + `MACD hist: ${fmt(t.macd && t.macd.hist)} | VWAP: ${fmt(t.vwap)} | Bollinger %B: ${fmt(t.bollinger && t.bollinger.pctB)}\n`
+    + `ATR: ${fmt(t.atr)} | Volatility(annual %): ${fmt(t.volatility && t.volatility.annual)} | Trend: ${t.trend ? t.trend.strength + '/100 ' + t.trend.direction : 'n/a'}\n`
+    + `Support ${fmt(t.supportResistance && t.supportResistance.support)} / Resistance ${fmt(t.supportResistance && t.supportResistance.resistance)}\nReturn the JSON now.`;
+  const body = JSON.stringify({ model: AI_MODEL, max_tokens: 700, system, messages: [{ role: 'user', content: user }] });
   const { json: j } = await httpsJson({ method: 'POST', hostname: 'api.anthropic.com', path: '/v1/messages',
     headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) } }, body);
   const text = j && j.content && j.content[0] && j.content[0].text;
   if (!text) throw new Error(j && j.error ? (j.error.message || 'AI error') : 'No AI response');
-  return text.trim();
+  const m = text.match(/\{[\s\S]*\}/);
+  const parsed = JSON.parse(m ? m[0] : text);
+  return {
+    summary: String(parsed.summary || ''),
+    bull: Array.isArray(parsed.bull) ? parsed.bull.map(String).slice(0, 4) : [],
+    bear: Array.isArray(parsed.bear) ? parsed.bear.map(String).slice(0, 4) : [],
+    conclusion: String(parsed.conclusion || ''),
+  };
 }
 async function handleAnalyze(req, res) {
   const p = await readBody(req);
   if (!p || !p.symbol) return json(res, 400, { error: 'Missing data.' });
   if (ANTHROPIC_API_KEY) {
-    try { return json(res, 200, { summary: await callClaude(p), source: 'ai' }); }
-    catch (e) { return json(res, 200, { summary: ruleBasedSummary(p), source: 'rule', note: 'AI unavailable (' + e.message + ') — rule-based summary.' }); }
+    try {
+      const rep = await callClaudeReport(p);
+      if (!rep.summary) throw new Error('empty AI report');
+      return json(res, 200, { ...rep, source: 'ai' });
+    } catch (e) { return json(res, 200, { ...ruleBasedReport(p), source: 'rule', note: 'AI unavailable (' + e.message + ') — rule-based report.' }); }
   }
-  return json(res, 200, { summary: ruleBasedSummary(p), source: 'rule', note: 'Set ANTHROPIC_API_KEY for an AI-written analysis.' });
+  return json(res, 200, { ...ruleBasedReport(p), source: 'rule', note: 'Set ANTHROPIC_API_KEY for an AI-written report.' });
 }
 
 // ---- Uploaded-chart analysis (Claude vision) ----

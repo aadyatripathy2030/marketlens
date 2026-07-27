@@ -102,6 +102,50 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .risk { font-size: 12.5px; color: #fcd9b6; background: #2a1f10; border: 1px solid #7c5210; border-radius: 12px; padding: 11px 14px; line-height: 1.6; margin-bottom: 16px; }
 .risk.danger { color: #fca5a5; background: var(--bad-soft); border-color: #7f1d1d; }
 
+/* AI rating strip */
+.rating-strip { margin: -6px 0 18px; }
+.rating-bar { height: 8px; border-radius: 999px; background: var(--card-hi); border: 1px solid var(--border); overflow: hidden; }
+.rating-fill { height: 100%; width: 0; border-radius: 999px; transition: width .5s ease; background: linear-gradient(90deg, var(--bad), var(--sma20), var(--good)); }
+.rating-nums { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 7px; }
+.rating-nums b { color: var(--text); font-weight: 700; }
+
+/* Section headers */
+.section-h { font-size: 14px; font-weight: 800; margin-bottom: 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.section-h .sub { font-size: 11px; font-weight: 500; color: var(--muted); }
+
+/* Technicals grid */
+.tech-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.tech-item { background: var(--card-hi); border: 1px solid var(--border); border-radius: 11px; padding: 11px 12px; }
+.tech-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.tech-name { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
+.tech-val { font-size: 16px; font-weight: 700; }
+.tech-note { font-size: 11.5px; color: var(--muted); margin-top: 5px; line-height: 1.45; }
+.tech-note.bull { color: var(--good); } .tech-note.bear { color: var(--bad); }
+
+/* Forecast bands */
+.bands { display: flex; flex-direction: column; gap: 9px; }
+.band-row { display: grid; grid-template-columns: 78px 1fr 150px; align-items: center; gap: 12px; font-size: 12.5px; }
+.band-label { color: var(--muted); font-weight: 600; }
+.band-track { position: relative; height: 8px; background: var(--card-hi); border-radius: 999px; border: 1px solid var(--border); }
+.band-range { position: absolute; height: 100%; border-radius: 999px; background: linear-gradient(90deg, rgba(59,130,246,.35), rgba(59,130,246,.75)); }
+.band-mid { position: absolute; top: -3px; width: 2px; height: 14px; background: var(--text); border-radius: 2px; }
+.band-nums { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.band-nums b { color: var(--text); }
+
+/* Investment thesis */
+.thesis { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.thesis-col { background: var(--card-hi); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+.thesis-col.bull { border-color: rgba(34,197,94,.4); }
+.thesis-col.bear { border-color: rgba(239,68,68,.4); }
+.thesis-h { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+.thesis-col.bull .thesis-h { color: var(--good); }
+.thesis-col.bear .thesis-h { color: var(--bad); }
+.thesis-col ul { list-style: none; display: flex; flex-direction: column; gap: 7px; }
+.thesis-col li { font-size: 12.5px; line-height: 1.5; padding-left: 14px; position: relative; }
+.thesis-col li::before { content: '·'; position: absolute; left: 3px; font-weight: 800; }
+.thesis-concl { font-size: 13px; line-height: 1.6; color: var(--muted); margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+@media (max-width: 560px) { .thesis, .band-row { grid-template-columns: 1fr; } .band-row { gap: 4px; } .band-nums { text-align: left; } }
+
 .ai-card { background: var(--accent-soft); border-color: var(--accent); }
 .ai-head { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--accent); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
 .ai-body { font-size: 14.5px; line-height: 1.65; }

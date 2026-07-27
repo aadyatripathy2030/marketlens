@@ -4,6 +4,51 @@
   const $ = (id) => document.getElementById(id);
   const CSS = getComputedStyle(document.documentElement);
   const col = (n) => CSS.getPropertyValue(n).trim();
+  const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // Plain-English technical-indicator grid.
+  function renderTech(t) {
+    if (!t) { $('techGrid').innerHTML = ''; return; }
+    const f2 = (v) => v == null ? '—' : (+v).toFixed(2);
+    const items = [];
+    const add = (name, val, note, cls) => items.push({ name, val, note, cls: cls || '' });
+    if (t.rsi14 != null) add('RSI (14)', t.rsi14, t.rsi14 >= 70 ? 'Overbought — stretched up, pullback risk' : t.rsi14 <= 30 ? 'Oversold — stretched down, possible bounce' : t.rsi14 >= 50 ? 'Firm momentum, buyers in control' : 'Soft momentum, sellers leaning in', t.rsi14 >= 70 ? 'bear' : t.rsi14 <= 30 ? 'bull' : t.rsi14 >= 50 ? 'bull' : 'bear');
+    if (t.macd) add('MACD', f2(t.macd.hist), t.macd.hist > 0 ? 'Bullish — MACD above its signal line' : 'Bearish — MACD below its signal line', t.macd.hist > 0 ? 'bull' : 'bear');
+    if (t.sma && t.sma[20] != null && t.sma[50] != null) add('SMA 20 / 50', f2(t.sma[20]) + ' / ' + f2(t.sma[50]), t.sma[20] > t.sma[50] ? 'Short-term uptrend (20 above 50)' : 'Short-term downtrend (20 below 50)', t.sma[20] > t.sma[50] ? 'bull' : 'bear');
+    if (t.sma && t.sma[200] != null) add('SMA 200', f2(t.sma[200]), t.price > t.sma[200] ? 'Price above 200-day — long-term bullish' : 'Price below 200-day — long-term bearish', t.price > t.sma[200] ? 'bull' : 'bear');
+    if (t.ema && t.ema[20] != null && t.ema[50] != null) add('EMA 20 / 50', f2(t.ema[20]) + ' / ' + f2(t.ema[50]), t.ema[20] > t.ema[50] ? 'Fast EMA above slow — momentum up' : 'Fast EMA below slow — momentum down', t.ema[20] > t.ema[50] ? 'bull' : 'bear');
+    if (t.bollinger) { const pb = t.bollinger.pctB; add('Bollinger %B', Math.round(pb * 100) + '%', pb > 1 ? 'Above upper band — overextended' : pb < 0 ? 'Below lower band — oversold stretch' : pb > 0.8 ? 'Near upper band' : pb < 0.2 ? 'Near lower band' : 'Mid-range, no extreme', pb > 1 ? 'bear' : pb < 0 ? 'bull' : ''); }
+    if (t.vwap != null) add('VWAP', f2(t.vwap), t.price > t.vwap ? 'Price above VWAP — buyers in control' : 'Price below VWAP — sellers in control', t.price > t.vwap ? 'bull' : 'bear');
+    if (t.atr != null) add('ATR (14)', f2(t.atr), '~' + (t.atr / t.price * 100).toFixed(1) + '% typical daily move', '');
+    if (t.supportResistance) { const s = t.supportResistance; add('Support / Resistance', f2(s.support) + ' / ' + f2(s.resistance), ((t.price - s.support) / t.price * 100).toFixed(1) + '% above support · ' + ((s.resistance - t.price) / t.price * 100).toFixed(1) + '% below resistance', ''); }
+    if (t.fibonacci) { const L = t.fibonacci.levels; add('Fibonacci', f2(L['61.8%']) + ' / ' + f2(L['50.0%']) + ' / ' + f2(L['38.2%']), 'Retracement levels (61.8 / 50 / 38.2%)', ''); }
+    if (t.volatility) { const a = t.volatility.annual; add('Volatility', a.toFixed(0) + '%', (a < 25 ? 'Low' : a < 45 ? 'Moderate' : a < 70 ? 'High' : 'Very high') + ' — annualized', a >= 45 ? 'bear' : ''); }
+    if (t.trend) add('Trend strength', t.trend.strength + '/100', (t.trend.strength >= 60 ? 'Strong' : t.trend.strength >= 35 ? 'Moderate' : 'Weak') + ' ' + t.trend.direction + 'trend', t.trend.strength >= 35 ? (t.trend.direction === 'up' ? 'bull' : 'bear') : '');
+    if (t.volume != null && t.avgVolume != null) add('Volume', (t.volume / 1e6).toFixed(1) + 'M', t.volume > t.avgVolume ? 'Above 20-day average — active' : 'Below average — quiet', '');
+    $('techGrid').innerHTML = items.map(it => `<div class="tech-item"><div class="tech-top"><span class="tech-name">${esc(it.name)}</span><span class="tech-val">${esc(String(it.val))}</span></div><div class="tech-note ${it.cls}">${esc(it.note)}</div></div>`).join('');
+  }
+
+  // One-line rating reason (consistent with the badge/score).
+  function ratingReason(d) {
+    const t = d.tech || {}, r = d.rating || {};
+    const bits = [];
+    if (t.sma && t.sma[50] != null && t.sma[200] != null) bits.push(t.sma[50] > t.sma[200] ? 'long-term trend up' : 'long-term trend down');
+    if (t.rsi14 != null) bits.push(t.rsi14 >= 70 ? 'overbought' : t.rsi14 <= 30 ? 'oversold' : t.rsi14 >= 50 ? 'firm momentum' : 'soft momentum');
+    if (t.macd) bits.push(t.macd.hist > 0 ? 'MACD bullish' : 'MACD bearish');
+    if (t.trend) bits.push((t.trend.strength >= 60 ? 'strong' : t.trend.strength >= 35 ? 'moderate' : 'weak') + ' ' + t.trend.direction + 'trend');
+    return `Comprehensive read across 13 signals → ${r.label || '—'}${bits.length ? '. ' + bits.join(', ') + '.' : ''}`;
+  }
+
+  // Probabilistic forecast bands.
+  function renderBands(bands) {
+    if (!bands || !bands.length) { $('bands').innerHTML = ''; return; }
+    const lo = Math.min(...bands.map(b => b.low)), hi = Math.max(...bands.map(b => b.high));
+    const span = (hi - lo) || 1, pct = (v) => (v - lo) / span * 100;
+    $('bands').innerHTML = bands.map(b => {
+      const l = pct(b.low), w = Math.max(1, pct(b.high) - l), m = pct(b.mid);
+      return `<div class="band-row"><span class="band-label">${esc(b.label)}</span><div class="band-track"><div class="band-range" style="left:${l}%;width:${w}%"></div><div class="band-mid" style="left:${m}%"></div></div><span class="band-nums"><b>${b.low.toFixed(2)}</b> – <b>${b.high.toFixed(2)}</b></span></div>`;
+    }).join('');
+  }
 
   const EXAMPLES = ['AAPL', 'TSLA', 'MSFT', 'NVDA', 'AMZN', 'GOOGL'];
   $('examples').innerHTML = EXAMPLES.map(s => `<button class="chip" data-s="${s}">${s}</button>`).join('');
@@ -275,19 +320,25 @@
       const up = d.change >= 0;
       $('chg').textContent = (up ? '▲ ' : '▼ ') + Math.abs(d.change).toFixed(2) + ' (' + d.changePct.toFixed(2) + '%)';
       $('chg').className = 'chg ' + (up ? 'up' : 'down');
-      const v = d.verdict || { action: d.signal.label, strength: '', tone: d.signal.tone };
-      $('vAction').textContent = v.action;
-      $('vMeta').textContent = v.strength ? v.strength + ' · ' + v.score : (v.score != null ? 'score ' + v.score : '');
-      $('verdict').className = 'verdict ' + (v.tone || 'neutral');
-      $('reason').textContent = d.signal.reason + (v.rationale ? '  ·  ' + v.rationale : '');
+      const rt = d.rating || {};
+      const v = d.verdict || {};
+      $('vAction').textContent = rt.label || v.action || d.signal.label;
+      $('vMeta').textContent = rt.score != null ? rt.score + '/100' : (v.score != null ? 'score ' + v.score : '');
+      $('verdict').className = 'verdict ' + (rt.tone || v.tone || 'neutral');
+      $('reason').textContent = ratingReason(d);
+      $('ratingFill').style.width = (rt.score || 0) + '%';
+      $('ratingScore').textContent = rt.score != null ? rt.score + '/100' : '—';
+      $('ratingConf').textContent = rt.confidence != null ? rt.confidence + '%' : '—';
+      $('ratingRisk').textContent = rt.risk || '—';
       $('ovFast').textContent = d.maFast ? d.maFast.label : 'SMA 20';
       $('ovSlow').textContent = d.maSlow ? d.maSlow.label : 'SMA 50';
       if (d.risk) { $('risk').textContent = d.risk; $('risk').className = 'risk' + (d.direction === 'short' ? ' danger' : ''); }
       else $('risk').className = 'risk hidden';
       $('note').textContent = d.note || '';
       $('result').classList.remove('hidden');
-      resetView(); drawChart(); tiles(d);
+      resetView(); drawChart(); tiles(d); renderTech(d.tech); renderBands(d.bands);
       $('aiBody').textContent = 'Analyzing…'; $('aiTag').textContent = '';
+      $('bullList').innerHTML = '<li>Analyzing…</li>'; $('bearList').innerHTML = '<li>Analyzing…</li>'; $('conclusion').textContent = '';
       loadAnalysis(d);
     } catch (e) {
       $('error').textContent = e.message; $('error').classList.remove('hidden'); $('result').classList.add('hidden');
@@ -300,7 +351,10 @@
       const j = await r.json();
       $('aiBody').textContent = j.summary || 'No analysis available.';
       $('aiTag').textContent = j.source === 'ai' ? 'AI-written' : 'rule-based';
-    } catch (e) { $('aiBody').textContent = 'Analysis unavailable.'; }
+      $('bullList').innerHTML = (j.bull && j.bull.length ? j.bull : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
+      $('bearList').innerHTML = (j.bear && j.bear.length ? j.bear : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
+      $('conclusion').textContent = j.conclusion || '';
+    } catch (e) { $('aiBody').textContent = 'Analysis unavailable.'; $('bullList').innerHTML = ''; $('bearList').innerHTML = ''; }
   }
 
   $('searchForm').addEventListener('submit', (ev) => { ev.preventDefault(); hideSuggest(); run(); });
