@@ -343,60 +343,48 @@ async function fetchFMP(pathNoKey) {
 const fmtMoney = (n) => { n = Number(n); if (!Number.isFinite(n) || n === 0) return '—'; const a = Math.abs(n); const s = n < 0 ? '-' : ''; if (a >= 1e12) return s + '$' + (a / 1e12).toFixed(2) + 'T'; if (a >= 1e9) return s + '$' + (a / 1e9).toFixed(2) + 'B'; if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(2) + 'M'; return s + '$' + a.toFixed(0); };
 const fmtPct = (n) => Number.isFinite(Number(n)) ? (Number(n) * 100).toFixed(1) + '%' : '—';
 const fmtNum = (n) => Number.isFinite(Number(n)) ? Number(n).toFixed(2) : '—';
-function buildMetrics(r, inc, p) {
-  r = r || {}; inc = inc || {}; p = p || {};
+const pick = (o, ...keys) => { for (const k of keys) if (o && o[k] != null) return o[k]; return undefined; };
+function buildMetrics(r, k, inc, p) {
+  r = r || {}; k = k || {}; inc = inc || {}; p = p || {};
   return [
-    { label: 'Market cap', value: fmtMoney(p.mktCap) },
-    { label: 'Revenue (TTM)', value: fmtMoney(inc.revenue) },
-    { label: 'Net income', value: fmtMoney(inc.netIncome) },
-    { label: 'EPS', value: inc.eps != null ? '$' + fmtNum(inc.eps) : '—' },
-    { label: 'P/E', value: fmtNum(r.peRatioTTM) },
-    { label: 'PEG', value: fmtNum(r.pegRatioTTM) },
-    { label: 'P/S', value: fmtNum(r.priceToSalesRatioTTM) },
-    { label: 'P/B', value: fmtNum(r.priceToBookRatioTTM) },
-    { label: 'Gross margin', value: fmtPct(r.grossProfitMarginTTM) },
-    { label: 'Operating margin', value: fmtPct(r.operatingProfitMarginTTM) },
-    { label: 'Net margin', value: fmtPct(r.netProfitMarginTTM) },
-    { label: 'ROE', value: fmtPct(r.returnOnEquityTTM) },
-    { label: 'Debt / Equity', value: fmtNum(r.debtEquityRatioTTM) },
-    { label: 'Current ratio', value: fmtNum(r.currentRatioTTM) },
-    { label: 'Dividend yield', value: fmtPct(r.dividendYielTTM) },
-    { label: 'Beta', value: fmtNum(p.beta) },
+    { label: 'Market cap', value: fmtMoney(pick(p, 'marketCap') ?? pick(k, 'marketCap')) },
+    { label: 'Revenue (TTM)', value: fmtMoney(pick(inc, 'revenue')) },
+    { label: 'Net income', value: fmtMoney(pick(inc, 'netIncome')) },
+    { label: 'EPS', value: (pick(inc, 'eps', 'epsDiluted') != null) ? '$' + fmtNum(pick(inc, 'eps', 'epsDiluted')) : '—' },
+    { label: 'P/E', value: fmtNum(pick(r, 'priceToEarningsRatioTTM', 'peRatioTTM')) },
+    { label: 'PEG', value: fmtNum(pick(r, 'priceToEarningsGrowthRatioTTM', 'pegRatioTTM')) },
+    { label: 'P/S', value: fmtNum(pick(r, 'priceToSalesRatioTTM')) },
+    { label: 'P/B', value: fmtNum(pick(r, 'priceToBookRatioTTM')) },
+    { label: 'Gross margin', value: fmtPct(pick(r, 'grossProfitMarginTTM')) },
+    { label: 'Operating margin', value: fmtPct(pick(r, 'operatingProfitMarginTTM')) },
+    { label: 'Net margin', value: fmtPct(pick(r, 'netProfitMarginTTM')) },
+    { label: 'ROE', value: fmtPct(pick(k, 'returnOnEquityTTM') ?? pick(r, 'returnOnEquityTTM')) },
+    { label: 'Debt / Equity', value: fmtNum(pick(r, 'debtToEquityRatioTTM', 'debtEquityRatioTTM')) },
+    { label: 'Current ratio', value: fmtNum(pick(r, 'currentRatioTTM')) },
+    { label: 'Dividend yield', value: fmtPct(pick(r, 'dividendYieldTTM', 'dividendYielTTM')) },
+    { label: 'Beta', value: fmtNum(pick(p, 'beta')) },
   ];
 }
 async function handleFundamentals(req, res, symbol) {
-  const debug = /(\?|&)debug=1/.test(req.url);
   symbol = String(symbol || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
   if (!symbol) return json(res, 400, { error: 'No symbol.' });
   if (!FMP_API_KEY) return json(res, 200, { available: false, message: 'Set FMP_API_KEY (financialmodelingprep.com) on the server for fundamentals & news.' });
   const enc = encodeURIComponent(symbol);
-  if (debug) {
-    const grab = async (p) => { try { return await fetchFMP(p); } catch (e) { return { _threw: e.message }; } };
-    const [prof, rat, km, inc, news] = await Promise.all([
-      grab(`/stable/profile?symbol=${enc}`),
-      grab(`/stable/ratios-ttm?symbol=${enc}`),
-      grab(`/stable/key-metrics-ttm?symbol=${enc}`),
-      grab(`/stable/income-statement?symbol=${enc}&limit=1`),
-      grab(`/stable/news/stock?symbols=${enc}&limit=2`),
-    ]);
-    const cut = (x) => JSON.stringify(x).slice(0, 800);
-    return json(res, 200, { debug: true, profile: cut(prof), ratios: cut(rat), keymetrics: cut(km), income: cut(inc), news: cut(news) });
-  }
   const safe = (p) => fetchFMP(p).catch(() => null);
-  const [prof, rat, inc, news] = await Promise.all([
-    safe(`/api/v3/profile/${enc}`),
-    safe(`/api/v3/ratios-ttm/${enc}`),
-    safe(`/api/v3/income-statement/${enc}?period=annual&limit=1`),
-    safe(`/api/v3/stock_news?tickers=${enc}&limit=8`),
+  const arr0 = (x) => Array.isArray(x) ? x[0] : null;
+  const [prof, rat, km, inc, news] = await Promise.all([
+    safe(`/stable/profile?symbol=${enc}`),
+    safe(`/stable/ratios-ttm?symbol=${enc}`),
+    safe(`/stable/key-metrics-ttm?symbol=${enc}`),
+    safe(`/stable/income-statement?symbol=${enc}&limit=1`),
+    safe(`/stable/news/stock?symbols=${enc}&limit=8`),
   ]);
-  const p = Array.isArray(prof) ? prof[0] : null;
-  const r = Array.isArray(rat) ? rat[0] : null;
-  const i = Array.isArray(inc) ? inc[0] : null;
+  const p = arr0(prof), r = arr0(rat), k = arr0(km), i = arr0(inc);
   return json(res, 200, {
     available: true,
-    profile: p ? { name: p.companyName, sector: p.sector, industry: p.industry, exchange: p.exchangeShortName, ceo: p.ceo, employees: p.fullTimeEmployees, description: p.description } : null,
-    metrics: buildMetrics(r, i, p),
-    news: Array.isArray(news) ? news.slice(0, 8).map(n => ({ title: n.title, site: n.site, url: n.url, date: n.publishedDate })) : [],
+    profile: p ? { name: p.companyName, sector: p.sector, industry: p.industry, exchange: p.exchange, ceo: p.ceo, description: p.description } : null,
+    metrics: buildMetrics(r, k, i, p),
+    news: Array.isArray(news) ? news.slice(0, 8).map(n => ({ title: n.title, site: n.site || n.publisher, url: n.url, date: n.publishedDate || n.date })) : [],
   });
 }
 
