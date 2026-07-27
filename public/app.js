@@ -92,14 +92,6 @@
     $('strat').querySelectorAll('.strat-btn').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
     strategy = b.dataset.mode;
-    $('direction').style.display = strategy === 'longterm' ? 'none' : '';
-    if (lastData) run(lastData.symbol);
-  }));
-  // Long / Short direction (day trading only)
-  $('direction').querySelectorAll('.dir-btn').forEach(b => b.addEventListener('click', () => {
-    $('direction').querySelectorAll('.dir-btn').forEach(x => x.classList.remove('active'));
-    b.classList.add('active');
-    direction = b.dataset.dir;
     if (lastData) run(lastData.symbol);
   }));
   // Chart range buttons (how far back to view)
