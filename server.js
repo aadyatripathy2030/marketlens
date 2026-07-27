@@ -382,8 +382,17 @@ function buildMetrics(r, k, inc, p) {
 async function handleFundamentals(req, res, symbol) {
   symbol = String(symbol || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
   if (!symbol) return json(res, 400, { error: 'No symbol.' });
-  if (!FMP_API_KEY) return json(res, 200, { available: false, message: 'Set FMP_API_KEY (financialmodelingprep.com) on the server for fundamentals & news.' });
   const enc = encodeURIComponent(symbol);
+  if (/(\?|&)debug=news/.test(req.url)) {
+    let raw;
+    try {
+      const to = new Date(), from = new Date(to.getTime() - 14 * 86400000), fmt = (d) => d.toISOString().slice(0, 10);
+      const r = await httpsJson({ method: 'GET', hostname: 'finnhub.io', path: `/api/v1/company-news?symbol=${enc}&from=${fmt(from)}&to=${fmt(to)}&token=${FINNHUB_API_KEY}` });
+      raw = { httpStatus: r.status, isArray: Array.isArray(r.json), count: Array.isArray(r.json) ? r.json.length : 0, sample: JSON.stringify(r.json).slice(0, 260) };
+    } catch (e) { raw = { threw: e.message }; }
+    return json(res, 200, { debugNews: true, finnhubKeyLen: FINNHUB_API_KEY.length, serverDate: new Date().toISOString().slice(0, 10), raw });
+  }
+  if (!FMP_API_KEY) return json(res, 200, { available: false, message: 'Set FMP_API_KEY (financialmodelingprep.com) on the server for fundamentals & news.' });
   const [prof, rat, km, inc, fmpNews, finnhubNews] = await Promise.all([
     fmpSafe(`/stable/profile?symbol=${enc}`),
     fmpSafe(`/stable/ratios-ttm?symbol=${enc}`),
