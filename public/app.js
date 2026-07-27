@@ -485,7 +485,7 @@
   checkAuth();
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
-  const VIEWS = ['home', 'analyze', 'chat', 'markets', 'watchlist'];
+  const VIEWS = ['home', 'analyze', 'chat', 'markets', 'watchlist', 'learn'];
   function showView(name) {
     if (!VIEWS.includes(name)) name = 'home';
     VIEWS.forEach(v => $('view-' + v).classList.toggle('hidden', v !== name));
@@ -495,6 +495,7 @@
     if (name === 'watchlist') renderWatchView();
     if (name === 'home') loadHomeSnapshot();
     if (name === 'chat') { renderChat(); renderChatSuggest(); $('chatInput').focus(); }
+    if (name === 'learn') renderLearnGrid();
   }
   function goAnalyze(sym) { showView('analyze'); if (sym) { $('symbol').value = sym; run(sym); } }
   document.querySelectorAll('[data-view]').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); showView(el.dataset.view); }));
@@ -577,6 +578,44 @@
     finally { $('chatSend').disabled = false; renderChat(); }
   }
   $('chatForm').addEventListener('submit', (e) => { e.preventDefault(); sendChat(); });
+
+  // ---- Learn center ----
+  const LESSONS = window.LESSONS || [];
+  function renderLearnGrid() {
+    $('learnHost').innerHTML = `<div class="learn-grid">` + LESSONS.map(l =>
+      `<div class="learn-card" data-id="${l.id}"><div class="learn-icon">${l.icon}</div><div class="learn-title">${esc(l.title)}</div><div class="learn-meta">${esc(l.level)} · ${l.minutes} min · ${l.quiz.length} Q</div><p class="learn-desc">${esc(l.intro)}</p></div>`).join('') + `</div>`;
+    $('learnHost').querySelectorAll('.learn-card').forEach(c => c.addEventListener('click', () => openLesson(c.dataset.id)));
+  }
+  function openLesson(id) {
+    const l = LESSONS.find(x => x.id === id); if (!l) return renderLearnGrid();
+    window.scrollTo(0, 0);
+    let html = `<div class="learn-detail"><button type="button" class="link-btn learn-back" id="learnBack">← All lessons</button>`;
+    html += `<h2 class="learn-h">${l.icon} ${esc(l.title)}</h2><div class="learn-meta">${esc(l.level)} · ${l.minutes} min read</div>`;
+    html += l.sections.map(s => `<div class="learn-section"><h3>${esc(s.h)}</h3><p>${esc(s.p)}</p></div>`).join('');
+    html += `<div class="card quiz" id="quiz"></div>`;
+    html += `<button type="button" class="btn btn-ai learn-ask" id="learnAsk">✨ Ask the AI Analyst about this</button></div>`;
+    $('learnHost').innerHTML = html;
+    $('learnBack').addEventListener('click', renderLearnGrid);
+    $('learnAsk').addEventListener('click', () => { showView('chat'); $('chatInput').value = `Explain "${l.title}" simply, with an example.`; sendChat(); });
+    renderQuiz(l);
+  }
+  function renderQuiz(l) {
+    const host = $('quiz');
+    const score = { right: 0, done: 0 };
+    host.innerHTML = `<div class="quiz-h">📝 Quick quiz</div>` + l.quiz.map((q, qi) =>
+      `<div class="quiz-q" data-qi="${qi}"><div class="quiz-question">${qi + 1}. ${esc(q.q)}</div><div class="quiz-opts">${q.options.map((o, oi) => `<button type="button" class="quiz-opt" data-qi="${qi}" data-oi="${oi}">${esc(o)}</button>`).join('')}</div><div class="quiz-why hidden" data-why="${qi}"></div></div>`).join('') + `<div class="quiz-score hidden" id="quizScore"></div>`;
+    host.querySelectorAll('.quiz-opt').forEach(btn => btn.addEventListener('click', () => {
+      const qi = +btn.dataset.qi, oi = +btn.dataset.oi, q = l.quiz[qi];
+      const qEl = host.querySelector(`.quiz-q[data-qi="${qi}"]`);
+      if (qEl.classList.contains('answered')) return;
+      qEl.classList.add('answered');
+      qEl.querySelectorAll('.quiz-opt').forEach((b, i) => { if (i === q.correct) b.classList.add('correct'); else if (i === oi) b.classList.add('wrong'); b.disabled = true; });
+      const why = host.querySelector(`[data-why="${qi}"]`);
+      why.textContent = (oi === q.correct ? '✓ Correct. ' : '✗ Not quite. ') + q.why; why.classList.remove('hidden');
+      score.done++; if (oi === q.correct) score.right++;
+      if (score.done === l.quiz.length) { const s = $('quizScore'); s.textContent = `You scored ${score.right} / ${l.quiz.length}.`; s.classList.remove('hidden'); }
+    }));
+  }
 
   // Initial view: deep-link → analyze; otherwise the homepage.
   const deep = new URLSearchParams(location.search).get('symbol');
