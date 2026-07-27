@@ -484,8 +484,64 @@
   $('watchBtn').addEventListener('click', () => { if (lastData) toggleWatch(lastData.symbol); });
   checkAuth();
 
-  // Auto-load a ticker so the chart is visible immediately (deep-link aware).
-  const initial = (new URLSearchParams(location.search).get('symbol') || 'AAPL').toUpperCase();
-  $('symbol').value = initial;
-  run(initial);
+  // ---- Views (Home / Analyze / Markets / Watchlist) ----
+  const VIEWS = ['home', 'analyze', 'markets', 'watchlist'];
+  function showView(name) {
+    if (!VIEWS.includes(name)) name = 'home';
+    VIEWS.forEach(v => $('view-' + v).classList.toggle('hidden', v !== name));
+    document.querySelectorAll('.nav-link').forEach(l => l.classList.toggle('active', l.dataset.view === name));
+    window.scrollTo(0, 0);
+    if (name === 'markets') loadMarkets();
+    if (name === 'watchlist') renderWatchView();
+    if (name === 'home') loadHomeSnapshot();
+  }
+  function goAnalyze(sym) { showView('analyze'); if (sym) { $('symbol').value = sym; run(sym); } }
+  document.querySelectorAll('[data-view]').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); showView(el.dataset.view); }));
+
+  // Hero
+  $('heroForm').addEventListener('submit', (e) => { e.preventDefault(); const s = $('heroInput').value.trim().toUpperCase(); if (s) goAnalyze(s); });
+  $('heroMarkets').addEventListener('click', () => showView('markets'));
+  $('heroExamples').innerHTML = ['AAPL', 'NVDA', 'TSLA', 'MSFT', 'AMZN', 'GOOGL'].map(s => `<button class="chip" data-s="${s}">${s}</button>`).join('');
+  $('heroExamples').querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => goAnalyze(b.dataset.s)));
+
+  // Markets + quotes
+  const INDICES = [['SPY', 'S&P 500'], ['QQQ', 'Nasdaq 100'], ['DIA', 'Dow Jones'], ['IWM', 'Russell 2000']];
+  const TRENDING = ['AAPL', 'NVDA', 'TSLA', 'MSFT', 'AMZN', 'META', 'GOOGL', 'AMD', 'NFLX', 'COIN', 'PLTR', 'AVGO'];
+  const nameOf = {}; TICKERS.forEach(t => nameOf[t[0]] = t[1]); INDICES.forEach(i => nameOf[i[0]] = i[1]);
+  async function getQuotes(symbols) {
+    try { const j = await (await fetch('/api/quotes?symbols=' + encodeURIComponent(symbols.join(',')))).json(); return j.quotes || []; } catch { return []; }
+  }
+  function quoteCard(q) {
+    const up = q.changePct >= 0;
+    return `<div class="quote-card" data-s="${esc(q.symbol)}"><div class="quote-sym">${esc(q.symbol)}</div><div class="quote-name">${esc(nameOf[q.symbol] || '')}</div><div class="quote-price">${(+q.price).toFixed(2)}</div><div class="quote-chg ${up ? 'up' : 'down'}">${up ? '▲' : '▼'} ${Math.abs(q.changePct).toFixed(2)}%</div></div>`;
+  }
+  function bindQuoteCards(el) { el.querySelectorAll('.quote-card').forEach(c => c.addEventListener('click', () => goAnalyze(c.dataset.s))); }
+  let marketsLoaded = false;
+  async function loadMarkets() {
+    if (marketsLoaded) return;
+    const [idx, trend] = await Promise.all([getQuotes(INDICES.map(i => i[0])), getQuotes(TRENDING)]);
+    $('indicesGrid').innerHTML = idx.length ? idx.map(quoteCard).join('') : '<div class="quote-loading">Unavailable right now.</div>';
+    $('trendingGrid').innerHTML = trend.length ? trend.map(quoteCard).join('') : '<div class="quote-loading">Unavailable right now.</div>';
+    bindQuoteCards($('indicesGrid')); bindQuoteCards($('trendingGrid'));
+    if (idx.length) marketsLoaded = true;
+  }
+  async function loadHomeSnapshot() {
+    if ($('homeSnapshot').dataset.loaded) return;
+    const idx = await getQuotes(INDICES.map(i => i[0]));
+    if (idx.length) { $('homeSnapshot').innerHTML = idx.map(quoteCard).join(''); bindQuoteCards($('homeSnapshot')); $('homeSnapshot').dataset.loaded = '1'; }
+    else $('homeSnapshot').innerHTML = '<div class="quote-loading">—</div>';
+  }
+  async function renderWatchView() {
+    const el = $('watchView');
+    if (!currentUser) { el.innerHTML = `<div class="view-empty">Sign in to build a watchlist that syncs across your devices.<br><button class="btn btn-primary" id="wvSignin">Sign in</button></div>`; $('wvSignin').addEventListener('click', () => openAuth('login')); return; }
+    if (!watchSymbols.length) { el.innerHTML = `<div class="view-empty">No stocks saved yet.<br>Analyze a stock and tap <b>☆ Watch</b> to add it here.</div>`; return; }
+    el.innerHTML = `<div class="quote-grid" id="wvGrid"><div class="quote-loading">Loading…</div></div>`;
+    const q = await getQuotes(watchSymbols);
+    $('wvGrid').innerHTML = (q.length ? q.map(quoteCard).join('') : watchSymbols.map(s => `<div class="quote-card" data-s="${esc(s)}"><div class="quote-sym">${esc(s)}</div></div>`));
+    bindQuoteCards($('wvGrid'));
+  }
+
+  // Initial view: deep-link → analyze; otherwise the homepage.
+  const deep = new URLSearchParams(location.search).get('symbol');
+  if (deep) goAnalyze(deep.toUpperCase()); else showView('home');
 })();

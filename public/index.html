@@ -8,7 +8,13 @@
 </head>
 <body>
 <header class="topbar">
-  <div class="brand">MarketLens</div>
+  <a class="brand" href="#" data-view="home">MarketLens</a>
+  <nav class="nav" id="nav">
+    <a class="nav-link active" data-view="home">Home</a>
+    <a class="nav-link" data-view="analyze">Analyze</a>
+    <a class="nav-link" data-view="markets">Markets</a>
+    <a class="nav-link" data-view="watchlist">Watchlist</a>
+  </nav>
   <div class="topbar-right">
     <span class="tag" id="modeTag"></span>
     <div class="acct" id="acct"></div>
@@ -16,6 +22,28 @@
 </header>
 
 <main class="app">
+  <!-- HOME -->
+  <section class="view" id="view-home">
+    <div class="hero">
+      <h1 class="hero-h">Invest Smarter With <span class="grad">AI.</span></h1>
+      <p class="hero-sub">Analyze stocks, understand markets, and discover opportunities with AI-powered financial intelligence.</p>
+      <form class="hero-search" id="heroForm">
+        <input id="heroInput" class="input" placeholder="Search a ticker or company — AAPL, Tesla, NVDA…" autocomplete="off" maxlength="12" />
+        <button type="submit" class="btn btn-primary">Analyze a Stock →</button>
+      </form>
+      <div class="hero-cta">
+        <button type="button" class="btn btn-ghost" id="heroMarkets">Explore Markets</button>
+        <span class="hero-examples" id="heroExamples"></span>
+      </div>
+    </div>
+    <div class="mkt-section">
+      <div class="mkt-h">Market snapshot</div>
+      <div class="quote-grid" id="homeSnapshot"></div>
+    </div>
+  </section>
+
+  <!-- ANALYZE -->
+  <section class="view hidden" id="view-analyze">
   <div class="controls">
     <form class="search" id="searchForm">
       <div class="search-box">
@@ -150,6 +178,26 @@
         </div>
       </aside>
     </div>
+  </section>
+  </section>
+
+  <!-- MARKETS -->
+  <section class="view hidden" id="view-markets">
+    <h1 class="view-h">Markets</h1>
+    <div class="mkt-section">
+      <div class="mkt-h">Major indices</div>
+      <div class="quote-grid" id="indicesGrid"><div class="quote-loading">Loading…</div></div>
+    </div>
+    <div class="mkt-section">
+      <div class="mkt-h">Trending stocks</div>
+      <div class="quote-grid" id="trendingGrid"><div class="quote-loading">Loading…</div></div>
+    </div>
+  </section>
+
+  <!-- WATCHLIST -->
+  <section class="view hidden" id="view-watchlist">
+    <h1 class="view-h">Your watchlist</h1>
+    <div id="watchView"></div>
   </section>
 
   <p class="disclaimer">⚠️ For education only — <strong>not financial advice</strong>. The Buy / Sell / Hold verdict is a mechanical score from past-price indicators (and, for images, a read of one picture). Signals like these are wrong <em>often</em> — no tool reliably predicts markets. This is not a recommendation to trade; decisions and their consequences are yours alone. Never trade based on this tool.</p>

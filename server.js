@@ -290,6 +290,32 @@ async function handleWatchlist(req, res) {
   return json(res, 200, { symbols: await db.listWatch(user.id) });
 }
 
+// ---- Lightweight quotes (for Markets / Watchlist grids) ----
+function demoQuote(sym) {
+  const c = I.demoCandles(sym, 3);
+  const price = c[c.length - 1].c, prev = c[c.length - 2].c;
+  return { symbol: sym, price, change: price - prev, changePct: prev ? ((price - prev) / prev) * 100 : 0 };
+}
+async function fetchQuotes(symbols) {
+  if (!STOCK_API_KEY) return symbols.map(demoQuote);
+  try {
+    const path = `/quote?symbol=${encodeURIComponent(symbols.join(','))}&apikey=${STOCK_API_KEY}`;
+    const { json: j } = await httpsJson({ method: 'GET', hostname: 'api.twelvedata.com', path });
+    return symbols.map(s => {
+      const q = symbols.length === 1 ? j : (j && j[s]);
+      if (!q || q.status === 'error' || q.close == null) return demoQuote(s);
+      const price = Number(q.close), prev = Number(q.previous_close);
+      const pct = q.percent_change != null ? Number(q.percent_change) : (prev ? ((price - prev) / prev) * 100 : 0);
+      return { symbol: s, price, change: price - prev, changePct: pct };
+    });
+  } catch { return symbols.map(demoQuote); }
+}
+async function handleQuotes(req, res, raw) {
+  const symbols = String(raw || '').toUpperCase().split(',').map(s => s.replace(/[^A-Z0-9.\-]/g, '').slice(0, 12)).filter(Boolean).slice(0, 24);
+  if (!symbols.length) return json(res, 400, { error: 'No symbols.' });
+  return json(res, 200, { quotes: await fetchQuotes(symbols), source: STOCK_API_KEY ? 'live' : 'demo' });
+}
+
 function serveStatic(req, res) {
   let urlPath = decodeURIComponent(req.url.split('?')[0]);
   if (urlPath === '/') urlPath = '/index.html';
@@ -316,6 +342,7 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/auth/logout' && req.method === 'POST') return await handleLogout(req, res);
     if (url === '/api/auth/me' && req.method === 'GET') return await handleMe(req, res);
     if (url === '/api/watchlist') return await handleWatchlist(req, res);
+    if (url === '/api/quotes' && req.method === 'GET') return await handleQuotes(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));
     serveStatic(req, res);
   } catch (e) { console.error('server error:', e); json(res, 500, { error: 'Internal error' }); }
 });
