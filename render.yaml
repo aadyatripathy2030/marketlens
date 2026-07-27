@@ -21,5 +21,7 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY    # Anthropic key (console.anthropic.com) — AI text + image analysis
         sync: false
+      - key: FMP_API_KEY          # Financial Modeling Prep (financialmodelingprep.com) — fundamentals + news
+        sync: false
       - key: ANTHROPIC_MODEL      # optional; a cheaper model (e.g. claude-haiku-4-5) lowers cost
         value: claude-opus-4-8

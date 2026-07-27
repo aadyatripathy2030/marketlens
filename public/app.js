@@ -289,6 +289,29 @@
     canvas.addEventListener('dblclick', () => { resetView(); drawChart(); });
   })();
 
+  // Fundamentals + news (Financial Modeling Prep) — only refetched per ticker.
+  let lastFundSymbol = null;
+  async function loadFundamentals(symbol) {
+    symbol = (symbol || '').toUpperCase();
+    if (symbol === lastFundSymbol) return;
+    lastFundSymbol = symbol;
+    $('fundCard').classList.add('hidden'); $('newsCard').classList.add('hidden');
+    try {
+      const d = await (await fetch('/api/fundamentals?symbol=' + encodeURIComponent(symbol))).json();
+      if (symbol !== lastFundSymbol) return;      // a newer ticker superseded this
+      if (!d.available) return;                   // no FMP key → stay hidden
+      if (d.metrics && d.metrics.length) {
+        $('fundGrid').innerHTML = d.metrics.map(m => `<div class="tech-item"><div class="tech-top"><span class="tech-name">${esc(m.label)}</span><span class="tech-val">${esc(m.value)}</span></div></div>`).join('');
+        $('fundProfile').textContent = d.profile ? [d.profile.sector, d.profile.industry].filter(Boolean).join(' · ') : '';
+        $('fundCard').classList.remove('hidden');
+      }
+      if (d.news && d.news.length) {
+        $('newsList').innerHTML = d.news.map(n => `<a class="news-item" href="${esc(n.url)}" target="_blank" rel="noopener noreferrer"><div class="news-title">${esc(n.title)}</div><div class="news-meta">${esc(n.site || '')}${n.date ? ' · ' + esc(String(n.date).slice(0, 10)) : ''}</div></a>`).join('');
+        $('newsCard').classList.remove('hidden');
+      }
+    } catch (e) { /* leave hidden on error */ }
+  }
+
   function tiles(d) {
     const r = d.indicators.rsi;
     const rsiCls = r == null ? '' : r >= 70 ? 'hot' : r <= 30 ? 'down' : '';
@@ -346,6 +369,7 @@
       $('aiBody').textContent = 'Analyzing…'; $('aiTag').textContent = '';
       $('bullList').innerHTML = '<li>Analyzing…</li>'; $('bearList').innerHTML = '<li>Analyzing…</li>'; $('conclusion').textContent = '';
       loadAnalysis(d);
+      loadFundamentals(d.symbol);
     } catch (e) {
       $('error').textContent = e.message; $('error').classList.remove('hidden'); $('result').classList.add('hidden');
     } finally { $('goBtn').disabled = false; $('goBtn').textContent = 'Analyze'; }

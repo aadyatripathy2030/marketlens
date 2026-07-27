@@ -20,6 +20,7 @@ const PUBLIC = path.join(__dirname, 'public');
 const STOCK_API_KEY = (process.env.STOCK_API_KEY || '').replace(/\s/g, '');
 const ANTHROPIC_API_KEY = (process.env.ANTHROPIC_API_KEY || '').replace(/\s/g, '');
 const AI_MODEL = (process.env.ANTHROPIC_MODEL || 'claude-opus-4-8').trim();
+const FMP_API_KEY = (process.env.FMP_API_KEY || '').replace(/\s/g, ''); // Financial Modeling Prep — fundamentals + news
 // Candle intervals, from 1-minute up to monthly. outputsize = how many bars to
 // pull (capped at Twelve Data's 5000 free-tier max); the daily/weekly/monthly
 // intervals reach back the stock's whole life. INTERVAL_MS spaces demo bars.
@@ -333,6 +334,59 @@ async function handleChat(req, res) {
   } catch (e) { return json(res, 200, { reply: 'Sorry — I hit an error reaching the AI (' + e.message + '). Please try again.', source: 'error' }); }
 }
 
+// ---- Fundamentals + news (Financial Modeling Prep) ----
+async function fetchFMP(pathNoKey) {
+  const path = pathNoKey + (pathNoKey.includes('?') ? '&' : '?') + 'apikey=' + FMP_API_KEY;
+  const { json: j } = await httpsJson({ method: 'GET', hostname: 'financialmodelingprep.com', path });
+  return j;
+}
+const fmtMoney = (n) => { n = Number(n); if (!Number.isFinite(n) || n === 0) return '—'; const a = Math.abs(n); const s = n < 0 ? '-' : ''; if (a >= 1e12) return s + '$' + (a / 1e12).toFixed(2) + 'T'; if (a >= 1e9) return s + '$' + (a / 1e9).toFixed(2) + 'B'; if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(2) + 'M'; return s + '$' + a.toFixed(0); };
+const fmtPct = (n) => Number.isFinite(Number(n)) ? (Number(n) * 100).toFixed(1) + '%' : '—';
+const fmtNum = (n) => Number.isFinite(Number(n)) ? Number(n).toFixed(2) : '—';
+function buildMetrics(r, inc, p) {
+  r = r || {}; inc = inc || {}; p = p || {};
+  return [
+    { label: 'Market cap', value: fmtMoney(p.mktCap) },
+    { label: 'Revenue (TTM)', value: fmtMoney(inc.revenue) },
+    { label: 'Net income', value: fmtMoney(inc.netIncome) },
+    { label: 'EPS', value: inc.eps != null ? '$' + fmtNum(inc.eps) : '—' },
+    { label: 'P/E', value: fmtNum(r.peRatioTTM) },
+    { label: 'PEG', value: fmtNum(r.pegRatioTTM) },
+    { label: 'P/S', value: fmtNum(r.priceToSalesRatioTTM) },
+    { label: 'P/B', value: fmtNum(r.priceToBookRatioTTM) },
+    { label: 'Gross margin', value: fmtPct(r.grossProfitMarginTTM) },
+    { label: 'Operating margin', value: fmtPct(r.operatingProfitMarginTTM) },
+    { label: 'Net margin', value: fmtPct(r.netProfitMarginTTM) },
+    { label: 'ROE', value: fmtPct(r.returnOnEquityTTM) },
+    { label: 'Debt / Equity', value: fmtNum(r.debtEquityRatioTTM) },
+    { label: 'Current ratio', value: fmtNum(r.currentRatioTTM) },
+    { label: 'Dividend yield', value: fmtPct(r.dividendYielTTM) },
+    { label: 'Beta', value: fmtNum(p.beta) },
+  ];
+}
+async function handleFundamentals(req, res, symbol) {
+  symbol = String(symbol || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
+  if (!symbol) return json(res, 400, { error: 'No symbol.' });
+  if (!FMP_API_KEY) return json(res, 200, { available: false, message: 'Set FMP_API_KEY (financialmodelingprep.com) on the server for fundamentals & news.' });
+  const enc = encodeURIComponent(symbol);
+  const safe = (p) => fetchFMP(p).catch(() => null);
+  const [prof, rat, inc, news] = await Promise.all([
+    safe(`/api/v3/profile/${enc}`),
+    safe(`/api/v3/ratios-ttm/${enc}`),
+    safe(`/api/v3/income-statement/${enc}?period=annual&limit=1`),
+    safe(`/api/v3/stock_news?tickers=${enc}&limit=8`),
+  ]);
+  const p = Array.isArray(prof) ? prof[0] : null;
+  const r = Array.isArray(rat) ? rat[0] : null;
+  const i = Array.isArray(inc) ? inc[0] : null;
+  return json(res, 200, {
+    available: true,
+    profile: p ? { name: p.companyName, sector: p.sector, industry: p.industry, exchange: p.exchangeShortName, ceo: p.ceo, employees: p.fullTimeEmployees, description: p.description } : null,
+    metrics: buildMetrics(r, i, p),
+    news: Array.isArray(news) ? news.slice(0, 8).map(n => ({ title: n.title, site: n.site, url: n.url, date: n.publishedDate })) : [],
+  });
+}
+
 // ---- Lightweight quotes (for Markets / Watchlist grids) ----
 function demoQuote(sym) {
   const c = I.demoCandles(sym, 3);
@@ -387,10 +441,11 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/watchlist') return await handleWatchlist(req, res);
     if (url === '/api/quotes' && req.method === 'GET') return await handleQuotes(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));
     if (url === '/api/chat' && req.method === 'POST') return await handleChat(req, res);
+    if (url === '/api/fundamentals' && req.method === 'GET') return await handleFundamentals(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbol'));
     serveStatic(req, res);
   } catch (e) { console.error('server error:', e); json(res, 500, { error: 'Internal error' }); }
 });
 
 db.init().then((storeMode) => {
-  server.listen(PORT, () => console.log(`MarketLens running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'}, accounts: ${storeMode})`));
+  server.listen(PORT, () => console.log(`MarketLens running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'}, fundamentals: ${FMP_API_KEY ? 'on' : 'off'}, accounts: ${storeMode})`));
 });
