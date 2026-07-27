@@ -277,7 +277,7 @@ async function handleLogout(req, res) {
   setSessionCookie(req, res, '', true);
   return json(res, 200, { ok: true });
 }
-async function handleMe(req, res) { return json(res, 200, { user: await currentUser(req), store: db.storeMode() }); }
+async function handleMe(req, res) { return json(res, 200, { user: await currentUser(req), store: db.storeMode(), dbUrlSet: db.hasUrl(), dbError: db.lastError() }); }
 
 async function handleWatchlist(req, res) {
   const user = await currentUser(req);

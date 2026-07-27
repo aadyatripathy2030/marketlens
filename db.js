@@ -9,14 +9,22 @@ const SESSION_TTL = 30 * DAY;
 
 let pool = null;
 let mode = 'memory';
+let lastErr = null;
 const mem = { users: new Map(), byEmail: new Map(), sessions: new Map(), watch: new Map() };
+
+// Render's INTERNAL Postgres host has no dot (e.g. dpg-xxxx-a) and speaks plain
+// TCP; hosted/external hosts (Neon, Render external) are dotted and need SSL.
+function sslFor(url) {
+  const host = (url.match(/@([^/:?]+)/) || [])[1] || '';
+  if (!host || /^localhost$/i.test(host) || /^127\./.test(host) || !host.includes('.')) return false;
+  return { rejectUnauthorized: false };
+}
 
 async function init() {
   if (DATABASE_URL) {
     try {
       const { Pool } = require('pg');
-      const ssl = /@localhost|@127\.0\.0\.1/.test(DATABASE_URL) ? false : { rejectUnauthorized: false };
-      pool = new Pool({ connectionString: DATABASE_URL, ssl });
+      pool = new Pool({ connectionString: DATABASE_URL, ssl: sslFor(DATABASE_URL) });
       await pool.query(`CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, pw TEXT NOT NULL,
         plan TEXT NOT NULL DEFAULT 'free', created BIGINT NOT NULL)`);
@@ -27,6 +35,7 @@ async function init() {
         PRIMARY KEY (uid, symbol))`);
       mode = 'postgres';
     } catch (e) {
+      lastErr = e.message;
       console.error('DB init failed — falling back to in-memory:', e.message);
       mode = 'memory';
     }
@@ -34,6 +43,8 @@ async function init() {
   return mode;
 }
 const storeMode = () => mode;
+const hasUrl = () => !!DATABASE_URL;
+const lastError = () => lastErr;
 
 // ---- password hashing (built-in scrypt, no deps) ----
 function hashPw(pw) {
@@ -116,7 +127,7 @@ async function removeWatch(uid, symbol) {
 }
 
 module.exports = {
-  init, storeMode, verifyPw,
+  init, storeMode, hasUrl, lastError, verifyPw,
   createUser, getUserByEmail, getUserById,
   createSession, getSessionUser, deleteSession,
   listWatch, addWatch, removeWatch,
