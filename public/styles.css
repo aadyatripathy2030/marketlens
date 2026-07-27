@@ -15,6 +15,37 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
 .brand-dot { width: 30px; height: 30px; border-radius: 9px; background: var(--accent-soft); display: grid; place-items: center; font-size: 16px; }
 .tag { font-size: 11px; color: var(--muted); background: var(--card-hi); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; }
+.topbar-right { display: flex; align-items: center; gap: 12px; }
+.acct { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.acct .email { color: var(--muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct .plan { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 999px; padding: 2px 8px; }
+.link-btn { font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--accent); background: none; border: none; cursor: pointer; padding: 0; }
+.link-btn:hover { text-decoration: underline; }
+.acct .signin { font-weight: 600; color: var(--text); background: var(--card-hi); border: 1px solid var(--border-strong); border-radius: 9px; padding: 7px 14px; cursor: pointer; font-family: var(--font); font-size: 13px; }
+.acct .signin:hover { border-color: var(--accent); color: var(--accent); }
+
+.sym-row { display: flex; align-items: center; gap: 12px; }
+.watch-btn { font-family: var(--font); font-size: 12px; font-weight: 700; color: var(--muted); background: var(--card-hi); border: 1px solid var(--border-strong); border-radius: 999px; padding: 5px 12px; cursor: pointer; white-space: nowrap; }
+.watch-btn:hover { border-color: var(--sma20); color: var(--sma20); }
+.watch-btn.on { color: var(--sma20); border-color: var(--sma20); background: rgba(245,158,11,.12); }
+
+.watchlist { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+.watchlist .wl-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+.wl-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--text); background: var(--card); border: 1px solid var(--border-strong); border-radius: 999px; padding: 5px 8px 5px 13px; cursor: pointer; }
+.wl-chip:hover { border-color: var(--accent); }
+.wl-chip .x { color: var(--muted); font-weight: 700; padding: 0 3px; border-radius: 50%; }
+.wl-chip .x:hover { color: var(--bad); }
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(5,9,18,.72); display: grid; place-items: center; z-index: 100; padding: 20px; backdrop-filter: blur(3px); }
+.modal { width: 100%; max-width: 400px; background: var(--card); border: 1px solid var(--border-strong); border-radius: 16px; padding: 26px 24px; position: relative; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+.modal-x { position: absolute; top: 14px; right: 16px; font-size: 24px; line-height: 1; color: var(--muted); background: none; border: none; cursor: pointer; }
+.modal-title { font-size: 21px; font-weight: 800; margin-bottom: 4px; }
+.modal-sub { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+.modal .input { width: 100%; margin-bottom: 10px; text-transform: none; }
+.auth-err { background: var(--bad-soft); color: #fca5a5; border: 1px solid #7f1d1d; border-radius: 9px; padding: 9px 12px; font-size: 13px; margin-bottom: 10px; }
+.auth-toggle { font-size: 13px; color: var(--muted); margin-top: 14px; text-align: center; }
+.auth-toggle a { color: var(--accent); font-weight: 600; }
+.auth-note { font-size: 11px; color: var(--muted); margin-top: 14px; line-height: 1.5; border-top: 1px solid var(--border); padding-top: 12px; }
 
 /* Full-width app shell */
 .app { width: 100%; max-width: 1600px; margin: 0 auto; padding: 22px 28px 60px; }

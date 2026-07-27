@@ -9,7 +9,10 @@
 <body>
 <header class="topbar">
   <div class="brand">MarketLens</div>
-  <span class="tag" id="modeTag"></span>
+  <div class="topbar-right">
+    <span class="tag" id="modeTag"></span>
+    <div class="acct" id="acct"></div>
+  </div>
 </header>
 
 <main class="app">
@@ -22,6 +25,7 @@
       <button type="submit" class="btn btn-primary" id="goBtn">Analyze</button>
     </form>
     <div class="examples" id="examples"></div>
+    <div class="watchlist hidden" id="watchStrip"></div>
 
     <div class="control-row">
       <div class="strat" id="strat" role="tablist" aria-label="Strategy">
@@ -37,7 +41,7 @@
       <div class="primary">
         <div class="head">
           <div>
-            <div class="sym" id="symName"></div>
+            <div class="sym-row"><div class="sym" id="symName"></div><button class="watch-btn" id="watchBtn" title="Save to watchlist">☆ Watch</button></div>
             <div class="price"><span id="price"></span> <span class="chg" id="chg"></span></div>
           </div>
           <div class="verdict" id="verdict">
@@ -139,6 +143,22 @@
 
   <p class="disclaimer">⚠️ For education only — <strong>not financial advice</strong>. The Buy / Sell / Hold verdict is a mechanical score from past-price indicators (and, for images, a read of one picture). Signals like these are wrong <em>often</em> — no tool reliably predicts markets. This is not a recommendation to trade; decisions and their consequences are yours alone. Never trade based on this tool.</p>
 </main>
+
+<div class="modal-overlay hidden" id="authModal">
+  <div class="modal">
+    <button class="modal-x" id="authClose" aria-label="Close">×</button>
+    <h2 class="modal-title" id="authTitle">Sign in</h2>
+    <p class="modal-sub" id="authSub">Save your watchlist and pick up where you left off, on any device.</p>
+    <form id="authForm">
+      <input type="email" id="authEmail" class="input" placeholder="you@email.com" autocomplete="email" />
+      <input type="password" id="authPass" class="input" placeholder="Password (8+ characters)" autocomplete="current-password" />
+      <div class="auth-err hidden" id="authErr"></div>
+      <button type="submit" class="btn btn-primary btn-block" id="authSubmit">Sign in</button>
+    </form>
+    <p class="auth-toggle"><span id="authToggleText">New to MarketLens?</span> <a href="#" id="authToggle">Create an account</a></p>
+    <p class="auth-note">🔒 Never enter a real trading or bank password here — this is a demo. Passwords are hashed, never stored in plain text.</p>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>

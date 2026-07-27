@@ -316,6 +316,7 @@
       lastData = d;
       $('modeTag').textContent = d.source === 'live' ? 'live data' : 'demo data';
       $('symName').textContent = d.symbol + (d.name && d.name !== d.symbol ? ' · ' + d.name : '');
+      updateWatchBtn(d.symbol);
       $('price').textContent = d.latest.toFixed(2) + ' ' + d.currency;
       const up = d.change >= 0;
       $('chg').textContent = (up ? '▲ ' : '▼ ') + Math.abs(d.change).toFixed(2) + ' (' + d.changePct.toFixed(2) + '%)';
@@ -393,6 +394,90 @@
     } catch (e) { $('imgResult').textContent = 'Analysis unavailable.'; }
     finally { $('imgResult').classList.remove('hidden'); $('imgBtn').disabled = false; $('imgBtn').textContent = 'Analyze image'; }
   });
+
+  // ---- Accounts + watchlist ----
+  let currentUser = null, watchSymbols = [], authMode = 'login';
+
+  function renderAcct() {
+    const el = $('acct');
+    if (currentUser) {
+      el.innerHTML = `<span class="plan">${esc(currentUser.plan)}</span><span class="email">${esc(currentUser.email)}</span><button class="link-btn" id="logoutBtn">Log out</button>`;
+      $('logoutBtn').addEventListener('click', logout);
+    } else {
+      el.innerHTML = `<button class="signin" id="signinBtn">Sign in</button>`;
+      $('signinBtn').addEventListener('click', () => openAuth('login'));
+    }
+  }
+  async function checkAuth() {
+    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; } catch { currentUser = null; }
+    renderAcct();
+    $('watchBtn').classList.toggle('hidden', !currentUser);
+    if (currentUser) loadWatchlist(); else { watchSymbols = []; renderWatchStrip(); }
+  }
+  function openAuth(mode) {
+    authMode = mode;
+    $('authTitle').textContent = mode === 'signup' ? 'Create your account' : 'Sign in';
+    $('authSubmit').textContent = mode === 'signup' ? 'Create account' : 'Sign in';
+    $('authToggleText').textContent = mode === 'signup' ? 'Already have an account?' : 'New to MarketLens?';
+    $('authToggle').textContent = mode === 'signup' ? 'Sign in' : 'Create an account';
+    $('authErr').classList.add('hidden');
+    $('authModal').classList.remove('hidden');
+    $('authEmail').focus();
+  }
+  const closeAuth = () => $('authModal').classList.add('hidden');
+  $('authClose').addEventListener('click', closeAuth);
+  $('authModal').addEventListener('click', (e) => { if (e.target === $('authModal')) closeAuth(); });
+  $('authToggle').addEventListener('click', (e) => { e.preventDefault(); openAuth(authMode === 'signup' ? 'login' : 'signup'); });
+  $('authForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = $('authEmail').value.trim(), password = $('authPass').value;
+    $('authErr').classList.add('hidden'); $('authSubmit').disabled = true;
+    try {
+      const r = await fetch('/api/auth/' + authMode, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Something went wrong.');
+      currentUser = j.user; closeAuth(); renderAcct();
+      $('watchBtn').classList.remove('hidden'); $('authPass').value = '';
+      loadWatchlist();
+    } catch (err) { $('authErr').textContent = err.message; $('authErr').classList.remove('hidden'); }
+    finally { $('authSubmit').disabled = false; }
+  });
+  async function logout() {
+    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
+    currentUser = null; watchSymbols = []; renderAcct(); renderWatchStrip();
+    $('watchBtn').classList.add('hidden');
+  }
+  async function loadWatchlist() {
+    try { const j = await (await fetch('/api/watchlist')).json(); watchSymbols = j.symbols || []; } catch { watchSymbols = []; }
+    renderWatchStrip();
+    if (lastData) updateWatchBtn(lastData.symbol);
+  }
+  function renderWatchStrip() {
+    const el = $('watchStrip');
+    if (!currentUser || !watchSymbols.length) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+    el.classList.remove('hidden');
+    el.innerHTML = `<span class="wl-label">★ Watchlist</span>` + watchSymbols.map(s => `<span class="wl-chip" data-s="${esc(s)}">${esc(s)}<span class="x" data-x="${esc(s)}">×</span></span>`).join('');
+    el.querySelectorAll('.wl-chip').forEach(c => c.addEventListener('click', (e) => {
+      if (e.target.dataset.x) { e.stopPropagation(); toggleWatch(e.target.dataset.x, true); }
+      else { $('symbol').value = c.dataset.s; run(c.dataset.s); }
+    }));
+  }
+  function updateWatchBtn(symbol) {
+    if (!$('watchBtn')) return;
+    const on = currentUser && watchSymbols.includes((symbol || '').toUpperCase());
+    $('watchBtn').textContent = on ? '★ Watching' : '☆ Watch';
+    $('watchBtn').classList.toggle('on', !!on);
+  }
+  async function toggleWatch(symbol, forceRemove) {
+    if (!currentUser) return openAuth('login');
+    symbol = (symbol || '').toUpperCase();
+    const remove = forceRemove || watchSymbols.includes(symbol);
+    try { const j = await (await fetch('/api/watchlist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol, action: remove ? 'remove' : 'add' }) })).json(); watchSymbols = j.symbols || watchSymbols; } catch {}
+    renderWatchStrip();
+    if (lastData) updateWatchBtn(lastData.symbol);
+  }
+  $('watchBtn').addEventListener('click', () => { if (lastData) toggleWatch(lastData.symbol); });
+  checkAuth();
 
   // Auto-load a ticker so the chart is visible immediately (deep-link aware).
   const initial = (new URLSearchParams(location.search).get('symbol') || 'AAPL').toUpperCase();

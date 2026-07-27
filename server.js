@@ -11,6 +11,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const I = require('./indicators');
+const db = require('./db');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, 'public');
@@ -234,6 +235,61 @@ async function handleAnalyzeImage(req, res) {
   catch (e) { return json(res, 200, { source: 'error', summary: 'Could not analyze the image (' + e.message + ').' }); }
 }
 
+// ---- Accounts + watchlist ----
+function parseCookies(req) {
+  const out = {}; (req.headers.cookie || '').split(';').forEach(p => { const i = p.indexOf('='); if (i > 0) out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim()); });
+  return out;
+}
+function setSessionCookie(req, res, token, clear) {
+  const secure = req.headers['x-forwarded-proto'] === 'https';
+  const parts = [`session=${clear ? '' : token}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${clear ? 0 : 30 * 86400}`];
+  if (secure) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+async function currentUser(req) { return db.getSessionUser(parseCookies(req).session); }
+
+const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || ''));
+async function handleSignup(req, res) {
+  const b = await readBody(req);
+  const email = String(b.email || '').toLowerCase().trim();
+  if (!validEmail(email)) return json(res, 400, { error: 'Enter a valid email.' });
+  if (String(b.password || '').length < 8) return json(res, 400, { error: 'Password must be at least 8 characters.' });
+  try {
+    const user = await db.createUser(email, b.password);
+    const token = await db.createSession(user.id);
+    setSessionCookie(req, res, token);
+    return json(res, 200, { user });
+  } catch (e) {
+    if (e.message === 'EMAIL_TAKEN') return json(res, 409, { error: 'That email already has an account — try logging in.' });
+    return json(res, 500, { error: 'Could not create account.' });
+  }
+}
+async function handleLogin(req, res) {
+  const b = await readBody(req);
+  const user = await db.getUserByEmail(b.email || '');
+  if (!user || !db.verifyPw(b.password || '', user.pw)) return json(res, 401, { error: 'Wrong email or password.' });
+  const token = await db.createSession(user.id);
+  setSessionCookie(req, res, token);
+  return json(res, 200, { user: { id: user.id, email: user.email, plan: user.plan } });
+}
+async function handleLogout(req, res) {
+  await db.deleteSession(parseCookies(req).session);
+  setSessionCookie(req, res, '', true);
+  return json(res, 200, { ok: true });
+}
+async function handleMe(req, res) { return json(res, 200, { user: await currentUser(req), store: db.storeMode() }); }
+
+async function handleWatchlist(req, res) {
+  const user = await currentUser(req);
+  if (!user) return json(res, 401, { error: 'Please sign in.' });
+  if (req.method === 'GET') return json(res, 200, { symbols: await db.listWatch(user.id) });
+  const b = await readBody(req);
+  const symbol = String(b.symbol || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
+  if (!symbol) return json(res, 400, { error: 'No symbol.' });
+  if (b.action === 'remove') await db.removeWatch(user.id, symbol); else await db.addWatch(user.id, symbol);
+  return json(res, 200, { symbols: await db.listWatch(user.id) });
+}
+
 function serveStatic(req, res) {
   let urlPath = decodeURIComponent(req.url.split('?')[0]);
   if (urlPath === '/') urlPath = '/index.html';
@@ -246,7 +302,7 @@ function serveStatic(req, res) {
   });
 }
 
-http.createServer(async (req, res) => {
+const server = http.createServer(async (req, res) => {
   try {
     const url = req.url.split('?')[0];
     if (url === '/api/stock' && req.method === 'GET') {
@@ -255,6 +311,15 @@ http.createServer(async (req, res) => {
     }
     if (url === '/api/analyze' && req.method === 'POST') return await handleAnalyze(req, res);
     if (url === '/api/analyze-image' && req.method === 'POST') return await handleAnalyzeImage(req, res);
+    if (url === '/api/auth/signup' && req.method === 'POST') return await handleSignup(req, res);
+    if (url === '/api/auth/login' && req.method === 'POST') return await handleLogin(req, res);
+    if (url === '/api/auth/logout' && req.method === 'POST') return await handleLogout(req, res);
+    if (url === '/api/auth/me' && req.method === 'GET') return await handleMe(req, res);
+    if (url === '/api/watchlist') return await handleWatchlist(req, res);
     serveStatic(req, res);
   } catch (e) { console.error('server error:', e); json(res, 500, { error: 'Internal error' }); }
-}).listen(PORT, () => console.log(`MarketLens running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'})`));
+});
+
+db.init().then((storeMode) => {
+  server.listen(PORT, () => console.log(`MarketLens running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'}, accounts: ${storeMode})`));
+});

@@ -4,5 +4,6 @@
   "description": "MarketLens — real price data, technical indicators, candlestick charts, a Buy/Sell/Hold rating, and an AI-written read. Educational, not financial advice.",
   "main": "server.js",
   "scripts": { "start": "node server.js", "dev": "node server.js" },
-  "engines": { "node": ">=18" }
+  "engines": { "node": ">=18" },
+  "dependencies": { "pg": "^8.11.3" }
 }
