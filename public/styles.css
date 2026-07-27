@@ -52,6 +52,25 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .quote-price { font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .quote-chg { font-size: 13px; font-weight: 600; margin-top: 2px; }
 .quote-chg.up { color: var(--good); } .quote-chg.down { color: var(--bad); }
+.nav-link.nav-ai { color: var(--ai-2); }
+.nav-link.nav-ai.active { color: var(--ai-2); background: var(--ai-soft); }
+
+/* AI Analyst chat */
+.chat-wrap { max-width: 780px; margin: 0 auto; }
+.chat-head { font-size: 20px; font-weight: 800; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.chat-head .chat-sub { font-size: 12px; font-weight: 500; color: var(--muted); }
+.chat-msgs { display: flex; flex-direction: column; gap: 12px; min-height: 220px; margin-bottom: 14px; }
+.chat-empty { color: var(--muted); font-size: 14px; text-align: center; padding: 40px 16px; line-height: 1.6; }
+.bubble { max-width: 84%; padding: 12px 15px; border-radius: 14px; font-size: 14.5px; line-height: 1.6; white-space: pre-wrap; }
+.bubble.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+.bubble.ai { align-self: flex-start; background: linear-gradient(160deg, var(--ai-soft), transparent 70%), var(--card); border: 1px solid rgba(139, 92, 246, .35); border-bottom-left-radius: 4px; }
+.bubble.ai.thinking { color: var(--muted); font-style: italic; }
+.chat-suggest { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.chat-chip { font-size: 13px; font-weight: 600; color: var(--ai-2); background: var(--ai-soft); border: 1px solid rgba(139, 92, 246, .35); border-radius: 999px; padding: 7px 14px; cursor: pointer; }
+.chat-chip:hover { border-color: var(--ai); }
+.chat-input { display: flex; gap: 10px; }
+.chat-input .input { text-transform: none; }
+.chat-note { font-size: 11px; color: var(--muted); margin-top: 10px; text-align: center; }
 .view-empty { color: var(--muted); font-size: 14px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 26px; text-align: center; }
 .view-empty .btn { margin-top: 14px; }
 @media (max-width: 620px) { .topbar { padding: 12px 16px; } .nav { margin-left: 8px; } .nav-link { padding: 7px 9px; } .hero { padding: 36px 8px 24px; } .hero-search { flex-direction: column; } }

@@ -12,6 +12,7 @@
   <nav class="nav" id="nav">
     <a class="nav-link active" data-view="home">Home</a>
     <a class="nav-link" data-view="analyze">Analyze</a>
+    <a class="nav-link nav-ai" data-view="chat">✨ AI Analyst</a>
     <a class="nav-link" data-view="markets">Markets</a>
     <a class="nav-link" data-view="watchlist">Watchlist</a>
   </nav>
@@ -179,6 +180,20 @@
       </aside>
     </div>
   </section>
+  </section>
+
+  <!-- AI ANALYST CHAT -->
+  <section class="view hidden" id="view-chat">
+    <div class="chat-wrap">
+      <div class="chat-head">✨ AI Analyst <span class="ai-badge">AI</span> <span class="chat-sub">Ask about any stock or market question — grounded in live prices.</span></div>
+      <div class="chat-msgs" id="chatMsgs"></div>
+      <div class="chat-suggest" id="chatSuggest"></div>
+      <form class="chat-input" id="chatForm">
+        <input id="chatInput" class="input" placeholder="Ask anything — “Should I buy Apple?”, “Compare NVDA vs AMD”…" autocomplete="off" />
+        <button type="submit" class="btn btn-ai" id="chatSend">Send</button>
+      </form>
+      <p class="chat-note">Educational information, not financial advice. The AI can be wrong.</p>
+    </div>
   </section>
 
   <!-- MARKETS -->

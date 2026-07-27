@@ -485,7 +485,7 @@
   checkAuth();
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
-  const VIEWS = ['home', 'analyze', 'markets', 'watchlist'];
+  const VIEWS = ['home', 'analyze', 'chat', 'markets', 'watchlist'];
   function showView(name) {
     if (!VIEWS.includes(name)) name = 'home';
     VIEWS.forEach(v => $('view-' + v).classList.toggle('hidden', v !== name));
@@ -494,6 +494,7 @@
     if (name === 'markets') loadMarkets();
     if (name === 'watchlist') renderWatchView();
     if (name === 'home') loadHomeSnapshot();
+    if (name === 'chat') { renderChat(); renderChatSuggest(); $('chatInput').focus(); }
   }
   function goAnalyze(sym) { showView('analyze'); if (sym) { $('symbol').value = sym; run(sym); } }
   document.querySelectorAll('[data-view]').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); showView(el.dataset.view); }));
@@ -540,6 +541,42 @@
     $('wvGrid').innerHTML = (q.length ? q.map(quoteCard).join('') : watchSymbols.map(s => `<div class="quote-card" data-s="${esc(s)}"><div class="quote-sym">${esc(s)}</div></div>`));
     bindQuoteCards($('wvGrid'));
   }
+
+  // ---- AI Analyst chat ----
+  const chatHistory = [];
+  const CHAT_SUGGEST = ['Should I buy Apple?', 'Compare NVDA vs AMD', 'Explain RSI simply', 'Why can a stock fall on good earnings?'];
+  function renderChatSuggest() {
+    $('chatSuggest').innerHTML = chatHistory.length ? '' : CHAT_SUGGEST.map(s => `<button type="button" class="chat-chip">${esc(s)}</button>`).join('');
+    $('chatSuggest').querySelectorAll('.chat-chip').forEach(b => b.addEventListener('click', () => { $('chatInput').value = b.textContent; sendChat(); }));
+  }
+  function renderChat() {
+    const el = $('chatMsgs');
+    if (!chatHistory.length) { el.innerHTML = `<div class="chat-empty">Ask me about any stock or market question.<br>I’ll ground my answer in live prices where I can.</div>`; return; }
+    el.innerHTML = chatHistory.map(m => `<div class="bubble ${m.role === 'user' ? 'user' : 'ai'}${m.thinking ? ' thinking' : ''}">${esc(m.content)}</div>`).join('');
+    el.scrollTop = el.scrollHeight;
+  }
+  function chatContext() {
+    const d = lastData; if (!d) return '';
+    const r = d.rating || {}, t = d.tech || {};
+    return `The user is currently viewing ${d.symbol} at ${(+d.latest).toFixed(2)} ${d.currency} (${d.changePct.toFixed(2)}% today). MarketLens AI score ${r.score}/100 = "${r.label}", confidence ${r.confidence}%, risk ${r.risk}. RSI ${t.rsi14}, trend ${t.trend ? t.trend.strength + '/100 ' + t.trend.direction : 'n/a'}.`;
+  }
+  async function sendChat() {
+    const text = $('chatInput').value.trim();
+    if (!text) return;
+    $('chatInput').value = '';
+    chatHistory.push({ role: 'user', content: text });
+    const pending = { role: 'assistant', content: 'Thinking…', thinking: true };
+    chatHistory.push(pending);
+    renderChatSuggest(); renderChat();
+    $('chatSend').disabled = true;
+    try {
+      const payload = { messages: chatHistory.filter(m => !m.thinking).map(m => ({ role: m.role, content: m.content })), context: chatContext() };
+      const j = await (await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })).json();
+      pending.content = j.reply || 'No response.'; pending.thinking = false;
+    } catch (e) { pending.content = 'Sorry — something went wrong. Please try again.'; pending.thinking = false; }
+    finally { $('chatSend').disabled = false; renderChat(); }
+  }
+  $('chatForm').addEventListener('submit', (e) => { e.preventDefault(); sendChat(); });
 
   // Initial view: deep-link → analyze; otherwise the homepage.
   const deep = new URLSearchParams(location.search).get('symbol');

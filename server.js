@@ -290,6 +290,46 @@ async function handleWatchlist(req, res) {
   return json(res, 200, { symbols: await db.listWatch(user.id) });
 }
 
+// ---- AI Analyst chat (grounded with live quotes for mentioned tickers) ----
+const KNOWN_TICKERS = new Set(('AAPL MSFT GOOGL GOOG AMZN NVDA META TSLA BRK.B JPM V MA UNH HD PG JNJ XOM CVX KO PEP BAC WMT DIS NFLX ADBE CRM ORCL INTC AMD QCOM CSCO IBM TXN AVGO MU PYPL SHOP UBER ABNB COIN PLTR SNOW BABA NKE SBUX MCD T VZ TMUS F GM BA CAT GE MMM HON UPS FDX LMT RTX GS MS WFC C AXP BLK NOW INTU AMAT LRCX ASML ARM MRVL SMCI DELL DDOG NET CRWD PANW ABT PFE MRK LLY TMO BMY AMGN GILD CVS COST TGT LOW CMCSA SPY QQQ DIA IWM VTI VOO').split(' '));
+const NAME_TO_TICKER = { apple: 'AAPL', tesla: 'TSLA', nvidia: 'NVDA', microsoft: 'MSFT', amazon: 'AMZN', google: 'GOOGL', alphabet: 'GOOGL', meta: 'META', facebook: 'META', netflix: 'NFLX', 'coca cola': 'KO', disney: 'DIS', walmart: 'WMT', nike: 'NKE', starbucks: 'SBUX', boeing: 'BA', coinbase: 'COIN', palantir: 'PLTR', broadcom: 'AVGO' };
+function extractTickers(text) {
+  const found = new Set();
+  const t = String(text || '');
+  (t.toUpperCase().match(/\b[A-Z]{1,5}(?:\.[A-Z])?\b/g) || []).forEach(w => { if (KNOWN_TICKERS.has(w)) found.add(w); });
+  const low = t.toLowerCase();
+  for (const [name, sym] of Object.entries(NAME_TO_TICKER)) if (low.includes(name)) found.add(sym);
+  return [...found].slice(0, 4);
+}
+async function handleChat(req, res) {
+  const b = await readBody(req, 2e6);
+  const msgs = (Array.isArray(b.messages) ? b.messages : [])
+    .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+    .slice(-12).map(m => ({ role: m.role, content: m.content.slice(0, 4000) }));
+  if (!msgs.length) return json(res, 400, { error: 'No message.' });
+  if (!ANTHROPIC_API_KEY) return json(res, 200, { reply: 'The AI Analyst needs a Claude key (ANTHROPIC_API_KEY) configured on the server. The stock analysis features work without it.', source: 'none' });
+
+  const lastUser = [...msgs].reverse().find(m => m.role === 'user');
+  const tickers = extractTickers(lastUser && lastUser.content);
+  let liveCtx = b.context ? String(b.context).slice(0, 600) : '';
+  if (tickers.length) {
+    try {
+      const qs = await fetchQuotes(tickers);
+      liveCtx += ' Live quotes — ' + qs.map(q => `${q.symbol} $${(+q.price).toFixed(2)} (${q.changePct >= 0 ? '+' : ''}${q.changePct.toFixed(2)}%)`).join(', ') + '.';
+    } catch {}
+  }
+  const system = 'You are the MarketLens AI Analyst — a sharp, friendly finance assistant for beginners and enthusiasts. Discuss stocks, markets, and investing concepts in clear plain English; explain what indicators or ratings suggest, compare companies, and lay out balanced bull/bear cases. Use any LIVE DATA provided. ALWAYS stay balanced, note uncertainty, and be explicit that this is educational information, NOT personalized financial advice — never tell the user what they personally should do with their money, and never promise returns. Keep replies concise: a short paragraph or a few tight bullets.'
+    + (liveCtx ? ('\n\nLIVE DATA (as of now): ' + liveCtx) : '');
+  const body = JSON.stringify({ model: AI_MODEL, max_tokens: 800, system, messages: msgs });
+  try {
+    const { json: j } = await httpsJson({ method: 'POST', hostname: 'api.anthropic.com', path: '/v1/messages',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) } }, body);
+    const text = j && j.content && j.content[0] && j.content[0].text;
+    if (!text) throw new Error(j && j.error ? (j.error.message || 'AI error') : 'No AI response');
+    return json(res, 200, { reply: text.trim(), source: 'ai', grounded: tickers });
+  } catch (e) { return json(res, 200, { reply: 'Sorry — I hit an error reaching the AI (' + e.message + '). Please try again.', source: 'error' }); }
+}
+
 // ---- Lightweight quotes (for Markets / Watchlist grids) ----
 function demoQuote(sym) {
   const c = I.demoCandles(sym, 3);
@@ -343,6 +383,7 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/auth/me' && req.method === 'GET') return await handleMe(req, res);
     if (url === '/api/watchlist') return await handleWatchlist(req, res);
     if (url === '/api/quotes' && req.method === 'GET') return await handleQuotes(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));
+    if (url === '/api/chat' && req.method === 'POST') return await handleChat(req, res);
     serveStatic(req, res);
   } catch (e) { console.error('server error:', e); json(res, 500, { error: 'Internal error' }); }
 });
