@@ -371,10 +371,16 @@ async function handleFundamentals(req, res, symbol) {
   if (!FMP_API_KEY) return json(res, 200, { available: false, message: 'Set FMP_API_KEY (financialmodelingprep.com) on the server for fundamentals & news.' });
   const enc = encodeURIComponent(symbol);
   if (debug) {
-    // Try both the legacy (/api/v3) and new (/stable) shapes and report raw responses.
     const grab = async (p) => { try { return await fetchFMP(p); } catch (e) { return { _threw: e.message }; } };
-    const [v3, stable] = await Promise.all([grab(`/api/v3/profile/${enc}`), grab(`/stable/profile?symbol=${enc}`)]);
-    return json(res, 200, { debug: true, keyLen: FMP_API_KEY.length, v3: JSON.stringify(v3).slice(0, 300), stable: JSON.stringify(stable).slice(0, 300) });
+    const [prof, rat, km, inc, news] = await Promise.all([
+      grab(`/stable/profile?symbol=${enc}`),
+      grab(`/stable/ratios-ttm?symbol=${enc}`),
+      grab(`/stable/key-metrics-ttm?symbol=${enc}`),
+      grab(`/stable/income-statement?symbol=${enc}&limit=1`),
+      grab(`/stable/news/stock?symbols=${enc}&limit=2`),
+    ]);
+    const cut = (x) => JSON.stringify(x).slice(0, 800);
+    return json(res, 200, { debug: true, profile: cut(prof), ratios: cut(rat), keymetrics: cut(km), income: cut(inc), news: cut(news) });
   }
   const safe = (p) => fetchFMP(p).catch(() => null);
   const [prof, rat, inc, news] = await Promise.all([

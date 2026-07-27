@@ -124,6 +124,8 @@
   let interval = '1day';    // candle size (1min … 1month)
   let rangeDays = 126;      // active range button, in trading days (0 = All)
   let view = null;          // {start, end} indices into prices for zoom/pan
+  let viewCandles = null;   // when set, view shows exactly this many recent candles
+  const DEFAULT_CANDLES = 90; // zoomed-in default when the interval changes
   let chartType = 'candle'; // 'candle' | 'line'
   const show = { fast: true, slow: true, proj: true }; // overlay visibility
 
@@ -144,13 +146,16 @@
     $('range').querySelectorAll('.range-btn').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
     rangeDays = parseInt(b.dataset.days, 10);
+    viewCandles = null;               // an explicit history range overrides the candle default
     resetView(); drawChart();
   }));
-  // Candle interval buttons (each candle = this much time; refetches)
+  // Candle interval buttons (each candle = this much time; refetches, resets to a zoomed-in view)
   $('interval').querySelectorAll('.range-btn').forEach(b => b.addEventListener('click', () => {
     $('interval').querySelectorAll('.range-btn').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
     interval = b.dataset.iv;
+    viewCandles = DEFAULT_CANDLES;    // reset zoom to a sensible in-view amount on every interval change
+    $('range').querySelectorAll('.range-btn').forEach(x => x.classList.remove('active'));
     if (lastData) run(lastData.symbol);
   }));
   // Overlay toggles: candles/line, each SMA, projection (redraw only, no refetch)
@@ -173,9 +178,11 @@
   function resetView() {
     if (!lastData) { view = null; return; }
     const len = lastData.prices.length;
-    const bars = Math.round(rangeDays * (BARS_PER_DAY[interval] || 1));
-    const n = rangeDays > 0 ? Math.min(Math.max(bars, 10), len) : len;
-    view = { start: len - n, end: len };
+    let n;
+    if (viewCandles) n = Math.min(viewCandles, len);
+    else if (rangeDays > 0) n = Math.min(Math.max(Math.round(rangeDays * (BARS_PER_DAY[interval] || 1)), 10), len);
+    else n = len;
+    view = { start: len - Math.max(n, 10), end: len };
   }
 
   function drawChart() {
@@ -312,6 +319,27 @@
     } catch (e) { /* leave hidden on error */ }
   }
 
+  // Live updating: poll the latest quote every 20s and update the last candle + header.
+  let liveTimer = null;
+  function startLive() { if (!liveTimer) liveTimer = setInterval(liveTick, 20000); }
+  async function liveTick() {
+    if (!lastData || document.hidden || $('view-analyze').classList.contains('hidden')) return;
+    const sym = lastData.symbol;
+    let q; try { q = (await getQuotes([sym]))[0]; } catch { return; }
+    if (!q || !lastData || lastData.symbol !== sym) return;
+    const prices = lastData.prices; if (!prices.length) return;
+    const last = prices[prices.length - 1];
+    last.close = q.price;
+    if (q.price > last.high) last.high = q.price;
+    if (q.price < last.low) last.low = q.price;
+    lastData.latest = q.price;
+    $('price').textContent = (+q.price).toFixed(2) + ' ' + lastData.currency;
+    const up = q.changePct >= 0;
+    $('chg').textContent = (up ? '▲ ' : '▼ ') + Math.abs(q.change).toFixed(2) + ' (' + q.changePct.toFixed(2) + '%)';
+    $('chg').className = 'chg ' + (up ? 'up' : 'down');
+    drawChart();
+  }
+
   function tiles(d) {
     const r = d.indicators.rsi;
     const rsiCls = r == null ? '' : r >= 70 ? 'hot' : r <= 30 ? 'down' : '';
@@ -370,6 +398,7 @@
       $('bullList').innerHTML = '<li>Analyzing…</li>'; $('bearList').innerHTML = '<li>Analyzing…</li>'; $('conclusion').textContent = '';
       loadAnalysis(d);
       loadFundamentals(d.symbol);
+      startLive();
     } catch (e) {
       $('error').textContent = e.message; $('error').classList.remove('hidden'); $('result').classList.add('hidden');
     } finally { $('goBtn').disabled = false; $('goBtn').textContent = 'Analyze'; }
