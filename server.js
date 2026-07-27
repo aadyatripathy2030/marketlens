@@ -292,11 +292,14 @@ async function handleWatchlist(req, res) {
 
 // ---- AI Analyst chat (grounded with live quotes for mentioned tickers) ----
 const KNOWN_TICKERS = new Set(('AAPL MSFT GOOGL GOOG AMZN NVDA META TSLA BRK.B JPM V MA UNH HD PG JNJ XOM CVX KO PEP BAC WMT DIS NFLX ADBE CRM ORCL INTC AMD QCOM CSCO IBM TXN AVGO MU PYPL SHOP UBER ABNB COIN PLTR SNOW BABA NKE SBUX MCD T VZ TMUS F GM BA CAT GE MMM HON UPS FDX LMT RTX GS MS WFC C AXP BLK NOW INTU AMAT LRCX ASML ARM MRVL SMCI DELL DDOG NET CRWD PANW ABT PFE MRK LLY TMO BMY AMGN GILD CVS COST TGT LOW CMCSA SPY QQQ DIA IWM VTI VOO').split(' '));
-const NAME_TO_TICKER = { apple: 'AAPL', tesla: 'TSLA', nvidia: 'NVDA', microsoft: 'MSFT', amazon: 'AMZN', google: 'GOOGL', alphabet: 'GOOGL', meta: 'META', facebook: 'META', netflix: 'NFLX', 'coca cola': 'KO', disney: 'DIS', walmart: 'WMT', nike: 'NKE', starbucks: 'SBUX', boeing: 'BA', coinbase: 'COIN', palantir: 'PLTR', broadcom: 'AVGO' };
+const NAME_TO_TICKER = { apple: 'AAPL', tesla: 'TSLA', nvidia: 'NVDA', microsoft: 'MSFT', amazon: 'AMZN', google: 'GOOGL', alphabet: 'GOOGL', meta: 'META', facebook: 'META', netflix: 'NFLX', 'coca cola': 'KO', disney: 'DIS', walmart: 'WMT', nike: 'NKE', starbucks: 'SBUX', boeing: 'BA', coinbase: 'COIN', palantir: 'PLTR', broadcom: 'AVGO', servicenow: 'NOW' };
+// Common all-caps words that are also tickers but rarely meant as such.
+const TICKER_STOP = new Set('AI US USA CEO IPO ETF SEC EPS RSI PE EV OK TV NOW ALL ON OR SO BY GO AT IS IT AM PM AN AS BE DO IF IN NO OF TO UP WE ALL A I'.split(' '));
 function extractTickers(text) {
   const found = new Set();
   const t = String(text || '');
-  (t.toUpperCase().match(/\b[A-Z]{1,5}(?:\.[A-Z])?\b/g) || []).forEach(w => { if (KNOWN_TICKERS.has(w)) found.add(w); });
+  // Only tokens already UPPERCASE in the source (that's how tickers are written).
+  (t.match(/\b[A-Z]{1,5}(?:\.[A-Z])?\b/g) || []).forEach(w => { if (KNOWN_TICKERS.has(w) && !TICKER_STOP.has(w)) found.add(w); });
   const low = t.toLowerCase();
   for (const [name, sym] of Object.entries(NAME_TO_TICKER)) if (low.includes(name)) found.add(sym);
   return [...found].slice(0, 4);
