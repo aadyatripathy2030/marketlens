@@ -327,10 +327,15 @@
       $('vMeta').textContent = rt.score != null ? rt.score + '/100' : (v.score != null ? 'score ' + v.score : '');
       $('verdict').className = 'verdict ' + (rt.tone || v.tone || 'neutral');
       $('reason').textContent = ratingReason(d);
-      $('ratingFill').style.width = (rt.score || 0) + '%';
-      $('ratingScore').textContent = rt.score != null ? rt.score + '/100' : '—';
-      $('ratingConf').textContent = rt.confidence != null ? rt.confidence + '%' : '—';
-      $('ratingRisk').textContent = rt.risk || '—';
+      const GAUGE_C = 2 * Math.PI * 52;
+      $('gaugeArc').style.strokeDasharray = GAUGE_C;
+      $('gaugeArc').style.strokeDashoffset = GAUGE_C * (1 - (rt.score || 0) / 100);
+      $('gScore').textContent = rt.score != null ? rt.score : '—';
+      $('aiRec').textContent = rt.label || '—';
+      $('aiRec').className = 'ai-rec ' + (rt.tone || 'neutral');
+      $('aiConf').textContent = rt.confidence != null ? rt.confidence + '%' : '—';
+      $('aiRisk').textContent = rt.risk || '—';
+      $('aiRisk').className = 'risk-' + String(rt.risk || 'neutral').split(' ')[0];
       $('ovFast').textContent = d.maFast ? d.maFast.label : 'SMA 20';
       $('ovSlow').textContent = d.maSlow ? d.maSlow.label : 'SMA 50';
       if (d.risk) { $('risk').textContent = d.risk; $('risk').className = 'risk' + (d.direction === 'short' ? ' danger' : ''); }
@@ -392,7 +397,7 @@
       const j = await r.json();
       $('imgResult').textContent = j.summary || j.error || 'No analysis available.';
     } catch (e) { $('imgResult').textContent = 'Analysis unavailable.'; }
-    finally { $('imgResult').classList.remove('hidden'); $('imgBtn').disabled = false; $('imgBtn').textContent = 'Analyze image'; }
+    finally { $('imgResult').classList.remove('hidden'); $('imgBtn').disabled = false; $('imgBtn').textContent = '✨ Analyze image'; }
   });
 
   // ---- Accounts + watchlist ----

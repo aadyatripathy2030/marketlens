@@ -50,9 +50,20 @@
           </div>
         </div>
         <p class="reason" id="reason"></p>
-        <div class="rating-strip" id="ratingStrip">
-          <div class="rating-bar"><div class="rating-fill" id="ratingFill"></div></div>
-          <div class="rating-nums"><span>AI score <b id="ratingScore">—</b></span><span>Confidence <b id="ratingConf">—</b></span><span>Risk <b id="ratingRisk">—</b></span></div>
+        <div class="card ai-score-card">
+          <span class="ai-badge">✨ AI Powered</span>
+          <div class="gauge">
+            <svg width="118" height="118" viewBox="0 0 118 118">
+              <circle cx="59" cy="59" r="52" fill="none" stroke="var(--card-hi)" stroke-width="10"></circle>
+              <circle id="gaugeArc" class="gauge-arc" cx="59" cy="59" r="52" fill="none" stroke="var(--ai)" stroke-width="10" stroke-linecap="round"></circle>
+            </svg>
+            <div class="gauge-num"><div class="gauge-score" id="gScore">—</div><div class="gauge-of">/ 100</div></div>
+          </div>
+          <div class="ai-score-info">
+            <div class="ai-score-lead">AI Score · Recommendation</div>
+            <div class="ai-rec" id="aiRec">—</div>
+            <div class="ai-score-meta"><span>Confidence <b id="aiConf">—</b></span><span>Risk <b id="aiRisk">—</b></span></div>
+          </div>
         </div>
 
         <div class="card chart-card">
@@ -105,12 +116,12 @@
         </div>
 
         <div class="card">
-          <div class="section-h">🔮 AI price forecast <span class="sub">±1σ ≈ 68% range · model estimate, not a promise</span></div>
+          <div class="section-h ai">🔮 AI price forecast <span class="ai-badge">✨ AI</span> <span class="sub">±1σ ≈ 68% range · model estimate, not a promise</span></div>
           <div class="bands" id="bands"></div>
         </div>
 
         <div class="card">
-          <div class="section-h">🧠 AI investment thesis</div>
+          <div class="section-h ai">🧠 AI investment thesis <span class="ai-badge">✨ AI</span></div>
           <div class="thesis">
             <div class="thesis-col bull"><div class="thesis-h">▲ Bull case</div><ul id="bullList"></ul></div>
             <div class="thesis-col bear"><div class="thesis-h">▼ Bear case</div><ul id="bearList"></ul></div>
@@ -121,20 +132,20 @@
 
       <aside class="sidebar">
         <div class="card ai-card">
-          <div class="ai-head">🤖 Analysis <span class="tag" id="aiTag"></span></div>
+          <div class="ai-head">🤖 AI Analysis <span class="ai-badge">✨ AI</span> <span class="tag" id="aiTag"></span></div>
           <p class="ai-body" id="aiBody">Loading…</p>
         </div>
         <p class="note" id="note"></p>
 
-        <div class="card upload-card">
-          <div class="ai-head">🖼️ Analyze a chart image</div>
+        <div class="card ai-card upload-card">
+          <div class="ai-head">🖼️ AI chart-image reader <span class="ai-badge">✨ AI</span></div>
           <p class="upload-sub">Upload a screenshot of any chart and Claude will read the trend and give a Buy / Sell / Hold lean.</p>
           <label class="dropzone" id="dropzone">
             <input type="file" id="imgInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
             <span id="dropText">Click to choose an image, or drag one here</span>
             <img id="imgPreview" class="hidden" alt="chart preview" />
           </label>
-          <button class="btn btn-primary btn-block hidden" id="imgBtn">Analyze image</button>
+          <button class="btn btn-ai btn-block hidden" id="imgBtn">✨ Analyze image</button>
           <p class="ai-body img-result hidden" id="imgResult"></p>
         </div>
       </aside>
