@@ -60,25 +60,31 @@
               <button type="button" class="ov active" data-k="proj"><i class="dashed" style="background:var(--forecast)"></i>Projection</button>
             </div>
             <div class="chart-time">
-              <select id="interval" class="sel" aria-label="Candle interval" title="Candle size">
-                <option value="1min">1 min</option>
-                <option value="5min">5 min</option>
-                <option value="15min">15 min</option>
-                <option value="30min">30 min</option>
-                <option value="1h">1 hour</option>
-                <option value="4h">4 hour</option>
-                <option value="1day" selected>1 day</option>
-                <option value="1week">1 week</option>
-                <option value="1month">1 month</option>
-              </select>
-              <div class="range" id="range" role="tablist" aria-label="How far back to view">
-                <button class="range-btn" data-days="21">1M</button>
-                <button class="range-btn" data-days="63">3M</button>
-                <button class="range-btn active" data-days="126">6M</button>
-                <button class="range-btn" data-days="252">1Y</button>
-                <button class="range-btn" data-days="504">2Y</button>
-                <button class="range-btn" data-days="1260">5Y</button>
-                <button class="range-btn" data-days="0">All</button>
+              <div class="tf-group">
+                <span class="tf-label">Each candle</span>
+                <div class="range" id="interval" role="tablist" aria-label="Candle interval — how much time each candle covers">
+                  <button class="range-btn" data-iv="1min">1m</button>
+                  <button class="range-btn" data-iv="5min">5m</button>
+                  <button class="range-btn" data-iv="15min">15m</button>
+                  <button class="range-btn" data-iv="30min">30m</button>
+                  <button class="range-btn" data-iv="1h">1h</button>
+                  <button class="range-btn" data-iv="4h">4h</button>
+                  <button class="range-btn active" data-iv="1day">D</button>
+                  <button class="range-btn" data-iv="1week">W</button>
+                  <button class="range-btn" data-iv="1month">M</button>
+                </div>
+              </div>
+              <div class="tf-group">
+                <span class="tf-label">History</span>
+                <div class="range" id="range" role="tablist" aria-label="How far back to view">
+                  <button class="range-btn" data-days="21">1M</button>
+                  <button class="range-btn" data-days="63">3M</button>
+                  <button class="range-btn active" data-days="126">6M</button>
+                  <button class="range-btn" data-days="252">1Y</button>
+                  <button class="range-btn" data-days="504">2Y</button>
+                  <button class="range-btn" data-days="1260">5Y</button>
+                  <button class="range-btn" data-days="0">All</button>
+                </div>
               </div>
             </div>
           </div>

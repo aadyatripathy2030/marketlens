@@ -84,9 +84,9 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .ov i.dashed { background: none !important; border-top: 2px dashed var(--forecast); height: 0; }
 .ov.active { color: var(--text); border-color: var(--accent); }
 .ov:not(.active) { opacity: .45; text-decoration: line-through; }
-.chart-time { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.sel { font-family: var(--font); font-size: 12px; font-weight: 700; color: var(--text); background: var(--card-hi); border: 1px solid var(--border-strong); border-radius: 9px; padding: 6px 10px; cursor: pointer; }
-.sel:focus { outline: none; border-color: var(--accent); }
+.chart-time { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+.tf-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tf-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
 .range { display: flex; gap: 4px; background: var(--card-hi); border: 1px solid var(--border); border-radius: 9px; padding: 3px; max-width: 100%; overflow-x: auto; }
 .range-btn { font-family: var(--font); font-size: 12px; font-weight: 700; color: var(--muted); background: none; border: none; border-radius: 6px; padding: 5px 11px; cursor: pointer; white-space: nowrap; }
 .range-btn.active { color: #fff; background: var(--accent); }

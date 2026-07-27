@@ -109,8 +109,13 @@
     rangeDays = parseInt(b.dataset.days, 10);
     resetView(); drawChart();
   }));
-  // Candle interval (refetches at the new granularity)
-  $('interval').addEventListener('change', () => { interval = $('interval').value; if (lastData) run(lastData.symbol); });
+  // Candle interval buttons (each candle = this much time; refetches)
+  $('interval').querySelectorAll('.range-btn').forEach(b => b.addEventListener('click', () => {
+    $('interval').querySelectorAll('.range-btn').forEach(x => x.classList.remove('active'));
+    b.classList.add('active');
+    interval = b.dataset.iv;
+    if (lastData) run(lastData.symbol);
+  }));
   // Overlay toggles: candles/line, each SMA, projection (redraw only, no refetch)
   $('overlays').querySelectorAll('.ov').forEach(b => b.addEventListener('click', () => {
     const k = b.dataset.k;
