@@ -365,10 +365,17 @@ function buildMetrics(r, inc, p) {
   ];
 }
 async function handleFundamentals(req, res, symbol) {
+  const debug = /(\?|&)debug=1/.test(req.url);
   symbol = String(symbol || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
   if (!symbol) return json(res, 400, { error: 'No symbol.' });
   if (!FMP_API_KEY) return json(res, 200, { available: false, message: 'Set FMP_API_KEY (financialmodelingprep.com) on the server for fundamentals & news.' });
   const enc = encodeURIComponent(symbol);
+  if (debug) {
+    // Try both the legacy (/api/v3) and new (/stable) shapes and report raw responses.
+    const grab = async (p) => { try { return await fetchFMP(p); } catch (e) { return { _threw: e.message }; } };
+    const [v3, stable] = await Promise.all([grab(`/api/v3/profile/${enc}`), grab(`/stable/profile?symbol=${enc}`)]);
+    return json(res, 200, { debug: true, keyLen: FMP_API_KEY.length, v3: JSON.stringify(v3).slice(0, 300), stable: JSON.stringify(stable).slice(0, 300) });
+  }
   const safe = (p) => fetchFMP(p).catch(() => null);
   const [prof, rat, inc, news] = await Promise.all([
     safe(`/api/v3/profile/${enc}`),
