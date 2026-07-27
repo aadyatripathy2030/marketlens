@@ -538,7 +538,7 @@
   checkAuth();
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
-  const VIEWS = ['home', 'analyze', 'chat', 'markets', 'watchlist', 'learn'];
+  const VIEWS = ['home', 'analyze', 'chat', 'compare', 'markets', 'watchlist', 'learn'];
   function showView(name) {
     if (!VIEWS.includes(name)) name = 'home';
     VIEWS.forEach(v => $('view-' + v).classList.toggle('hidden', v !== name));
@@ -549,6 +549,7 @@
     if (name === 'home') loadHomeSnapshot();
     if (name === 'chat') { renderChat(); renderChatSuggest(); $('chatInput').focus(); }
     if (name === 'learn') renderLearnGrid();
+    if (name === 'compare') { renderCompareChips(); if (compareSymbols.length >= 2 && !$('compareResult').innerHTML) loadCompare(); }
   }
   function goAnalyze(sym) { showView('analyze'); if (sym) { $('symbol').value = sym; run(sym); } }
   document.querySelectorAll('[data-view]').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); showView(el.dataset.view); }));
@@ -631,6 +632,46 @@
     finally { $('chatSend').disabled = false; renderChat(); }
   }
   $('chatForm').addEventListener('submit', (e) => { e.preventDefault(); sendChat(); });
+
+  // ---- Compare ----
+  let compareSymbols = ['NVDA', 'AMD'];
+  const CMP_ROWS = ['Market cap', 'Revenue (TTM)', 'P/E', 'PEG', 'Net margin', 'Gross margin', 'ROE', 'Debt / Equity', 'Dividend yield', 'Beta'];
+  function renderCompareChips() {
+    $('compareChips').innerHTML = compareSymbols.map(s => `<span class="wl-chip" data-s="${esc(s)}">${esc(s)}<span class="x" data-x="${esc(s)}">×</span></span>`).join('');
+    $('compareChips').querySelectorAll('.wl-chip .x').forEach(x => x.addEventListener('click', () => {
+      compareSymbols = compareSymbols.filter(s => s !== x.dataset.x);
+      renderCompareChips(); loadCompare();
+    }));
+  }
+  $('compareForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const s = $('compareInput').value.trim().toUpperCase().replace(/[^A-Z0-9.\-]/g, '');
+    $('compareInput').value = '';
+    if (s && !compareSymbols.includes(s) && compareSymbols.length < 4) { compareSymbols.push(s); renderCompareChips(); loadCompare(); }
+  });
+  function ctRow(label, cells, isHtml) {
+    return `<tr><td class="ct-label">${esc(label)}</td>` + cells.map(c => `<td>${isHtml ? c : esc(c)}</td>`).join('') + '</tr>';
+  }
+  async function loadCompare() {
+    if (compareSymbols.length < 2) { $('compareResult').innerHTML = `<p class="compare-note">Add at least two tickers to compare.</p>`; return; }
+    $('compareResult').innerHTML = `<p class="compare-note">Loading…</p>`;
+    let data;
+    try { data = await (await fetch('/api/compare?symbols=' + encodeURIComponent(compareSymbols.join(',')))).json(); } catch { $('compareResult').innerHTML = `<p class="compare-note">Couldn’t load comparison.</p>`; return; }
+    const rows = (data.compare || []).filter(r => !r.error);
+    if (rows.length < 2) { $('compareResult').innerHTML = `<p class="compare-note">Couldn’t load enough data — check the tickers.</p>`; return; }
+    let html = `<div class="compare-scroll"><table class="compare-table"><thead><tr><th></th>` +
+      rows.map(r => `<th data-s="${esc(r.symbol)}">${esc(r.symbol)}<span class="ct-name">${esc(r.name || '')}</span></th>`).join('') + `</tr></thead><tbody>`;
+    html += ctRow('Price', rows.map(r => '$' + (+r.price).toFixed(2)));
+    html += ctRow('Change', rows.map(r => `<span class="${r.changePct >= 0 ? 'up' : 'down'}">${r.changePct >= 0 ? '+' : ''}${r.changePct.toFixed(2)}%</span>`), true);
+    html += ctRow('AI Score', rows.map(r => `<span class="ct-score">${r.rating.score}/100</span>`), true);
+    html += ctRow('Recommendation', rows.map(r => `<span class="ct-rec ${r.rating.tone}">${esc(r.rating.label)}</span>`), true);
+    html += ctRow('Risk', rows.map(r => esc(r.rating.risk || '—')));
+    if (data.hasFundamentals) CMP_ROWS.forEach(label => html += ctRow(label, rows.map(r => r.metrics ? (r.metrics[label] || '—') : '—')));
+    html += `</tbody></table></div>`;
+    if (!data.hasFundamentals) html += `<p class="compare-note">Add FMP_API_KEY for fundamental rows (P/E, margins, ROE…).</p>`;
+    $('compareResult').innerHTML = html;
+    $('compareResult').querySelectorAll('thead th[data-s]').forEach(th => th.addEventListener('click', () => goAnalyze(th.dataset.s)));
+  }
 
   // ---- Learn center ----
   const LESSONS = window.LESSONS || [];

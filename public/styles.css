@@ -74,6 +74,23 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .view-empty { color: var(--muted); font-size: 14px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 26px; text-align: center; }
 .view-empty .btn { margin-top: 14px; }
 
+/* Compare */
+.compare-add { display: flex; gap: 10px; max-width: 420px; margin-bottom: 14px; }
+.compare-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+.compare-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 14px; }
+.compare-table { border-collapse: collapse; width: 100%; min-width: 460px; }
+.compare-table th, .compare-table td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 14px; white-space: nowrap; }
+.compare-table tr:last-child td { border-bottom: none; }
+.compare-table thead th { font-size: 17px; font-weight: 800; cursor: pointer; }
+.compare-table thead th:hover { color: var(--accent); }
+.ct-name { display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
+.ct-label { color: var(--muted); font-weight: 600; }
+.compare-table td .up { color: var(--good); } .compare-table td .down { color: var(--bad); }
+.ct-score { font-weight: 800; color: var(--ai-2); }
+.ct-rec { font-weight: 700; }
+.ct-rec.bullish { color: var(--good); } .ct-rec.bearish { color: var(--bad); } .ct-rec.neutral { color: var(--text); }
+.compare-note { font-size: 12px; color: var(--muted); margin-top: 12px; }
+
 /* Learn center */
 .learn-lead { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
 .learn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }

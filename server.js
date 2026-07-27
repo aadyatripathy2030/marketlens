@@ -20,7 +20,8 @@ const PUBLIC = path.join(__dirname, 'public');
 const STOCK_API_KEY = (process.env.STOCK_API_KEY || '').replace(/\s/g, '');
 const ANTHROPIC_API_KEY = (process.env.ANTHROPIC_API_KEY || '').replace(/\s/g, '');
 const AI_MODEL = (process.env.ANTHROPIC_MODEL || 'claude-opus-4-8').trim();
-const FMP_API_KEY = (process.env.FMP_API_KEY || '').replace(/\s/g, ''); // Financial Modeling Prep — fundamentals + news
+const FMP_API_KEY = (process.env.FMP_API_KEY || '').replace(/\s/g, ''); // Financial Modeling Prep — fundamentals
+const FINNHUB_API_KEY = (process.env.FINNHUB_API_KEY || '').replace(/\s/g, ''); // Finnhub — company news
 // Candle intervals, from 1-minute up to monthly. outputsize = how many bars to
 // pull (capped at Twelve Data's 5000 free-tier max); the daily/weekly/monthly
 // intervals reach back the stock's whole life. INTERVAL_MS spaces demo bars.
@@ -59,9 +60,9 @@ function httpsJson(options, body) {
 }
 
 // ---- Market data ----
-async function fetchLive(symbol, interval) {
+async function fetchLive(symbol, interval, sizeOverride) {
   // Twelve Data: /time_series?symbol=AAPL&interval=1day&outputsize=N&apikey=KEY
-  const size = OUTPUTSIZE[interval] || 1300;
+  const size = sizeOverride || OUTPUTSIZE[interval] || 1300;
   const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${size}&apikey=${STOCK_API_KEY}`;
   const { json: j } = await httpsJson({ method: 'GET', hostname: 'api.twelvedata.com',
     path: url.replace('https://api.twelvedata.com', '') });
@@ -340,6 +341,19 @@ async function fetchFMP(pathNoKey) {
   const { json: j } = await httpsJson({ method: 'GET', hostname: 'financialmodelingprep.com', path });
   return j;
 }
+const fmpSafe = (p) => fetchFMP(p).catch(() => null);
+const arr0 = (x) => Array.isArray(x) ? x[0] : null;
+
+// Finnhub company news (free tier), last ~14 days.
+async function fetchFinnhubNews(symbol) {
+  if (!FINNHUB_API_KEY) return null;
+  const to = new Date(), from = new Date(to.getTime() - 14 * 86400000);
+  const fmt = (d) => d.toISOString().slice(0, 10);
+  const path = `/api/v1/company-news?symbol=${encodeURIComponent(symbol)}&from=${fmt(from)}&to=${fmt(to)}&token=${FINNHUB_API_KEY}`;
+  const { json: j } = await httpsJson({ method: 'GET', hostname: 'finnhub.io', path });
+  if (!Array.isArray(j)) return [];
+  return j.slice(0, 10).map(n => ({ title: n.headline, site: n.source, url: n.url, date: n.datetime ? new Date(n.datetime * 1000).toISOString().slice(0, 10) : '' })).filter(n => n.title && n.url);
+}
 const fmtMoney = (n) => { n = Number(n); if (!Number.isFinite(n) || n === 0) return '—'; const a = Math.abs(n); const s = n < 0 ? '-' : ''; if (a >= 1e12) return s + '$' + (a / 1e12).toFixed(2) + 'T'; if (a >= 1e9) return s + '$' + (a / 1e9).toFixed(2) + 'B'; if (a >= 1e6) return s + '$' + (a / 1e6).toFixed(2) + 'M'; return s + '$' + a.toFixed(0); };
 const fmtPct = (n) => Number.isFinite(Number(n)) ? (Number(n) * 100).toFixed(1) + '%' : '—';
 const fmtNum = (n) => Number.isFinite(Number(n)) ? Number(n).toFixed(2) : '—';
@@ -370,22 +384,63 @@ async function handleFundamentals(req, res, symbol) {
   if (!symbol) return json(res, 400, { error: 'No symbol.' });
   if (!FMP_API_KEY) return json(res, 200, { available: false, message: 'Set FMP_API_KEY (financialmodelingprep.com) on the server for fundamentals & news.' });
   const enc = encodeURIComponent(symbol);
-  const safe = (p) => fetchFMP(p).catch(() => null);
-  const arr0 = (x) => Array.isArray(x) ? x[0] : null;
-  const [prof, rat, km, inc, news] = await Promise.all([
-    safe(`/stable/profile?symbol=${enc}`),
-    safe(`/stable/ratios-ttm?symbol=${enc}`),
-    safe(`/stable/key-metrics-ttm?symbol=${enc}`),
-    safe(`/stable/income-statement?symbol=${enc}&limit=1`),
-    safe(`/stable/news/stock?symbols=${enc}&limit=8`),
+  const [prof, rat, km, inc, fmpNews, finnhubNews] = await Promise.all([
+    fmpSafe(`/stable/profile?symbol=${enc}`),
+    fmpSafe(`/stable/ratios-ttm?symbol=${enc}`),
+    fmpSafe(`/stable/key-metrics-ttm?symbol=${enc}`),
+    fmpSafe(`/stable/income-statement?symbol=${enc}&limit=1`),
+    fmpSafe(`/stable/news/stock?symbols=${enc}&limit=8`),
+    fetchFinnhubNews(symbol).catch(() => null),
   ]);
   const p = arr0(prof), r = arr0(rat), k = arr0(km), i = arr0(inc);
+  let news = (finnhubNews && finnhubNews.length) ? finnhubNews
+    : (Array.isArray(fmpNews) ? fmpNews.slice(0, 8).map(n => ({ title: n.title, site: n.site || n.publisher, url: n.url, date: n.publishedDate || n.date })) : []);
   return json(res, 200, {
     available: true,
     profile: p ? { name: p.companyName, sector: p.sector, industry: p.industry, exchange: p.exchange, ceo: p.ceo, description: p.description } : null,
     metrics: buildMetrics(r, k, i, p),
-    news: Array.isArray(news) ? news.slice(0, 8).map(n => ({ title: n.title, site: n.site || n.publisher, url: n.url, date: n.publishedDate || n.date })) : [],
+    news,
   });
+}
+
+// ---- Compare (side-by-side stocks) ----
+function buildCompareMetrics(r, k, inc, p) {
+  return {
+    'Market cap': fmtMoney(pick(p, 'marketCap') ?? pick(k, 'marketCap')),
+    'Revenue (TTM)': fmtMoney(pick(inc, 'revenue')),
+    'P/E': fmtNum(pick(r, 'priceToEarningsRatioTTM', 'peRatioTTM')),
+    'PEG': fmtNum(pick(r, 'priceToEarningsGrowthRatioTTM')),
+    'Net margin': fmtPct(pick(r, 'netProfitMarginTTM')),
+    'Gross margin': fmtPct(pick(r, 'grossProfitMarginTTM')),
+    'ROE': fmtPct(pick(k, 'returnOnEquityTTM') ?? pick(r, 'returnOnEquityTTM')),
+    'Debt / Equity': fmtNum(pick(r, 'debtToEquityRatioTTM', 'debtEquityRatioTTM')),
+    'Dividend yield': fmtPct(pick(r, 'dividendYieldTTM', 'dividendYielTTM')),
+    'Beta': fmtNum(pick(p, 'beta')),
+  };
+}
+async function handleCompare(req, res, raw) {
+  const symbols = String(raw || '').toUpperCase().split(',').map(s => s.replace(/[^A-Z0-9.\-]/g, '').slice(0, 12)).filter(Boolean).filter((s, i, a) => a.indexOf(s) === i).slice(0, 4);
+  if (symbols.length < 2) return json(res, 400, { error: 'Add at least two tickers to compare.' });
+  const rows = await Promise.all(symbols.map(async (sym) => {
+    try {
+      const enc = encodeURIComponent(sym);
+      const [data, prof, rat, km, inc] = await Promise.all([
+        (async () => { if (STOCK_API_KEY) { try { return await fetchLive(sym, '1day', 260); } catch { return buildDemo(sym, '1day'); } } return buildDemo(sym, '1day'); })(),
+        FMP_API_KEY ? fmpSafe(`/stable/profile?symbol=${enc}`) : null,
+        FMP_API_KEY ? fmpSafe(`/stable/ratios-ttm?symbol=${enc}`) : null,
+        FMP_API_KEY ? fmpSafe(`/stable/key-metrics-ttm?symbol=${enc}`) : null,
+        FMP_API_KEY ? fmpSafe(`/stable/income-statement?symbol=${enc}&limit=1`) : null,
+      ]);
+      const prices = data.prices.slice(-260);
+      const candles = prices.map(x => ({ open: x.open, high: x.high, low: x.low, close: x.close, volume: x.volume || 0 }));
+      const closes = candles.map(c => c.close);
+      const rating = I.overallRating(I.techReport(candles));
+      const last = closes[closes.length - 1], prev = closes[closes.length - 2] || last;
+      const p = arr0(prof);
+      return { symbol: sym, name: (p && p.companyName) || data.name || sym, price: last, changePct: prev ? ((last - prev) / prev) * 100 : 0, rating: { score: rating.score, label: rating.label, tone: rating.tone, risk: rating.risk, confidence: rating.confidence }, metrics: FMP_API_KEY ? buildCompareMetrics(arr0(rat), arr0(km), arr0(inc), p) : null };
+    } catch (e) { return { symbol: sym, error: true }; }
+  }));
+  return json(res, 200, { compare: rows, hasFundamentals: !!FMP_API_KEY });
 }
 
 // ---- Lightweight quotes (for Markets / Watchlist grids) ----
@@ -443,10 +498,11 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/quotes' && req.method === 'GET') return await handleQuotes(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));
     if (url === '/api/chat' && req.method === 'POST') return await handleChat(req, res);
     if (url === '/api/fundamentals' && req.method === 'GET') return await handleFundamentals(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbol'));
+    if (url === '/api/compare' && req.method === 'GET') return await handleCompare(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));
     serveStatic(req, res);
   } catch (e) { console.error('server error:', e); json(res, 500, { error: 'Internal error' }); }
 });
 
 db.init().then((storeMode) => {
-  server.listen(PORT, () => console.log(`MarketLens running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'}, fundamentals: ${FMP_API_KEY ? 'on' : 'off'}, accounts: ${storeMode})`));
+  server.listen(PORT, () => console.log(`MarketLens running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'}, fundamentals: ${FMP_API_KEY ? 'on' : 'off'}, news: ${FINNHUB_API_KEY ? 'on' : 'off'}, accounts: ${storeMode})`));
 });
