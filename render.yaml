@@ -1,7 +1,10 @@
-# Render Blueprint — deploy MarketLens as a free web service.
-# In Render: New → Blueprint → pick this repo. The two API keys are marked
-# sync:false, so Render will PROMPT for them in the dashboard — never commit
-# keys to the repo.
+# Render Blueprint — deploy MarketLens as a free web service + Postgres.
+# In Render: New → Blueprint (or open your existing blueprint → Manual Sync).
+# The two API keys are sync:false, so Render prompts for them — never commit keys.
+databases:
+  - name: marketlens-db          # free Postgres; Render provisions + wires it automatically
+    plan: free
+
 services:
   - type: web
     name: marketlens
@@ -9,6 +12,10 @@ services:
     plan: free
     startCommand: node server.js
     envVars:
+      - key: DATABASE_URL         # auto-filled from the database above — persistent accounts
+        fromDatabase:
+          name: marketlens-db
+          property: connectionString
       - key: STOCK_API_KEY        # Twelve Data key (twelvedata.com, free tier) — real prices
         sync: false
       - key: ANTHROPIC_API_KEY    # Anthropic key (console.anthropic.com) — AI text + image analysis
