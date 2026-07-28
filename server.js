@@ -22,6 +22,12 @@ const ANTHROPIC_API_KEY = (process.env.ANTHROPIC_API_KEY || '').replace(/\s/g, '
 const AI_MODEL = (process.env.ANTHROPIC_MODEL || 'claude-opus-4-8').trim();
 const FMP_API_KEY = (process.env.FMP_API_KEY || '').replace(/\s/g, ''); // Financial Modeling Prep — fundamentals
 const FINNHUB_API_KEY = (process.env.FINNHUB_API_KEY || '').replace(/\s/g, ''); // Finnhub — company news
+const GA_ID = (process.env.GA_MEASUREMENT_ID || '').trim();                     // Google Analytics 4 (G-XXXXXXX)
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+const isAdmin = (u) => !!(u && ADMIN_EMAILS.includes(String(u.email || '').toLowerCase()));
+const usage = { total: 0 };            // per-endpoint request counters (reset on restart)
+const errorLog = [];                   // recent server errors (ring buffer)
+function logError(e) { errorLog.push({ t: Date.now(), msg: String((e && e.message) || e).slice(0, 200) }); if (errorLog.length > 60) errorLog.shift(); }
 // Candle intervals, from 1-minute up to monthly. outputsize = how many bars to
 // pull (capped at Twelve Data's 5000 free-tier max); the daily/weekly/monthly
 // intervals reach back the stock's whole life. INTERVAL_MS spaces demo bars.
@@ -279,7 +285,23 @@ async function handleLogout(req, res) {
   setSessionCookie(req, res, '', true);
   return json(res, 200, { ok: true });
 }
-async function handleMe(req, res) { return json(res, 200, { user: await currentUser(req), store: db.storeMode(), dbUrlSet: db.hasUrl(), dbError: db.lastError() }); }
+async function handleMe(req, res) {
+  const u = await currentUser(req);
+  return json(res, 200, { user: u ? { ...u, admin: isAdmin(u) } : null, store: db.storeMode() });
+}
+async function handleAdmin(req, res) {
+  const u = await currentUser(req);
+  if (!isAdmin(u)) return json(res, 403, { error: 'Admin access only.' });
+  const users = await db.listUsers(200);
+  return json(res, 200, {
+    counts: await db.counts(),
+    users,
+    usage,
+    errors: errorLog.slice(-25).reverse(),
+    store: db.storeMode(),
+    services: { prices: !!STOCK_API_KEY, ai: !!ANTHROPIC_API_KEY, fundamentals: !!FMP_API_KEY, news: !!FINNHUB_API_KEY, analytics: !!GA_ID },
+  });
+}
 
 async function handleWatchlist(req, res) {
   const user = await currentUser(req);
@@ -535,11 +557,21 @@ async function handleScreen(req, res, qs) {
   return json(res, 200, { available: true, universe: true, results });
 }
 
+const GA_SNIPPET = GA_ID ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script>`
+  + `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_ID}');</script>` : '';
 function serveStatic(req, res) {
   let urlPath = decodeURIComponent(req.url.split('?')[0]);
   if (urlPath === '/') urlPath = '/index.html';
   const filePath = path.join(PUBLIC, urlPath);
   if (!filePath.startsWith(PUBLIC)) { res.writeHead(403); return res.end('403'); }
+  // Inject the Google Analytics tag into index.html (Measurement ID from env).
+  if (urlPath === '/index.html') {
+    return fs.readFile(filePath, 'utf8', (err, html) => {
+      if (err) { res.writeHead(404); return res.end('Not found'); }
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(html.replace('<!--GA-->', GA_SNIPPET));
+    });
+  }
   fs.stat(filePath, (err, stat) => {
     if (err || !stat.isFile()) { res.writeHead(404); return res.end('Not found'); }
     res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream' });
@@ -550,6 +582,8 @@ function serveStatic(req, res) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = req.url.split('?')[0];
+    if (url.startsWith('/api/')) { usage.total++; usage[url] = (usage[url] || 0) + 1; }
+    if (url === '/api/admin' && req.method === 'GET') return await handleAdmin(req, res);
     if (url === '/api/stock' && req.method === 'GET') {
       const q = new URLSearchParams(req.url.split('?')[1] || '');
       return await handleStock(req, res, q.get('symbol'), q.get('strategy'), q.get('direction'), q.get('interval'));
@@ -568,7 +602,7 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/alerts') return await handleAlerts(req, res);
     if (url === '/api/screen' && req.method === 'GET') return await handleScreen(req, res, req.url.split('?')[1] || '');
     serveStatic(req, res);
-  } catch (e) { console.error('server error:', e); json(res, 500, { error: 'Internal error' }); }
+  } catch (e) { logError(e); console.error('server error:', e); json(res, 500, { error: 'Internal error' }); }
 });
 
 db.init().then((storeMode) => {

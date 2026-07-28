@@ -470,6 +470,7 @@
     try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; } catch { currentUser = null; }
     renderAcct();
     $('watchBtn').classList.toggle('hidden', !currentUser);
+    $('navAdmin').classList.toggle('hidden', !(currentUser && currentUser.admin));
     if (currentUser) loadWatchlist(); else { watchSymbols = []; renderWatchStrip(); }
   }
   function openAuth(mode) {
@@ -538,7 +539,7 @@
   checkAuth();
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
-  const VIEWS = ['home', 'analyze', 'chat', 'compare', 'screener', 'markets', 'watchlist', 'alerts', 'learn'];
+  const VIEWS = ['home', 'analyze', 'chat', 'compare', 'screener', 'markets', 'watchlist', 'alerts', 'learn', 'admin'];
   function showView(name) {
     if (!VIEWS.includes(name)) name = 'home';
     VIEWS.forEach(v => $('view-' + v).classList.toggle('hidden', v !== name));
@@ -552,6 +553,7 @@
     if (name === 'compare') { renderCompareChips(); if (compareSymbols.length >= 2 && !$('compareResult').innerHTML) loadCompare(); }
     if (name === 'screener' && !$('screenResult').innerHTML) loadScreen();
     if (name === 'alerts') loadAlerts();
+    if (name === 'admin') loadAdmin();
   }
   function goAnalyze(sym) { showView('analyze'); if (sym) { $('symbol').value = sym; run(sym); } }
   document.querySelectorAll('[data-view]').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); showView(el.dataset.view); }));
@@ -722,6 +724,27 @@
     $('alSymbol').value = ''; $('alTarget').value = '';
     loadAlerts();
   });
+
+  // ---- Admin dashboard ----
+  async function loadAdmin() {
+    if (!currentUser || !currentUser.admin) { $('adminBody').innerHTML = `<div class="view-empty">Admin access only.</div>`; return; }
+    $('adminBody').innerHTML = `<p class="compare-note">Loading…</p>`;
+    let d; try { d = await (await fetch('/api/admin')).json(); } catch { $('adminBody').innerHTML = `<p class="compare-note">Couldn’t load.</p>`; return; }
+    if (d.error) { $('adminBody').innerHTML = `<div class="view-empty">${esc(d.error)}</div>`; return; }
+    const c = d.counts || {};
+    let html = `<div class="admin-stats">
+      <div class="admin-stat"><div class="n">${c.users || 0}</div><div class="l">Users</div></div>
+      <div class="admin-stat"><div class="n">${c.watch || 0}</div><div class="l">Watchlist items</div></div>
+      <div class="admin-stat"><div class="n">${c.alerts || 0}</div><div class="l">Alerts</div></div>
+      <div class="admin-stat"><div class="n">${(d.usage && d.usage.total) || 0}</div><div class="l">API calls (since restart)</div></div>
+    </div>`;
+    html += `<div class="admin-sec"><div class="mkt-h">Services</div>` + Object.entries(d.services || {}).map(([k, v]) => `<span class="svc-pill ${v ? 'svc-on' : 'svc-off'}">${esc(k)}: ${v ? 'on' : 'off'}</span>`).join('') + `<span class="svc-pill ${d.store === 'postgres' ? 'svc-on' : 'svc-off'}">store: ${esc(d.store || '')}</span></div>`;
+    const usageEntries = Object.entries(d.usage || {}).filter(([k]) => k !== 'total').sort((a, b) => b[1] - a[1]).slice(0, 12);
+    if (usageEntries.length) html += `<div class="admin-sec"><div class="mkt-h">Top endpoints</div><div class="compare-scroll"><table class="admin-table"><thead><tr><th>Endpoint</th><th>Calls</th></tr></thead><tbody>` + usageEntries.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join('') + `</tbody></table></div></div>`;
+    html += `<div class="admin-sec"><div class="mkt-h">Users (${(d.users || []).length})</div><div class="compare-scroll"><table class="admin-table"><thead><tr><th>Email</th><th>Plan</th><th>Joined</th></tr></thead><tbody>` + (d.users || []).map(u => `<tr><td>${esc(u.email)}</td><td>${esc(u.plan)}</td><td>${new Date(u.created).toISOString().slice(0, 10)}</td></tr>`).join('') + `</tbody></table></div></div>`;
+    html += `<div class="admin-sec"><div class="mkt-h">Recent errors (${(d.errors || []).length})</div>` + ((d.errors || []).length ? d.errors.map(e => `<div class="err-line">${new Date(e.t).toISOString().slice(11, 19)} — ${esc(e.msg)}</div>`).join('') : `<p class="compare-note">No errors logged.</p>`) + `</div>`;
+    $('adminBody').innerHTML = html;
+  }
 
   // ---- Learn center ----
   const LESSONS = window.LESSONS || [];

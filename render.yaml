@@ -25,5 +25,9 @@ services:
         sync: false
       - key: FINNHUB_API_KEY      # Finnhub (finnhub.io) — company news
         sync: false
+      - key: GA_MEASUREMENT_ID    # Google Analytics 4 Measurement ID (G-XXXXXXX); public, optional
+        sync: false
+      - key: ADMIN_EMAILS         # comma-separated emails granted the Admin dashboard
+        sync: false
       - key: ANTHROPIC_MODEL      # optional; a cheaper model (e.g. claude-haiku-4-5) lowers cost
         value: claude-opus-4-8

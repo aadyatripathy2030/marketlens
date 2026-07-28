@@ -150,10 +150,27 @@ async function markTriggered(uid, id, ts) {
   else { const m = mem.alerts.get(uid); if (m && m.has(id)) m.get(id).triggered = ts; }
 }
 
+// ---- admin ----
+async function listUsers(limit) {
+  limit = limit || 200;
+  if (mode === 'postgres') { const r = await pool.query('SELECT id, email, plan, created FROM users ORDER BY created DESC LIMIT $1', [limit]); return r.rows.map(u => ({ ...u, created: Number(u.created) })); }
+  return [...mem.users.values()].map(u => ({ id: u.id, email: u.email, plan: u.plan, created: u.created })).sort((a, b) => b.created - a.created).slice(0, limit);
+}
+async function counts() {
+  if (mode === 'postgres') {
+    const [u, w, a] = await Promise.all([pool.query('SELECT count(*) FROM users'), pool.query('SELECT count(*) FROM watchlist'), pool.query('SELECT count(*) FROM alerts')]);
+    return { users: +u.rows[0].count, watch: +w.rows[0].count, alerts: +a.rows[0].count };
+  }
+  const watch = [...mem.watch.values()].reduce((n, m) => n + m.size, 0);
+  const alerts = [...mem.alerts.values()].reduce((n, m) => n + m.size, 0);
+  return { users: mem.users.size, watch, alerts };
+}
+
 module.exports = {
   init, storeMode, hasUrl, lastError, verifyPw,
   createUser, getUserByEmail, getUserById,
   createSession, getSessionUser, deleteSession,
   listWatch, addWatch, removeWatch,
   listAlerts, addAlert, removeAlert, markTriggered,
+  listUsers, counts,
 };
