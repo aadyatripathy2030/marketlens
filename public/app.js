@@ -538,7 +538,7 @@
   checkAuth();
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
-  const VIEWS = ['home', 'analyze', 'chat', 'compare', 'markets', 'watchlist', 'learn'];
+  const VIEWS = ['home', 'analyze', 'chat', 'compare', 'screener', 'markets', 'watchlist', 'alerts', 'learn'];
   function showView(name) {
     if (!VIEWS.includes(name)) name = 'home';
     VIEWS.forEach(v => $('view-' + v).classList.toggle('hidden', v !== name));
@@ -550,6 +550,8 @@
     if (name === 'chat') { renderChat(); renderChatSuggest(); $('chatInput').focus(); }
     if (name === 'learn') renderLearnGrid();
     if (name === 'compare') { renderCompareChips(); if (compareSymbols.length >= 2 && !$('compareResult').innerHTML) loadCompare(); }
+    if (name === 'screener' && !$('screenResult').innerHTML) loadScreen();
+    if (name === 'alerts') loadAlerts();
   }
   function goAnalyze(sym) { showView('analyze'); if (sym) { $('symbol').value = sym; run(sym); } }
   document.querySelectorAll('[data-view]').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); showView(el.dataset.view); }));
@@ -672,6 +674,55 @@
     $('compareResult').innerHTML = html;
     $('compareResult').querySelectorAll('thead th[data-s]').forEach(th => th.addEventListener('click', () => goAnalyze(th.dataset.s)));
   }
+
+  // ---- Screener ----
+  function fmtCap(n) { n = +n; if (!n) return '—'; return n >= 1e12 ? '$' + (n / 1e12).toFixed(1) + 'T' : n >= 1e9 ? '$' + (n / 1e9).toFixed(1) + 'B' : '$' + (n / 1e6).toFixed(0) + 'M'; }
+  function screenCard(x) {
+    const meta = [x.sector, fmtCap(x.marketCap)].filter(Boolean).join(' · ') + (x.dividend ? ' · div $' + (+x.dividend).toFixed(2) : '');
+    return `<div class="quote-card" data-s="${esc(x.symbol)}"><div class="quote-sym">${esc(x.symbol)}</div><div class="quote-name">${esc(x.name || '')}</div><div class="quote-price">$${(+x.price).toFixed(2)}</div><div class="quote-chg" style="color:var(--muted);font-weight:500">${esc(meta)}</div></div>`;
+  }
+  async function loadScreen() {
+    $('screenResult').innerHTML = `<p class="compare-note">Screening…</p>`;
+    const p = new URLSearchParams();
+    if ($('scSector').value) p.set('sector', $('scSector').value);
+    if ($('scCap').value) p.set('cap', $('scCap').value);
+    if ($('scPriceMin').value) p.set('priceMin', $('scPriceMin').value);
+    if ($('scPriceMax').value) p.set('priceMax', $('scPriceMax').value);
+    if ($('scDivMin').value) p.set('divMin', $('scDivMin').value);
+    let d;
+    try { d = await (await fetch('/api/screen?' + p.toString())).json(); } catch { $('screenResult').innerHTML = `<p class="compare-note">Couldn’t run the screen.</p>`; return; }
+    if (!d.available) { $('screenResult').innerHTML = `<p class="compare-note">${esc(d.message || 'Screener unavailable.')}</p>`; return; }
+    if (!d.results.length) { $('screenResult').innerHTML = `<p class="compare-note">No matches — try loosening the filters.</p>`; return; }
+    $('screenResult').innerHTML = `<div class="mkt-h">${d.results.length} matches</div><div class="quote-grid">` + d.results.map(screenCard).join('') + `</div>`;
+    $('screenResult').querySelectorAll('.quote-card').forEach(c => c.addEventListener('click', () => goAnalyze(c.dataset.s)));
+  }
+  $('screenForm').addEventListener('submit', (e) => { e.preventDefault(); loadScreen(); });
+
+  // ---- Price alerts ----
+  function updateAlertBadge(n) { const b = $('alertBadge'); if (n > 0) { b.textContent = n; b.classList.remove('hidden'); } else b.classList.add('hidden'); }
+  async function loadAlerts() {
+    if (!currentUser) { $('alertList').innerHTML = `<div class="view-empty">Sign in to create price alerts that watch your stocks for you.<br><button class="btn btn-primary" id="alSignin">Sign in</button></div>`; $('alSignin').addEventListener('click', () => openAuth('login')); return; }
+    $('alertList').innerHTML = `<p class="compare-note">Loading…</p>`;
+    let d; try { d = await (await fetch('/api/alerts')).json(); } catch { $('alertList').innerHTML = `<p class="compare-note">Couldn’t load alerts.</p>`; return; }
+    const alerts = d.alerts || [];
+    updateAlertBadge(alerts.filter(a => a.triggered).length);
+    if (!alerts.length) { $('alertList').innerHTML = `<div class="view-empty">No alerts yet. Add one above — e.g. <b>AAPL rises above 250</b>.</div>`; return; }
+    $('alertList').innerHTML = alerts.map(a => {
+      const hit = !!a.triggered;
+      return `<div class="alert-item ${hit ? 'triggered' : ''}"><span class="alert-sym" data-s="${esc(a.symbol)}">${esc(a.symbol)}</span><span class="alert-cond">${a.direction === 'above' ? 'rises above' : 'falls below'} <b>$${(+a.target).toFixed(2)}</b></span><span class="alert-now">${a.price != null ? 'now $' + (+a.price).toFixed(2) : ''}</span><span class="spacer"></span><span class="alert-status ${hit ? 'hit' : 'active'}">${hit ? '✓ Triggered' : 'Active'}</span><button class="alert-del" data-id="${esc(a.id)}" title="Delete">×</button></div>`;
+    }).join('');
+    $('alertList').querySelectorAll('.alert-sym').forEach(s => s.addEventListener('click', () => goAnalyze(s.dataset.s)));
+    $('alertList').querySelectorAll('.alert-del').forEach(b => b.addEventListener('click', async () => { await fetch('/api/alerts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'remove', id: b.dataset.id }) }); loadAlerts(); }));
+  }
+  $('alertForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!currentUser) return openAuth('login');
+    const symbol = $('alSymbol').value.trim().toUpperCase().replace(/[^A-Z0-9.\-]/g, ''), direction = $('alDir').value, target = +$('alTarget').value;
+    if (!symbol || !(target > 0)) return;
+    await fetch('/api/alerts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol, direction, target }) });
+    $('alSymbol').value = ''; $('alTarget').value = '';
+    loadAlerts();
+  });
 
   // ---- Learn center ----
   const LESSONS = window.LESSONS || [];

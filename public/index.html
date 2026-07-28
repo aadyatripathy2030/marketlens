@@ -14,8 +14,10 @@
     <a class="nav-link" data-view="analyze">Analyze</a>
     <a class="nav-link nav-ai" data-view="chat">✨ AI Analyst</a>
     <a class="nav-link" data-view="compare">Compare</a>
+    <a class="nav-link" data-view="screener">Screener</a>
     <a class="nav-link" data-view="markets">Markets</a>
     <a class="nav-link" data-view="watchlist">Watchlist</a>
+    <a class="nav-link" data-view="alerts">Alerts <span class="nav-badge hidden" id="alertBadge"></span></a>
     <a class="nav-link" data-view="learn">Learn</a>
   </nav>
   <div class="topbar-right">
@@ -225,6 +227,45 @@
   <section class="view hidden" id="view-watchlist">
     <h1 class="view-h">Your watchlist</h1>
     <div id="watchView"></div>
+  </section>
+
+  <!-- SCREENER -->
+  <section class="view hidden" id="view-screener">
+    <h1 class="view-h">Stock screener</h1>
+    <form class="screen-filters" id="screenForm">
+      <select id="scSector" class="sel" aria-label="Sector">
+        <option value="">Any sector</option>
+        <option>Technology</option><option>Healthcare</option><option>Financial Services</option>
+        <option>Consumer Cyclical</option><option>Consumer Defensive</option><option>Energy</option>
+        <option>Industrials</option><option>Basic Materials</option><option>Communication Services</option>
+        <option>Utilities</option><option>Real Estate</option>
+      </select>
+      <select id="scCap" class="sel" aria-label="Market cap">
+        <option value="">Any market cap</option>
+        <option value="small">Small (&lt;$2B)</option>
+        <option value="mid">Mid ($2–10B)</option>
+        <option value="large">Large ($10–200B)</option>
+        <option value="mega">Mega (&gt;$200B)</option>
+      </select>
+      <input id="scPriceMin" class="input sc-in" placeholder="Min $" inputmode="decimal" />
+      <input id="scPriceMax" class="input sc-in" placeholder="Max $" inputmode="decimal" />
+      <input id="scDivMin" class="input sc-in" placeholder="Min div $" inputmode="decimal" />
+      <button class="btn btn-primary" type="submit">Screen</button>
+    </form>
+    <div id="screenResult"></div>
+  </section>
+
+  <!-- ALERTS -->
+  <section class="view hidden" id="view-alerts">
+    <h1 class="view-h">Price alerts</h1>
+    <p class="learn-lead">Get flagged when a stock crosses your target. Alerts are checked each time you open this page.</p>
+    <form class="alert-form" id="alertForm">
+      <input id="alSymbol" class="input sc-in" placeholder="Ticker" maxlength="12" autocomplete="off" />
+      <select id="alDir" class="sel"><option value="above">rises above</option><option value="below">falls below</option></select>
+      <input id="alTarget" class="input sc-in" placeholder="Target $" inputmode="decimal" />
+      <button class="btn btn-primary" type="submit">Add alert</button>
+    </form>
+    <div id="alertList"></div>
   </section>
 
   <!-- COMPARE -->

@@ -470,6 +470,59 @@ async function handleQuotes(req, res, raw) {
   return json(res, 200, { quotes: await fetchQuotes(symbols), source: STOCK_API_KEY ? 'live' : 'demo' });
 }
 
+// ---- Price alerts ----
+async function handleAlerts(req, res) {
+  const user = await currentUser(req);
+  if (!user) return json(res, 401, { error: 'Please sign in.' });
+  if (req.method === 'GET') {
+    const alerts = await db.listAlerts(user.id);
+    const syms = [...new Set(alerts.map(a => a.symbol))];
+    const quotes = syms.length ? await fetchQuotes(syms) : [];
+    const qmap = {}; quotes.forEach(q => { qmap[q.symbol] = q.price; });
+    const now = Date.now();
+    for (const a of alerts) {
+      if (!a.triggered) {
+        const price = qmap[a.symbol];
+        if (price != null && ((a.direction === 'above' && price >= a.target) || (a.direction === 'below' && price <= a.target))) {
+          await db.markTriggered(user.id, a.id, now); a.triggered = now;
+        }
+      }
+    }
+    return json(res, 200, { alerts: alerts.map(a => ({ ...a, price: qmap[a.symbol] ?? null })) });
+  }
+  const b = await readBody(req);
+  if (b.action === 'remove') { await db.removeAlert(user.id, String(b.id || '')); return json(res, 200, { ok: true }); }
+  const symbol = String(b.symbol || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
+  const direction = b.direction === 'below' ? 'below' : 'above';
+  const target = Number(b.target);
+  if (!symbol || !Number.isFinite(target) || target <= 0) return json(res, 400, { error: 'Enter a ticker and a target price above 0.' });
+  const a = await db.addAlert(user.id, symbol, direction, target);
+  return json(res, 200, { alert: a });
+}
+
+// ---- Screener (Financial Modeling Prep) ----
+async function handleScreen(req, res, qs) {
+  if (!FMP_API_KEY) return json(res, 200, { available: false, message: 'The screener needs FMP_API_KEY on the server.' });
+  const q = new URLSearchParams(qs || '');
+  const p = new URLSearchParams();
+  const CAP = { small: [null, 2e9], mid: [2e9, 10e9], large: [10e9, 200e9], mega: [200e9, null] };
+  const cap = CAP[q.get('cap')];
+  if (cap) { if (cap[0] != null) p.set('marketCapMoreThan', cap[0]); if (cap[1] != null) p.set('marketCapLowerThan', cap[1]); }
+  if (q.get('sector')) p.set('sector', q.get('sector'));
+  if (Number(q.get('priceMin')) > 0) p.set('priceMoreThan', Number(q.get('priceMin')));
+  if (Number(q.get('priceMax')) > 0) p.set('priceLowerThan', Number(q.get('priceMax')));
+  if (Number(q.get('divMin')) > 0) p.set('dividendMoreThan', Number(q.get('divMin')));
+  if (Number(q.get('betaMax')) > 0) p.set('betaLowerThan', Number(q.get('betaMax')));
+  p.set('country', 'US'); p.set('isActivelyTrading', 'true'); p.set('limit', '40');
+  const list = await fetchFMP(`/stable/company-screener?${p.toString()}`).catch(() => null);
+  if (!Array.isArray(list)) return json(res, 200, { available: true, results: [] });
+  return json(res, 200, {
+    available: true,
+    results: list.map(x => ({ symbol: x.symbol, name: x.companyName, marketCap: x.marketCap, price: x.price, sector: x.sector, beta: x.beta, dividend: x.lastAnnualDividend, exchange: x.exchangeShortName }))
+      .filter(x => x.symbol && x.price),
+  });
+}
+
 function serveStatic(req, res) {
   let urlPath = decodeURIComponent(req.url.split('?')[0]);
   if (urlPath === '/') urlPath = '/index.html';
@@ -500,6 +553,8 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/chat' && req.method === 'POST') return await handleChat(req, res);
     if (url === '/api/fundamentals' && req.method === 'GET') return await handleFundamentals(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbol'));
     if (url === '/api/compare' && req.method === 'GET') return await handleCompare(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));
+    if (url === '/api/alerts') return await handleAlerts(req, res);
+    if (url === '/api/screen' && req.method === 'GET') return await handleScreen(req, res, req.url.split('?')[1] || '');
     serveStatic(req, res);
   } catch (e) { console.error('server error:', e); json(res, 500, { error: 'Internal error' }); }
 });
