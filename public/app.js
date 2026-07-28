@@ -458,20 +458,24 @@
   });
 
   // ---- Accounts + watchlist ----
-  let currentUser = null, watchSymbols = [], authMode = 'login';
+  let currentUser = null, watchSymbols = [], authMode = 'login', billingOn = false;
 
   function renderAcct() {
     const el = $('acct');
     if (currentUser) {
-      el.innerHTML = `<span class="plan">${esc(currentUser.plan)}</span><span class="email">${esc(currentUser.email)}</span><button class="link-btn" id="logoutBtn">Log out</button>`;
+      const isPro = currentUser.plan === 'pro';
+      const badge = `<span class="plan ${isPro ? 'pro' : ''}">${isPro ? 'PRO' : 'FREE'}</span>`;
+      const upgrade = (!isPro && billingOn) ? `<button class="upgrade" id="upgradeNav">✨ Upgrade</button>` : '';
+      el.innerHTML = badge + upgrade + `<span class="email">${esc(currentUser.email)}</span><button class="link-btn" id="logoutBtn">Log out</button>`;
       $('logoutBtn').addEventListener('click', logout);
+      if ($('upgradeNav')) $('upgradeNav').addEventListener('click', () => showView('pricing'));
     } else {
       el.innerHTML = `<button class="signin" id="signinBtn">Sign in</button>`;
       $('signinBtn').addEventListener('click', () => openAuth('login'));
     }
   }
   async function checkAuth() {
-    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; } catch { currentUser = null; }
+    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; billingOn = !!j.billing; } catch { currentUser = null; }
     renderAcct();
     $('watchBtn').classList.toggle('hidden', !currentUser);
     $('navAdmin').classList.toggle('hidden', !(currentUser && currentUser.admin));
@@ -544,7 +548,7 @@
   checkAuth();
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
-  const VIEWS = ['home', 'analyze', 'chat', 'compare', 'screener', 'markets', 'watchlist', 'alerts', 'learn', 'admin'];
+  const VIEWS = ['home', 'analyze', 'chat', 'compare', 'screener', 'markets', 'watchlist', 'alerts', 'learn', 'pricing', 'admin'];
   function showView(name) {
     if (!VIEWS.includes(name)) name = 'home';
     VIEWS.forEach(v => $('view-' + v).classList.toggle('hidden', v !== name));
@@ -559,6 +563,7 @@
     if (name === 'screener' && !$('screenResult').innerHTML) loadScreen();
     if (name === 'alerts') loadAlerts();
     if (name === 'admin') loadAdmin();
+    if (name === 'pricing') renderPricing();
   }
   function goAnalyze(sym) { showView('analyze'); if (sym) { $('symbol').value = sym; run(sym); } }
   document.querySelectorAll('[data-view]').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); showView(el.dataset.view); }));
@@ -730,6 +735,34 @@
     loadAlerts();
   });
 
+  // ---- Pricing / Stripe billing ----
+  function renderPricing() {
+    const pro = !!(currentUser && currentUser.plan === 'pro');
+    const li = (arr) => arr.map(([t, on]) => `<li class="${on ? '' : 'off'}">${esc(t)}</li>`).join('');
+    const freeList = [['AI stock analysis, scores & thesis', 1], ['Live charts, markets & fundamentals', 1], ['AI Analyst chat', 1], ['Watchlist & price alerts', 1], ['Screener & compare', 1], ['Support the project', 0]];
+    const proList = [['Everything in Free', 1], ['Unlimited AI analysis & chat', 1], ['Priority processing', 1], ['Early access to new features', 1], ['Support MarketLens ❤️', 1]];
+    let proAction;
+    if (!currentUser) proAction = `<button class="btn btn-ai btn-block" id="upgradeBtn">Sign in to upgrade</button>`;
+    else if (pro) proAction = `<div class="plan-current">✓ You’re on Pro — thank you!</div><button class="btn btn-ghost btn-block" id="manageBtn">Manage subscription</button>`;
+    else if (billingOn) proAction = `<button class="btn btn-ai btn-block" id="upgradeBtn">Upgrade to Pro →</button>`;
+    else proAction = `<div class="plan-current">Billing isn’t set up yet.</div>`;
+    $('pricingBody').innerHTML = `
+      <div class="plan-card"><div class="plan-name">Free</div><div class="plan-price">$0</div><ul class="plan-list">${li(freeList)}</ul>${pro ? '' : '<div class="plan-current">Your current plan</div>'}</div>
+      <div class="plan-card pro"><div class="plan-name">✨ Pro</div><div class="plan-price">Pro <small>billed via Stripe</small></div><ul class="plan-list">${li(proList)}</ul>${proAction}</div>`;
+    if ($('upgradeBtn')) $('upgradeBtn').addEventListener('click', () => currentUser ? startCheckout() : openAuth('login'));
+    if ($('manageBtn')) $('manageBtn').addEventListener('click', openPortal);
+  }
+  async function startCheckout() {
+    const b = $('upgradeBtn'); if (b) { b.disabled = true; b.textContent = 'Redirecting…'; }
+    try { const j = await (await fetch('/api/billing/checkout', { method: 'POST' })).json(); if (j.url) { location.href = j.url; return; } alert(j.error || 'Could not start checkout.'); } catch (e) { alert('Could not start checkout.'); }
+    if (b) { b.disabled = false; b.textContent = 'Upgrade to Pro →'; }
+  }
+  async function openPortal() {
+    const b = $('manageBtn'); if (b) { b.disabled = true; b.textContent = 'Opening…'; }
+    try { const j = await (await fetch('/api/billing/portal', { method: 'POST' })).json(); if (j.url) { location.href = j.url; return; } alert(j.error || 'Could not open the billing portal.'); } catch (e) { alert('Could not open the billing portal.'); }
+    if (b) { b.disabled = false; b.textContent = 'Manage subscription'; }
+  }
+
   // ---- Admin dashboard ----
   async function loadAdmin() {
     if (!currentUser || !currentUser.admin) { $('adminBody').innerHTML = `<div class="view-empty">Admin access only.</div>`; return; }
@@ -813,7 +846,22 @@
   $('gateSignup').addEventListener('click', () => gateGo('signup'));
   $('gateGuest').addEventListener('click', (e) => { e.preventDefault(); gateGo('guest'); });
 
-  // Initial view: deep-link → analyze; otherwise the homepage.
-  const deep = new URLSearchParams(location.search).get('symbol');
-  if (deep) goAnalyze(deep.toUpperCase()); else showView('home');
+  // Initial view: deep-link → analyze; billing return → pricing; else home.
+  const params = new URLSearchParams(location.search);
+  const deep = params.get('symbol'), billing = params.get('billing');
+  if (billing === 'success') {
+    showView('pricing');
+    $('pricingLead').textContent = '🎉 Thanks for upgrading! Your Pro plan is activating (this can take a few seconds)…';
+    let tries = 0;
+    const iv = setInterval(async () => {
+      await checkAuth(); tries++;
+      if ((currentUser && currentUser.plan === 'pro') || tries > 6) {
+        clearInterval(iv); renderPricing();
+        if (currentUser && currentUser.plan === 'pro') $('pricingLead').textContent = '🎉 You’re on Pro — thank you for supporting MarketLens!';
+      }
+    }, 2500);
+  } else if (billing === 'cancel') {
+    showView('pricing');
+  } else if (deep) { goAnalyze(deep.toUpperCase()); }
+  else showView('home');
 })();

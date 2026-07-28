@@ -29,5 +29,11 @@ services:
         sync: false
       - key: ADMIN_EMAILS         # comma-separated emails granted the Admin dashboard
         sync: false
+      - key: STRIPE_SECRET_KEY    # Stripe secret key (sk_...) — subscriptions
+        sync: false
+      - key: STRIPE_PRICE_ID      # Stripe recurring Price ID (price_...) for the Pro plan
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET # Stripe webhook signing secret (whsec_...)
+        sync: false
       - key: ANTHROPIC_MODEL      # optional; a cheaper model (e.g. claude-haiku-4-5) lowers cost
         value: claude-opus-4-8

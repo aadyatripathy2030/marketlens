@@ -8,6 +8,7 @@
 //   ANTHROPIC_MODEL   defaults to claude-opus-4-8; set a cheaper model if you like
 const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const I = require('./indicators');
@@ -23,6 +24,10 @@ const AI_MODEL = (process.env.ANTHROPIC_MODEL || 'claude-opus-4-8').trim();
 const FMP_API_KEY = (process.env.FMP_API_KEY || '').replace(/\s/g, ''); // Financial Modeling Prep — fundamentals
 const FINNHUB_API_KEY = (process.env.FINNHUB_API_KEY || '').replace(/\s/g, ''); // Finnhub — company news
 const GA_ID = (process.env.GA_MEASUREMENT_ID || 'G-4GG1NXEE2E').trim();         // Google Analytics 4 (public Measurement ID; env can override)
+const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || '').replace(/\s/g, '');       // sk_...
+const STRIPE_PRICE_ID = (process.env.STRIPE_PRICE_ID || '').replace(/\s/g, '');           // price_... (the Pro subscription)
+const STRIPE_WEBHOOK_SECRET = (process.env.STRIPE_WEBHOOK_SECRET || '').replace(/\s/g, ''); // whsec_...
+const BILLING_ON = !!(STRIPE_SECRET_KEY && STRIPE_PRICE_ID);
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'atriuminstitutereal@gmail.com').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
 const isAdmin = (u) => !!(u && ADMIN_EMAILS.includes(String(u.email || '').toLowerCase()));
 const usage = { total: 0 };            // per-endpoint request counters (reset on restart)
@@ -287,7 +292,7 @@ async function handleLogout(req, res) {
 }
 async function handleMe(req, res) {
   const u = await currentUser(req);
-  return json(res, 200, { user: u ? { ...u, admin: isAdmin(u) } : null, store: db.storeMode() });
+  return json(res, 200, { user: u ? { ...u, admin: isAdmin(u) } : null, store: db.storeMode(), billing: BILLING_ON });
 }
 async function handleAdmin(req, res) {
   const u = await currentUser(req);
@@ -557,6 +562,75 @@ async function handleScreen(req, res, qs) {
   return json(res, 200, { available: true, universe: true, results });
 }
 
+// ---- Stripe billing (raw API + manual webhook verification, no SDK) ----
+function stripePost(apiPath, form) {
+  const body = Object.entries(form).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
+  return new Promise((resolve, reject) => {
+    const r = https.request({ method: 'POST', hostname: 'api.stripe.com', path: '/v1/' + apiPath,
+      headers: { 'Authorization': 'Bearer ' + STRIPE_SECRET_KEY, 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) } }, resp => {
+      let d = ''; resp.on('data', c => d += c);
+      resp.on('end', () => { try { const j = JSON.parse(d); if (resp.statusCode >= 400) reject(new Error(j.error ? j.error.message : 'Stripe error')); else resolve(j); } catch (e) { reject(new Error('bad Stripe response')); } });
+    });
+    r.on('error', reject); r.write(body); r.end();
+  });
+}
+function readRawBody(req, cap) { cap = cap || 1e6; return new Promise(resolve => { let d = ''; req.on('data', c => { d += c; if (d.length > cap) req.destroy(); }); req.on('end', () => resolve(d)); req.on('error', () => resolve('')); }); }
+function verifyStripeSig(raw, header, secret) {
+  if (!header) return false;
+  const parts = {}; header.split(',').forEach(p => { const i = p.indexOf('='); parts[p.slice(0, i)] = p.slice(i + 1); });
+  if (!parts.t || !parts.v1) return false;
+  const expected = crypto.createHmac('sha256', secret).update(parts.t + '.' + raw).digest('hex');
+  try { return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(parts.v1)); } catch { return false; }
+}
+const baseUrl = (req) => (req.headers['x-forwarded-proto'] || 'http') + '://' + req.headers.host;
+
+async function handleCheckout(req, res) {
+  const user = await currentUser(req);
+  if (!user) return json(res, 401, { error: 'Please sign in first.' });
+  if (!BILLING_ON) return json(res, 200, { error: 'Billing isn’t configured yet.' });
+  if (user.plan === 'pro') return json(res, 200, { error: 'You’re already on Pro.' });
+  try {
+    const s = await stripePost('checkout/sessions', {
+      mode: 'subscription',
+      'line_items[0][price]': STRIPE_PRICE_ID,
+      'line_items[0][quantity]': '1',
+      success_url: baseUrl(req) + '/?billing=success',
+      cancel_url: baseUrl(req) + '/?billing=cancel',
+      client_reference_id: user.id,
+      customer_email: user.email,
+      allow_promotion_codes: 'true',
+    });
+    return json(res, 200, { url: s.url });
+  } catch (e) { return json(res, 200, { error: 'Could not start checkout (' + e.message + ').' }); }
+}
+async function handlePortal(req, res) {
+  const user = await currentUser(req);
+  if (!user) return json(res, 401, { error: 'Please sign in first.' });
+  const full = await db.getUserById(user.id);
+  const customer = full && full.stripe_customer;
+  if (!STRIPE_SECRET_KEY || !customer) return json(res, 200, { error: 'No subscription to manage yet.' });
+  try {
+    const s = await stripePost('billing_portal/sessions', { customer, return_url: baseUrl(req) + '/' });
+    return json(res, 200, { url: s.url });
+  } catch (e) { return json(res, 200, { error: 'Could not open the billing portal (' + e.message + ').' }); }
+}
+async function handleWebhook(req, res) {
+  const raw = await readRawBody(req);
+  if (STRIPE_WEBHOOK_SECRET && !verifyStripeSig(raw, req.headers['stripe-signature'], STRIPE_WEBHOOK_SECRET)) { res.writeHead(400); return res.end('bad signature'); }
+  let event; try { event = JSON.parse(raw); } catch { res.writeHead(400); return res.end('bad json'); }
+  try {
+    if (event.type === 'checkout.session.completed') {
+      const s = event.data.object;
+      if (s.client_reference_id) await db.setPro(s.client_reference_id, s.customer, s.subscription);
+    } else if (event.type === 'customer.subscription.deleted' ||
+      (event.type === 'customer.subscription.updated' && ['canceled', 'unpaid', 'incomplete_expired'].includes(event.data.object.status))) {
+      const u = await db.findByStripeSub(event.data.object.id);
+      if (u) await db.setFree(u.id);
+    }
+  } catch (e) { logError(e); }
+  res.writeHead(200); res.end('ok');
+}
+
 const GA_SNIPPET = GA_ID ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script>`
   + `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_ID}');</script>` : '';
 function serveStatic(req, res) {
@@ -601,6 +675,9 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/compare' && req.method === 'GET') return await handleCompare(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));
     if (url === '/api/alerts') return await handleAlerts(req, res);
     if (url === '/api/screen' && req.method === 'GET') return await handleScreen(req, res, req.url.split('?')[1] || '');
+    if (url === '/api/billing/webhook' && req.method === 'POST') return await handleWebhook(req, res);
+    if (url === '/api/billing/checkout' && req.method === 'POST') return await handleCheckout(req, res);
+    if (url === '/api/billing/portal' && req.method === 'POST') return await handlePortal(req, res);
     serveStatic(req, res);
   } catch (e) { logError(e); console.error('server error:', e); json(res, 500, { error: 'Internal error' }); }
 });

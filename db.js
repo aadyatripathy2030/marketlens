@@ -28,6 +28,8 @@ async function init() {
       await pool.query(`CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, pw TEXT NOT NULL,
         plan TEXT NOT NULL DEFAULT 'free', created BIGINT NOT NULL)`);
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_sub TEXT');
       await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
         token TEXT PRIMARY KEY, uid TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires BIGINT NOT NULL)`);
       await pool.query(`CREATE TABLE IF NOT EXISTS watchlist (
@@ -166,6 +168,21 @@ async function counts() {
   return { users: mem.users.size, watch, alerts };
 }
 
+// ---- billing / plan ----
+async function setPro(uid, customer, sub) {
+  if (mode === 'postgres') await pool.query("UPDATE users SET plan='pro', stripe_customer=$2, stripe_sub=$3 WHERE id=$1", [uid, customer || null, sub || null]);
+  else { const u = mem.users.get(uid); if (u) { u.plan = 'pro'; u.stripe_customer = customer; u.stripe_sub = sub; } }
+}
+async function setFree(uid) {
+  if (mode === 'postgres') await pool.query("UPDATE users SET plan='free' WHERE id=$1", [uid]);
+  else { const u = mem.users.get(uid); if (u) u.plan = 'free'; }
+}
+async function findByStripeSub(sub) {
+  if (!sub) return null;
+  if (mode === 'postgres') { const r = await pool.query('SELECT * FROM users WHERE stripe_sub=$1', [sub]); return r.rows[0] || null; }
+  return [...mem.users.values()].find(u => u.stripe_sub === sub) || null;
+}
+
 module.exports = {
   init, storeMode, hasUrl, lastError, verifyPw,
   createUser, getUserByEmail, getUserById,
@@ -173,4 +190,5 @@ module.exports = {
   listWatch, addWatch, removeWatch,
   listAlerts, addAlert, removeAlert, markTriggered,
   listUsers, counts,
+  setPro, setFree, findByStripeSub,
 };
