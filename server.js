@@ -515,12 +515,15 @@ async function handleScreen(req, res, qs) {
   if (Number(q.get('betaMax')) > 0) p.set('betaLowerThan', Number(q.get('betaMax')));
   p.set('country', 'US'); p.set('isActivelyTrading', 'true'); p.set('limit', '40');
   if (/(\?|&)debug=1/.test(req.url)) {
-    const grab = async (path) => { try { const r = await fetchFMP(path); return { isArr: Array.isArray(r), n: Array.isArray(r) ? r.length : 0, sample: JSON.stringify(r).slice(0, 240) }; } catch (e) { return { threw: e.message }; } };
+    const raw = (path) => new Promise((resolve) => {
+      const full = path + (path.includes('?') ? '&' : '?') + 'apikey=' + FMP_API_KEY;
+      https.get({ hostname: 'financialmodelingprep.com', path: full }, r => { let d = ''; r.on('data', c => d += c); r.on('end', () => resolve({ status: r.statusCode, body: d.slice(0, 180) })); }).on('error', e => resolve({ err: e.message }));
+    });
     return json(res, 200, {
       debug: true,
-      stableNoFilter: await grab(`/stable/company-screener?limit=3`),
-      stableFiltered: await grab(`/stable/company-screener?${p.toString()}`),
-      v3: await grab(`/api/v3/stock-screener?limit=3`),
+      companyScreener: await raw('/stable/company-screener?limit=2'),
+      stockScreener: await raw('/stable/stock-screener?limit=2'),
+      screener: await raw('/stable/screener?limit=2'),
     });
   }
   const list = await fetchFMP(`/stable/company-screener?${p.toString()}`).catch(() => null);
