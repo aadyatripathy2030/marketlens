@@ -25,9 +25,15 @@ const FMP_API_KEY = (process.env.FMP_API_KEY || '').replace(/\s/g, ''); // Finan
 const FINNHUB_API_KEY = (process.env.FINNHUB_API_KEY || '').replace(/\s/g, ''); // Finnhub — company news
 const GA_ID = (process.env.GA_MEASUREMENT_ID || 'G-4GG1NXEE2E').trim();         // Google Analytics 4 (public Measurement ID; env can override)
 const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || '').replace(/\s/g, '');       // sk_...
-const STRIPE_PRICE_ID = (process.env.STRIPE_PRICE_ID || '').replace(/\s/g, '');           // price_... (the Pro subscription)
 const STRIPE_WEBHOOK_SECRET = (process.env.STRIPE_WEBHOOK_SECRET || '').replace(/\s/g, ''); // whsec_...
-const BILLING_ON = !!(STRIPE_SECRET_KEY && STRIPE_PRICE_ID);
+// Pro price IDs per billing period (weekly / monthly / yearly). STRIPE_PRICE_ID stays as a monthly fallback.
+const STRIPE_PRICES = {
+  weekly: (process.env.STRIPE_PRICE_WEEKLY || '').replace(/\s/g, ''),
+  monthly: (process.env.STRIPE_PRICE_MONTHLY || process.env.STRIPE_PRICE_ID || '').replace(/\s/g, ''),
+  yearly: (process.env.STRIPE_PRICE_YEARLY || '').replace(/\s/g, ''),
+};
+const PLAN_LABELS = { weekly: 'week', monthly: 'month', yearly: 'year' };
+const BILLING_ON = !!(STRIPE_SECRET_KEY && (STRIPE_PRICES.weekly || STRIPE_PRICES.monthly || STRIPE_PRICES.yearly));
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'atriuminstitutereal@gmail.com').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
 const isAdmin = (u) => !!(u && ADMIN_EMAILS.includes(String(u.email || '').toLowerCase()));
 const usage = { total: 0 };            // per-endpoint request counters (reset on restart)
@@ -292,7 +298,7 @@ async function handleLogout(req, res) {
 }
 async function handleMe(req, res) {
   const u = await currentUser(req);
-  return json(res, 200, { user: u ? { ...u, admin: isAdmin(u) } : null, store: db.storeMode(), billing: BILLING_ON });
+  return json(res, 200, { user: u ? { ...u, admin: isAdmin(u) } : null, store: db.storeMode(), billing: { weekly: !!STRIPE_PRICES.weekly, monthly: !!STRIPE_PRICES.monthly, yearly: !!STRIPE_PRICES.yearly } });
 }
 async function handleAdmin(req, res) {
   const u = await currentUser(req);
@@ -589,10 +595,14 @@ async function handleCheckout(req, res) {
   if (!user) return json(res, 401, { error: 'Please sign in first.' });
   if (!BILLING_ON) return json(res, 200, { error: 'Billing isn’t configured yet.' });
   if (user.plan === 'pro') return json(res, 200, { error: 'You’re already on Pro.' });
+  const b = await readBody(req);
+  const plan = ['weekly', 'monthly', 'yearly'].includes(b.plan) ? b.plan : 'monthly';
+  const price = STRIPE_PRICES[plan] || STRIPE_PRICES.monthly || STRIPE_PRICES.weekly || STRIPE_PRICES.yearly;
+  if (!price) return json(res, 200, { error: 'That plan isn’t available.' });
   try {
     const s = await stripePost('checkout/sessions', {
       mode: 'subscription',
-      'line_items[0][price]': STRIPE_PRICE_ID,
+      'line_items[0][price]': price,
       'line_items[0][quantity]': '1',
       success_url: baseUrl(req) + '/?billing=success',
       cancel_url: baseUrl(req) + '/?billing=cancel',

@@ -31,7 +31,11 @@ services:
         sync: false
       - key: STRIPE_SECRET_KEY    # Stripe secret key (sk_...) — subscriptions
         sync: false
-      - key: STRIPE_PRICE_ID      # Stripe recurring Price ID (price_...) for the Pro plan
+      - key: STRIPE_PRICE_WEEKLY  # Stripe Price ID (price_...) for the weekly Pro plan
+        sync: false
+      - key: STRIPE_PRICE_MONTHLY # Stripe Price ID (price_...) for the monthly Pro plan
+        sync: false
+      - key: STRIPE_PRICE_YEARLY  # Stripe Price ID (price_...) for the yearly Pro plan
         sync: false
       - key: STRIPE_WEBHOOK_SECRET # Stripe webhook signing secret (whsec_...)
         sync: false

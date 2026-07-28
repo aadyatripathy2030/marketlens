@@ -458,7 +458,7 @@
   });
 
   // ---- Accounts + watchlist ----
-  let currentUser = null, watchSymbols = [], authMode = 'login', billingOn = false;
+  let currentUser = null, watchSymbols = [], authMode = 'login', billingOn = false, billingPlans = {};
 
   function renderAcct() {
     const el = $('acct');
@@ -475,7 +475,7 @@
     }
   }
   async function checkAuth() {
-    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; billingOn = !!j.billing; } catch { currentUser = null; }
+    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; billingPlans = j.billing || {}; billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; }
     renderAcct();
     $('watchBtn').classList.toggle('hidden', !currentUser);
     $('navAdmin').classList.toggle('hidden', !(currentUser && currentUser.admin));
@@ -742,20 +742,22 @@
     const freeList = [['AI stock analysis, scores & thesis', 1], ['Live charts, markets & fundamentals', 1], ['AI Analyst chat', 1], ['Watchlist & price alerts', 1], ['Screener & compare', 1], ['Support the project', 0]];
     const proList = [['Everything in Free', 1], ['Unlimited AI analysis & chat', 1], ['Priority processing', 1], ['Early access to new features', 1], ['Support MarketLens ❤️', 1]];
     let proAction;
-    if (!currentUser) proAction = `<button class="btn btn-ai btn-block" id="upgradeBtn">Sign in to upgrade</button>`;
+    const periods = [['weekly', 'Weekly'], ['monthly', 'Monthly'], ['yearly', 'Yearly']].filter(([k]) => billingPlans && billingPlans[k]);
+    if (!currentUser) proAction = `<button class="btn btn-ai btn-block" id="signinUpgrade">Sign in to upgrade</button>`;
     else if (pro) proAction = `<div class="plan-current">✓ You’re on Pro — thank you!</div><button class="btn btn-ghost btn-block" id="manageBtn">Manage subscription</button>`;
-    else if (billingOn) proAction = `<button class="btn btn-ai btn-block" id="upgradeBtn">Upgrade to Pro →</button>`;
+    else if (periods.length) proAction = periods.map(([k, label]) => `<button class="btn btn-ai btn-block plan-btn" data-plan="${k}" style="margin-bottom:8px">Upgrade — ${label} →</button>`).join('');
     else proAction = `<div class="plan-current">Billing isn’t set up yet.</div>`;
     $('pricingBody').innerHTML = `
       <div class="plan-card"><div class="plan-name">Free</div><div class="plan-price">$0</div><ul class="plan-list">${li(freeList)}</ul>${pro ? '' : '<div class="plan-current">Your current plan</div>'}</div>
       <div class="plan-card pro"><div class="plan-name">✨ Pro</div><div class="plan-price">Pro <small>billed via Stripe</small></div><ul class="plan-list">${li(proList)}</ul>${proAction}</div>`;
-    if ($('upgradeBtn')) $('upgradeBtn').addEventListener('click', () => currentUser ? startCheckout() : openAuth('login'));
+    if ($('signinUpgrade')) $('signinUpgrade').addEventListener('click', () => openAuth('login'));
     if ($('manageBtn')) $('manageBtn').addEventListener('click', openPortal);
+    $('pricingBody').querySelectorAll('.plan-btn').forEach(b => b.addEventListener('click', () => startCheckout(b.dataset.plan, b)));
   }
-  async function startCheckout() {
-    const b = $('upgradeBtn'); if (b) { b.disabled = true; b.textContent = 'Redirecting…'; }
-    try { const j = await (await fetch('/api/billing/checkout', { method: 'POST' })).json(); if (j.url) { location.href = j.url; return; } alert(j.error || 'Could not start checkout.'); } catch (e) { alert('Could not start checkout.'); }
-    if (b) { b.disabled = false; b.textContent = 'Upgrade to Pro →'; }
+  async function startCheckout(plan, b) {
+    if (b) { b.disabled = true; b.textContent = 'Redirecting…'; }
+    try { const j = await (await fetch('/api/billing/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan }) })).json(); if (j.url) { location.href = j.url; return; } alert(j.error || 'Could not start checkout.'); } catch (e) { alert('Could not start checkout.'); }
+    renderPricing();
   }
   async function openPortal() {
     const b = $('manageBtn'); if (b) { b.disabled = true; b.textContent = 'Opening…'; }
