@@ -500,39 +500,39 @@ async function handleAlerts(req, res) {
   return json(res, 200, { alert: a });
 }
 
-// ---- Screener (Financial Modeling Prep) ----
+// ---- Screener over a curated universe (works on the free tier; live prices) ----
+// [symbol, name, sector, capBand]. FMP's full-market screener is a paid endpoint,
+// so we screen popular US stocks by sector/cap/price with live quotes.
+const SCREEN_UNIVERSE = [
+  ['AAPL', 'Apple', 'Technology', 'mega'], ['MSFT', 'Microsoft', 'Technology', 'mega'], ['NVDA', 'NVIDIA', 'Technology', 'mega'], ['AVGO', 'Broadcom', 'Technology', 'mega'],
+  ['ORCL', 'Oracle', 'Technology', 'large'], ['CRM', 'Salesforce', 'Technology', 'large'], ['AMD', 'Advanced Micro Devices', 'Technology', 'large'], ['ADBE', 'Adobe', 'Technology', 'large'],
+  ['CSCO', 'Cisco', 'Technology', 'large'], ['INTC', 'Intel', 'Technology', 'large'], ['QCOM', 'Qualcomm', 'Technology', 'large'], ['TXN', 'Texas Instruments', 'Technology', 'large'],
+  ['IBM', 'IBM', 'Technology', 'large'], ['NOW', 'ServiceNow', 'Technology', 'large'], ['PLTR', 'Palantir', 'Technology', 'large'], ['SMCI', 'Super Micro', 'Technology', 'mid'],
+  ['GOOGL', 'Alphabet', 'Communication Services', 'mega'], ['META', 'Meta Platforms', 'Communication Services', 'mega'], ['NFLX', 'Netflix', 'Communication Services', 'large'],
+  ['DIS', 'Walt Disney', 'Communication Services', 'large'], ['CMCSA', 'Comcast', 'Communication Services', 'large'], ['T', 'AT&T', 'Communication Services', 'large'], ['VZ', 'Verizon', 'Communication Services', 'large'],
+  ['AMZN', 'Amazon', 'Consumer Cyclical', 'mega'], ['TSLA', 'Tesla', 'Consumer Cyclical', 'mega'], ['HD', 'Home Depot', 'Consumer Cyclical', 'large'], ['NKE', 'Nike', 'Consumer Cyclical', 'large'],
+  ['MCD', "McDonald's", 'Consumer Cyclical', 'large'], ['SBUX', 'Starbucks', 'Consumer Cyclical', 'large'], ['ABNB', 'Airbnb', 'Consumer Cyclical', 'large'], ['F', 'Ford', 'Consumer Cyclical', 'mid'], ['GM', 'General Motors', 'Consumer Cyclical', 'mid'],
+  ['WMT', 'Walmart', 'Consumer Defensive', 'mega'], ['COST', 'Costco', 'Consumer Defensive', 'mega'], ['PG', 'Procter & Gamble', 'Consumer Defensive', 'large'], ['KO', 'Coca-Cola', 'Consumer Defensive', 'large'], ['PEP', 'PepsiCo', 'Consumer Defensive', 'large'],
+  ['BRK.B', 'Berkshire Hathaway', 'Financial Services', 'mega'], ['JPM', 'JPMorgan Chase', 'Financial Services', 'mega'], ['V', 'Visa', 'Financial Services', 'mega'], ['MA', 'Mastercard', 'Financial Services', 'mega'],
+  ['BAC', 'Bank of America', 'Financial Services', 'large'], ['WFC', 'Wells Fargo', 'Financial Services', 'large'], ['GS', 'Goldman Sachs', 'Financial Services', 'large'], ['MS', 'Morgan Stanley', 'Financial Services', 'large'], ['AXP', 'American Express', 'Financial Services', 'large'],
+  ['LLY', 'Eli Lilly', 'Healthcare', 'mega'], ['UNH', 'UnitedHealth', 'Healthcare', 'large'], ['JNJ', 'Johnson & Johnson', 'Healthcare', 'large'], ['MRK', 'Merck', 'Healthcare', 'large'], ['PFE', 'Pfizer', 'Healthcare', 'large'], ['ABT', 'Abbott', 'Healthcare', 'large'], ['TMO', 'Thermo Fisher', 'Healthcare', 'large'],
+  ['XOM', 'Exxon Mobil', 'Energy', 'mega'], ['CVX', 'Chevron', 'Energy', 'large'], ['COP', 'ConocoPhillips', 'Energy', 'large'],
+  ['CAT', 'Caterpillar', 'Industrials', 'large'], ['BA', 'Boeing', 'Industrials', 'large'], ['GE', 'GE Aerospace', 'Industrials', 'large'], ['HON', 'Honeywell', 'Industrials', 'large'], ['UPS', 'United Parcel Service', 'Industrials', 'large'], ['RTX', 'RTX', 'Industrials', 'large'], ['LMT', 'Lockheed Martin', 'Industrials', 'large'],
+];
+const CAP_RANK = { mega: 4, large: 3, mid: 2, small: 1 };
 async function handleScreen(req, res, qs) {
-  if (!FMP_API_KEY) return json(res, 200, { available: false, message: 'The screener needs FMP_API_KEY on the server.' });
   const q = new URLSearchParams(qs || '');
-  const p = new URLSearchParams();
-  const CAP = { small: [null, 2e9], mid: [2e9, 10e9], large: [10e9, 200e9], mega: [200e9, null] };
-  const cap = CAP[q.get('cap')];
-  if (cap) { if (cap[0] != null) p.set('marketCapMoreThan', cap[0]); if (cap[1] != null) p.set('marketCapLowerThan', cap[1]); }
-  if (q.get('sector')) p.set('sector', q.get('sector'));
-  if (Number(q.get('priceMin')) > 0) p.set('priceMoreThan', Number(q.get('priceMin')));
-  if (Number(q.get('priceMax')) > 0) p.set('priceLowerThan', Number(q.get('priceMax')));
-  if (Number(q.get('divMin')) > 0) p.set('dividendMoreThan', Number(q.get('divMin')));
-  if (Number(q.get('betaMax')) > 0) p.set('betaLowerThan', Number(q.get('betaMax')));
-  p.set('country', 'US'); p.set('isActivelyTrading', 'true'); p.set('limit', '40');
-  if (/(\?|&)debug=1/.test(req.url)) {
-    const raw = (path) => new Promise((resolve) => {
-      const full = path + (path.includes('?') ? '&' : '?') + 'apikey=' + FMP_API_KEY;
-      https.get({ hostname: 'financialmodelingprep.com', path: full }, r => { let d = ''; r.on('data', c => d += c); r.on('end', () => resolve({ status: r.statusCode, body: d.slice(0, 180) })); }).on('error', e => resolve({ err: e.message }));
-    });
-    return json(res, 200, {
-      debug: true,
-      companyScreener: await raw('/stable/company-screener?limit=2'),
-      stockScreener: await raw('/stable/stock-screener?limit=2'),
-      screener: await raw('/stable/screener?limit=2'),
-    });
-  }
-  const list = await fetchFMP(`/stable/company-screener?${p.toString()}`).catch(() => null);
-  if (!Array.isArray(list)) return json(res, 200, { available: true, results: [] });
-  return json(res, 200, {
-    available: true,
-    results: list.map(x => ({ symbol: x.symbol, name: x.companyName, marketCap: x.marketCap, price: x.price, sector: x.sector, beta: x.beta, dividend: x.lastAnnualDividend, exchange: x.exchangeShortName }))
-      .filter(x => x.symbol && x.price),
-  });
+  const sector = q.get('sector'), cap = q.get('cap');
+  const pmin = Number(q.get('priceMin')), pmax = Number(q.get('priceMax'));
+  let uni = SCREEN_UNIVERSE.filter(u => (!sector || u[2] === sector) && (!cap || u[3] === cap));
+  if (!uni.length) return json(res, 200, { available: true, universe: true, results: [] });
+  const quotes = await fetchQuotes(uni.map(u => u[0]));
+  const qmap = {}; quotes.forEach(x => { qmap[x.symbol] = x; });
+  let results = uni.map(u => { const x = qmap[u[0]] || {}; return { symbol: u[0], name: u[1], sector: u[2], cap: u[3], price: x.price, changePct: x.changePct }; }).filter(r => r.price != null);
+  if (pmin > 0) results = results.filter(r => r.price >= pmin);
+  if (pmax > 0) results = results.filter(r => r.price <= pmax);
+  results.sort((a, b) => (CAP_RANK[b.cap] - CAP_RANK[a.cap]) || (b.price - a.price));
+  return json(res, 200, { available: true, universe: true, results });
 }
 
 function serveStatic(req, res) {

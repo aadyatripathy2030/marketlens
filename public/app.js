@@ -676,10 +676,10 @@
   }
 
   // ---- Screener ----
-  function fmtCap(n) { n = +n; if (!n) return '—'; return n >= 1e12 ? '$' + (n / 1e12).toFixed(1) + 'T' : n >= 1e9 ? '$' + (n / 1e9).toFixed(1) + 'B' : '$' + (n / 1e6).toFixed(0) + 'M'; }
+  const CAP_LABEL = { mega: 'Mega cap', large: 'Large cap', mid: 'Mid cap', small: 'Small cap' };
   function screenCard(x) {
-    const meta = [x.sector, fmtCap(x.marketCap)].filter(Boolean).join(' · ') + (x.dividend ? ' · div $' + (+x.dividend).toFixed(2) : '');
-    return `<div class="quote-card" data-s="${esc(x.symbol)}"><div class="quote-sym">${esc(x.symbol)}</div><div class="quote-name">${esc(x.name || '')}</div><div class="quote-price">$${(+x.price).toFixed(2)}</div><div class="quote-chg" style="color:var(--muted);font-weight:500">${esc(meta)}</div></div>`;
+    const up = (x.changePct || 0) >= 0;
+    return `<div class="quote-card" data-s="${esc(x.symbol)}"><div class="quote-sym">${esc(x.symbol)}</div><div class="quote-name">${esc(x.name || '')}</div><div class="quote-price">$${(+x.price).toFixed(2)}</div><div class="quote-chg ${up ? 'up' : 'down'}">${up ? '▲' : '▼'} ${Math.abs(x.changePct || 0).toFixed(2)}%</div><div class="quote-name" style="margin-top:5px">${esc(x.sector || '')} · ${esc(CAP_LABEL[x.cap] || '')}</div></div>`;
   }
   async function loadScreen() {
     $('screenResult').innerHTML = `<p class="compare-note">Screening…</p>`;
@@ -688,12 +688,11 @@
     if ($('scCap').value) p.set('cap', $('scCap').value);
     if ($('scPriceMin').value) p.set('priceMin', $('scPriceMin').value);
     if ($('scPriceMax').value) p.set('priceMax', $('scPriceMax').value);
-    if ($('scDivMin').value) p.set('divMin', $('scDivMin').value);
     let d;
     try { d = await (await fetch('/api/screen?' + p.toString())).json(); } catch { $('screenResult').innerHTML = `<p class="compare-note">Couldn’t run the screen.</p>`; return; }
     if (!d.available) { $('screenResult').innerHTML = `<p class="compare-note">${esc(d.message || 'Screener unavailable.')}</p>`; return; }
     if (!d.results.length) { $('screenResult').innerHTML = `<p class="compare-note">No matches — try loosening the filters.</p>`; return; }
-    $('screenResult').innerHTML = `<div class="mkt-h">${d.results.length} matches</div><div class="quote-grid">` + d.results.map(screenCard).join('') + `</div>`;
+    $('screenResult').innerHTML = `<div class="mkt-h">${d.results.length} matches</div><div class="quote-grid">` + d.results.map(screenCard).join('') + `</div><p class="compare-note">Screening a curated list of popular US stocks with live prices. Full-market screening needs a paid data plan.</p>`;
     $('screenResult').querySelectorAll('.quote-card').forEach(c => c.addEventListener('click', () => goAnalyze(c.dataset.s)));
   }
   $('screenForm').addEventListener('submit', (e) => { e.preventDefault(); loadScreen(); });
