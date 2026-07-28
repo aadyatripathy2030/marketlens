@@ -514,6 +514,15 @@ async function handleScreen(req, res, qs) {
   if (Number(q.get('divMin')) > 0) p.set('dividendMoreThan', Number(q.get('divMin')));
   if (Number(q.get('betaMax')) > 0) p.set('betaLowerThan', Number(q.get('betaMax')));
   p.set('country', 'US'); p.set('isActivelyTrading', 'true'); p.set('limit', '40');
+  if (/(\?|&)debug=1/.test(req.url)) {
+    const grab = async (path) => { try { const r = await fetchFMP(path); return { isArr: Array.isArray(r), n: Array.isArray(r) ? r.length : 0, sample: JSON.stringify(r).slice(0, 240) }; } catch (e) { return { threw: e.message }; } };
+    return json(res, 200, {
+      debug: true,
+      stableNoFilter: await grab(`/stable/company-screener?limit=3`),
+      stableFiltered: await grab(`/stable/company-screener?${p.toString()}`),
+      v3: await grab(`/api/v3/stock-screener?limit=3`),
+    });
+  }
   const list = await fetchFMP(`/stable/company-screener?${p.toString()}`).catch(() => null);
   if (!Array.isArray(list)) return json(res, 200, { available: true, results: [] });
   return json(res, 200, {
