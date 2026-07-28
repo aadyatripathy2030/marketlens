@@ -15,6 +15,25 @@
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; max-width: 100%; overflow-x: hidden; }
+
+/* First-visit gate: terms agreement + sign in */
+.gate { position: fixed; inset: 0; z-index: 200; background: radial-gradient(1200px 600px at 50% -10%, rgba(59,130,246,.08), transparent), var(--bg); display: grid; place-items: center; padding: 20px; overflow-y: auto; }
+.gate.hidden { display: none; }
+.gate-card { width: 100%; max-width: 460px; background: var(--card); border: 1px solid var(--border-strong); border-radius: 18px; padding: 28px 26px; box-shadow: 0 24px 70px rgba(0,0,0,.55); }
+.gate-brand { font-size: 25px; font-weight: 800; }
+.gate-tag { font-size: 13px; color: var(--muted); margin: 4px 0 16px; }
+.gate-terms { max-height: 190px; overflow-y: auto; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; font-size: 12.5px; line-height: 1.6; color: var(--muted); }
+.gate-terms p { margin-bottom: 8px; } .gate-terms p:last-child { margin-bottom: 0; } .gate-terms strong { color: var(--text); }
+.gate-check { display: flex; align-items: flex-start; gap: 9px; font-size: 13.5px; margin: 15px 0; cursor: pointer; }
+.gate-check input { margin-top: 3px; width: 16px; height: 16px; flex: none; }
+.gate-auth { transition: opacity .2s; }
+.gate-auth.disabled { opacity: .4; pointer-events: none; filter: saturate(.4); }
+.gate-auth .input { width: 100%; margin-bottom: 10px; text-transform: none; }
+.gate-btns { display: flex; gap: 10px; }
+.gate-btns .btn { flex: 1; }
+.gate-guest { display: block; text-align: center; margin-top: 14px; font-size: 13px; color: var(--muted); text-decoration: none; }
+.gate-guest:hover { color: var(--accent); }
+.gate-note { font-size: 11px; color: var(--muted); margin-top: 16px; text-align: center; line-height: 1.5; }
 img, canvas { max-width: 100%; }
 body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.55; min-height: 100vh; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
 

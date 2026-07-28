@@ -6,6 +6,10 @@
   const col = (n) => CSS.getPropertyValue(n).trim();
   const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+  // First-visit gate: hide instantly for anyone who already agreed on this device.
+  try { if (localStorage.getItem('marketlens_agreed')) document.getElementById('gate').classList.add('hidden'); } catch (e) {}
+  function hideGate() { const g = document.getElementById('gate'); if (g) g.classList.add('hidden'); }
+
   // Plain-English technical-indicator grid.
   function renderTech(t) {
     if (!t) { $('techGrid').innerHTML = ''; return; }
@@ -471,7 +475,8 @@
     renderAcct();
     $('watchBtn').classList.toggle('hidden', !currentUser);
     $('navAdmin').classList.toggle('hidden', !(currentUser && currentUser.admin));
-    if (currentUser) loadWatchlist(); else { watchSymbols = []; renderWatchStrip(); }
+    if (currentUser) { try { localStorage.setItem('marketlens_agreed', '1'); } catch (e) {} hideGate(); loadWatchlist(); }
+    else { watchSymbols = []; renderWatchStrip(); }
   }
   function openAuth(mode) {
     authMode = mode;
@@ -783,6 +788,30 @@
       if (score.done === l.quiz.length) { const s = $('quizScore'); s.textContent = `You scored ${score.right} / ${l.quiz.length}.`; s.classList.remove('hidden'); }
     }));
   }
+
+  // ---- First-visit gate (terms agreement + sign in) ----
+  const gateAuthEl = document.querySelector('.gate-auth');
+  $('gateAgree').addEventListener('change', () => gateAuthEl.classList.toggle('disabled', !$('gateAgree').checked));
+  function gateErr(m) { $('gateErr').textContent = m; $('gateErr').classList.remove('hidden'); }
+  async function gateGo(mode) {
+    if (!$('gateAgree').checked) return gateErr('Please check the box to agree to the terms.');
+    try { localStorage.setItem('marketlens_agreed', '1'); } catch (e) {}
+    if (mode === 'guest') return hideGate();
+    const email = $('gateEmail').value.trim(), password = $('gatePass').value;
+    if (!email || password.length < 8) return gateErr('Enter your email and a password (8+ characters).');
+    try {
+      const r = await fetch('/api/auth/' + mode, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Something went wrong.');
+      currentUser = j.user; renderAcct();
+      $('watchBtn').classList.remove('hidden');
+      $('navAdmin').classList.toggle('hidden', !(currentUser && currentUser.admin));
+      loadWatchlist(); hideGate();
+    } catch (e) { gateErr(e.message); }
+  }
+  $('gateSignin').addEventListener('click', () => gateGo('login'));
+  $('gateSignup').addEventListener('click', () => gateGo('signup'));
+  $('gateGuest').addEventListener('click', (e) => { e.preventDefault(); gateGo('guest'); });
 
   // Initial view: deep-link → analyze; otherwise the homepage.
   const deep = new URLSearchParams(location.search).get('symbol');

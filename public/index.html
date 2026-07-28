@@ -8,6 +8,31 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <div class="gate-brand">MarketLens</div>
+    <p class="gate-tag">AI-powered stock analysis — for education, not advice.</p>
+    <div class="gate-terms">
+      <p><strong>Please read and agree before continuing.</strong></p>
+      <p>MarketLens is an <strong>educational and informational tool only</strong>. Nothing here is financial, investment, legal, or tax advice, and no content is a recommendation to buy, sell, or hold any security. The AI scores, ratings, forecasts, and analyses are mechanical outputs that are <strong>frequently wrong</strong> — no tool can reliably predict markets.</p>
+      <p>All investing involves risk, including the possible <strong>loss of the money you invest</strong>. You alone are responsible for your decisions and their outcomes. To the fullest extent permitted by law, MarketLens and its creators are <strong>not liable for any losses, damages, or costs</strong> arising from your use of this tool or your reliance on its content.</p>
+      <p>By continuing, you confirm you are using MarketLens for personal, educational purposes and accept these terms.</p>
+    </div>
+    <label class="gate-check"><input type="checkbox" id="gateAgree" /> <span>I have read and agree to the terms above.</span></label>
+    <div class="gate-auth disabled" id="gateAuth">
+      <input type="email" id="gateEmail" class="input" placeholder="you@email.com" autocomplete="email" />
+      <input type="password" id="gatePass" class="input" placeholder="Password (8+ characters)" autocomplete="current-password" />
+      <div class="auth-err hidden" id="gateErr"></div>
+      <div class="gate-btns">
+        <button type="button" class="btn btn-primary btn-block" id="gateSignin">Sign in</button>
+        <button type="button" class="btn btn-ghost btn-block" id="gateSignup">Create account</button>
+      </div>
+      <a href="#" class="gate-guest" id="gateGuest">Continue without an account →</a>
+    </div>
+    <p class="gate-note">🔒 Please don't reuse a real banking or trading password — this is a demo login.</p>
+  </div>
+</div>
+
 <header class="topbar">
   <a class="brand" href="#" data-view="home">MarketLens</a>
   <nav class="nav" id="nav">
