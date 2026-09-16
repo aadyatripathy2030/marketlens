@@ -535,8 +535,7 @@
       $('note').textContent = d.note || '';
       $('result').classList.remove('hidden');
       resetView(); drawChart(); tiles(d); renderTech(d.tech); renderBands(d.bands);
-      $('aiBody').textContent = 'Analyzing…'; $('aiTag').textContent = '';
-      $('bullList').innerHTML = '<li>Analyzing…</li>'; $('bearList').innerHTML = '<li>Analyzing…</li>'; $('conclusion').textContent = '';
+      setAnalysisPending();
       loadAnalysis(d);
       loadFundamentals(d.symbol);
       startLive();
@@ -545,16 +544,50 @@
     } finally { $('goBtn').disabled = false; $('goBtn').textContent = 'Analyze'; }
   }
 
+  // The summary takes several seconds (indicators, then a Claude call that is
+  // waited out in full), so say so rather than showing a bare spinner-word
+  // that looks identical to a dead request.
+  function setAnalysisPending() {
+    $('aiBody').textContent = 'Writing the summary — this usually takes a few seconds.';
+    $('aiTag').textContent = '';
+    $('bullList').innerHTML = '<li>Working…</li>';
+    $('bearList').innerHTML = '<li>Working…</li>';
+    $('conclusion').textContent = '';
+  }
+
+  // A plain fetch has no deadline, so a stalled request would leave the panel
+  // waiting forever with no error and no way back.
+  async function fetchTimeout(url, opts, ms) {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), ms);
+    try { return await fetch(url, Object.assign({}, opts, { signal: ac.signal })); }
+    finally { clearTimeout(timer); }
+  }
+
+  function analysisFailed(msg, d) {
+    $('aiBody').textContent = msg + ' ';
+    const retry = document.createElement('button');
+    retry.type = 'button'; retry.className = 'link-btn'; retry.textContent = 'Try again';
+    retry.addEventListener('click', () => { setAnalysisPending(); loadAnalysis(d); });
+    $('aiBody').appendChild(retry);
+    $('aiTag').textContent = '';
+    $('bullList').innerHTML = ''; $('bearList').innerHTML = ''; $('conclusion').textContent = '';
+  }
+
   async function loadAnalysis(d) {
     try {
-      const r = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) });
+      const r = await fetchTimeout('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) }, 45000);
       const j = await r.json();
       $('aiBody').textContent = j.summary || 'No analysis available.';
       $('aiTag').textContent = j.source === 'ai' ? 'written by Claude' : 'rule-based fallback — no model key set';
       $('bullList').innerHTML = (j.bull && j.bull.length ? j.bull : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
       $('bearList').innerHTML = (j.bear && j.bear.length ? j.bear : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
       $('conclusion').textContent = j.conclusion || '';
-    } catch (e) { $('aiBody').textContent = 'Analysis unavailable.'; $('bullList').innerHTML = ''; $('bearList').innerHTML = ''; }
+    } catch (e) {
+      analysisFailed(e && e.name === 'AbortError'
+        ? 'The summary took too long to come back (the server may have been asleep).'
+        : 'Analysis unavailable.', d);
+    }
   }
 
   $('searchForm').addEventListener('submit', (ev) => { ev.preventDefault(); hideSuggest(); run(); });
