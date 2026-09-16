@@ -1,4 +1,4 @@
-// Data + auth layer for MarketLens accounts.
+// Data + auth layer for ChartGauge accounts.
 // Uses Postgres when DATABASE_URL is set (persistent), else an in-memory store
 // (works for a demo but resets on restart — fine until a real DB is attached).
 const crypto = require('crypto');

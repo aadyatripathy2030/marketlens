@@ -3,20 +3,20 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>MarketLens</title>
+<title>ChartGauge</title>
 <!--GA-->
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
 <div class="gate" id="gate">
   <div class="gate-card">
-    <div class="gate-brand">MarketLens</div>
+    <div class="gate-brand">ChartGauge</div>
     <p class="gate-tag">Price charts, technical indicators, and a written read of them. For learning, not for trading.</p>
     <div class="gate-terms">
       <p><strong>Please read and agree before continuing.</strong></p>
-      <p>MarketLens is an <strong>educational and informational tool only</strong>. Nothing here is financial, investment, legal, or tax advice, and no content is a recommendation to buy, sell, or hold any security. The scores, ratings, forecasts, and written analyses are mechanical outputs that are <strong>frequently wrong</strong> — no tool can reliably predict markets.</p>
-      <p>All investing involves risk, including the possible <strong>loss of the money you invest</strong>. You alone are responsible for your decisions and their outcomes. To the fullest extent permitted by law, MarketLens and its creators are <strong>not liable for any losses, damages, or costs</strong> arising from your use of this tool or your reliance on its content.</p>
-      <p>By continuing, you confirm you are using MarketLens for personal, educational purposes and accept these terms.</p>
+      <p>ChartGauge is an <strong>educational and informational tool only</strong>. Nothing here is financial, investment, legal, or tax advice, and no content is a recommendation to buy, sell, or hold any security. The scores, ratings, forecasts, and written analyses are mechanical outputs that are <strong>frequently wrong</strong> — no tool can reliably predict markets.</p>
+      <p>All investing involves risk, including the possible <strong>loss of the money you invest</strong>. You alone are responsible for your decisions and their outcomes. To the fullest extent permitted by law, ChartGauge and its creators are <strong>not liable for any losses, damages, or costs</strong> arising from your use of this tool or your reliance on its content.</p>
+      <p>By continuing, you confirm you are using ChartGauge for personal, educational purposes and accept these terms.</p>
     </div>
     <label class="gate-check"><input type="checkbox" id="gateAgree" /> <span>I have read and agree to the terms above.</span></label>
     <div class="gate-auth disabled" id="gateAuth">
@@ -34,7 +34,7 @@
 </div>
 
 <header class="topbar">
-  <a class="brand" data-view="home">MarketLens</a>
+  <a class="brand" data-view="home">ChartGauge</a>
   <nav class="nav" id="nav">
     <a class="nav-link active" data-view="home">Home</a>
     <a class="nav-link" data-view="analyze">Analyze</a>
@@ -58,7 +58,7 @@
   <section class="view" id="view-home">
     <div class="hero">
       <h1 class="hero-h">Look up a ticker.</h1>
-      <p class="hero-sub">MarketLens pulls the price history, computes SMA 20/50/200, RSI, MACD, Bollinger bands, ATR, VWAP, support and resistance, draws them on a candlestick chart, and writes up what they say. It is a study tool. The indicators disagree with each other often, and the score built from them is wrong often.</p>
+      <p class="hero-sub">ChartGauge pulls the price history, computes SMA 20/50/200, RSI, MACD, Bollinger bands, ATR, VWAP, support and resistance, draws them on a candlestick chart, and writes up what they say. It is a study tool. The indicators disagree with each other often, and the score built from them is wrong often.</p>
       <form class="hero-search" id="heroForm">
         <input id="heroInput" class="input" placeholder="Search a ticker or company — AAPL, Tesla, NVDA…" autocomplete="off" maxlength="12" />
         <button type="submit" class="btn btn-primary">Analyze</button>
@@ -338,7 +338,7 @@
       <div class="auth-err hidden" id="authErr"></div>
       <button type="submit" class="btn btn-primary btn-block" id="authSubmit">Sign in</button>
     </form>
-    <p class="auth-toggle"><span id="authToggleText">New to MarketLens?</span> <button type="button" class="link-btn" id="authToggle">Create an account</button></p>
+    <p class="auth-toggle"><span id="authToggleText">New to ChartGauge?</span> <button type="button" class="link-btn" id="authToggle">Create an account</button></p>
     <p class="auth-note">Never enter a real trading or bank password here. This is a demo; passwords are hashed, never stored in plain text.</p>
   </div>
 </div>

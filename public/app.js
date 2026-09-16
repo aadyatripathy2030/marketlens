@@ -486,7 +486,7 @@
     authMode = mode;
     $('authTitle').textContent = mode === 'signup' ? 'Create your account' : 'Sign in';
     $('authSubmit').textContent = mode === 'signup' ? 'Create account' : 'Sign in';
-    $('authToggleText').textContent = mode === 'signup' ? 'Already have an account?' : 'New to MarketLens?';
+    $('authToggleText').textContent = mode === 'signup' ? 'Already have an account?' : 'New to ChartGauge?';
     $('authToggle').textContent = mode === 'signup' ? 'Sign in' : 'Create an account';
     $('authErr').classList.add('hidden');
     $('authModal').classList.remove('hidden');
@@ -627,7 +627,7 @@
   function chatContext() {
     const d = lastData; if (!d) return '';
     const r = d.rating || {}, t = d.tech || {};
-    return `The user is currently viewing ${d.symbol} at ${(+d.latest).toFixed(2)} ${d.currency} (${d.changePct.toFixed(2)}% today). MarketLens indicator score ${r.score}/100 = "${r.label}", confidence ${r.confidence}%, risk ${r.risk}. RSI ${t.rsi14}, trend ${t.trend ? t.trend.strength + '/100 ' + t.trend.direction : 'n/a'}.`;
+    return `The user is currently viewing ${d.symbol} at ${(+d.latest).toFixed(2)} ${d.currency} (${d.changePct.toFixed(2)}% today). ChartGauge indicator score ${r.score}/100 = "${r.label}", confidence ${r.confidence}%, risk ${r.risk}. RSI ${t.rsi14}, trend ${t.trend ? t.trend.strength + '/100 ' + t.trend.direction : 'n/a'}.`;
   }
   async function sendChat() {
     const text = $('chatInput').value.trim();
@@ -859,7 +859,7 @@
       await checkAuth(); tries++;
       if ((currentUser && currentUser.plan === 'pro') || tries > 6) {
         clearInterval(iv); renderPricing();
-        if (currentUser && currentUser.plan === 'pro') $('pricingLead').textContent = 'You’re on Pro. Thank you for supporting MarketLens.';
+        if (currentUser && currentUser.plan === 'pro') $('pricingLead').textContent = 'You’re on Pro. Thank you for supporting ChartGauge.';
       }
     }, 2500);
   } else if (billing === 'cancel') {

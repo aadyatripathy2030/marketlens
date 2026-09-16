@@ -356,7 +356,7 @@ async function handleChat(req, res) {
       liveCtx += ' Live quotes — ' + qs.map(q => `${q.symbol} $${(+q.price).toFixed(2)} (${q.changePct >= 0 ? '+' : ''}${q.changePct.toFixed(2)}%)`).join(', ') + '.';
     } catch {}
   }
-  const system = 'You are the analyst chat inside MarketLens, a stock-charting tool — a friendly finance assistant for beginners and enthusiasts. Discuss stocks, markets, and investing concepts in clear plain English; explain what indicators or ratings suggest, compare companies, and lay out balanced bull/bear cases. Use any LIVE DATA provided. ALWAYS stay balanced, note uncertainty, and be explicit that this is educational information, NOT personalized financial advice — never tell the user what they personally should do with their money, and never promise returns. Keep replies concise: a short paragraph or a few tight bullets.'
+  const system = 'You are the analyst chat inside ChartGauge, a stock-charting tool — a friendly finance assistant for beginners and enthusiasts. Discuss stocks, markets, and investing concepts in clear plain English; explain what indicators or ratings suggest, compare companies, and lay out balanced bull/bear cases. Use any LIVE DATA provided. ALWAYS stay balanced, note uncertainty, and be explicit that this is educational information, NOT personalized financial advice — never tell the user what they personally should do with their money, and never promise returns. Keep replies concise: a short paragraph or a few tight bullets.'
     + (liveCtx ? ('\n\nLIVE DATA (as of now): ' + liveCtx) : '');
   const body = JSON.stringify({ model: AI_MODEL, max_tokens: 800, system, messages: msgs });
   try {
@@ -693,5 +693,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 db.init().then((storeMode) => {
-  server.listen(PORT, () => console.log(`MarketLens running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'}, fundamentals: ${FMP_API_KEY ? 'on' : 'off'}, news: ${FINNHUB_API_KEY ? 'on' : 'off'}, accounts: ${storeMode})`));
+  server.listen(PORT, () => console.log(`ChartGauge running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'}, fundamentals: ${FMP_API_KEY ? 'on' : 'off'}, news: ${FINNHUB_API_KEY ? 'on' : 'off'}, accounts: ${storeMode})`));
 });

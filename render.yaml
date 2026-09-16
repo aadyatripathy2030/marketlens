@@ -1,4 +1,7 @@
-# Render Blueprint — deploy MarketLens as a free web service + Postgres.
+# Render Blueprint — deploy ChartGauge as a free web service + Postgres.
+# NOTE: the service/database names below are Render identifiers, not branding.
+# Renaming them creates a new service (dropping the custom domain) and a new,
+# empty database. Leave them as "marketlens".
 # In Render: New → Blueprint (or open your existing blueprint → Manual Sync).
 # The two API keys are sync:false, so Render prompts for them — never commit keys.
 databases:
