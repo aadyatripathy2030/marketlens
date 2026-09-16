@@ -453,8 +453,10 @@
         $('fundProfile').textContent = d.profile ? [d.profile.sector, d.profile.industry].filter(Boolean).join(' · ') : '';
         $('fundCard').classList.remove('hidden');
       }
-      if (d.news && d.news.length) {
-        $('newsList').innerHTML = d.news.map(n => `<a class="news-item" href="${esc(n.url)}" target="_blank" rel="noopener noreferrer"><div class="news-title">${esc(n.title)}</div><div class="news-meta">${esc(n.site || '')}${n.date ? ' · ' + esc(String(n.date).slice(0, 10)) : ''}</div></a>`).join('');
+      // Third-party URLs: esc() can't stop a javascript: scheme, so allow only http(s)
+      const safeNews = (d.news || []).filter(n => /^https?:\/\//i.test(String(n.url || '')));
+      if (safeNews.length) {
+        $('newsList').innerHTML = safeNews.map(n => `<a class="news-item" href="${esc(n.url)}" target="_blank" rel="noopener noreferrer"><div class="news-title">${esc(n.title)}</div><div class="news-meta">${esc(n.site || '')}${n.date ? ' · ' + esc(String(n.date).slice(0, 10)) : ''}</div></a>`).join('');
         $('newsCard').classList.remove('hidden');
       }
     } catch (e) { /* leave hidden on error */ }
@@ -496,14 +498,17 @@
       <div class="tile"><div class="tile-val ${projCls}">${fmt(proj)}</div><div class="tile-lbl">${d.forecast.length}-bar proj.</div></div>`;
   }
 
+  let runSeq = 0;           // guards against a slow request landing after a newer one
   async function run(symbol) {
     symbol = (symbol || $('symbol').value || '').trim().toUpperCase();
     if (!symbol) return;
     $('error').classList.add('hidden');
     $('goBtn').disabled = true; $('goBtn').textContent = 'Loading…';
+    const seq = ++runSeq;
     try {
       const r = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&direction=${encodeURIComponent(direction)}&interval=${encodeURIComponent(interval)}`);
       const d = await r.json();
+      if (seq !== runSeq) return;                    // superseded by a newer ticker
       if (!r.ok) throw new Error(d.error || 'Could not load');
       lastData = d;
       $('modeTag').textContent = d.source === 'live' ? 'live data' : 'demo data';
@@ -540,8 +545,9 @@
       loadFundamentals(d.symbol);
       startLive();
     } catch (e) {
+      if (seq !== runSeq) return;                    // a newer request owns the UI now
       $('error').textContent = e.message; $('error').classList.remove('hidden'); $('result').classList.add('hidden');
-    } finally { $('goBtn').disabled = false; $('goBtn').textContent = 'Analyze'; }
+    } finally { if (seq === runSeq) { $('goBtn').disabled = false; $('goBtn').textContent = 'Analyze'; } }
   }
 
   // The summary takes several seconds (indicators, then a Claude call that is
@@ -578,12 +584,14 @@
     try {
       const r = await fetchTimeout('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) }, 45000);
       const j = await r.json();
+      if (!lastData || lastData.symbol !== d.symbol) return;   // user moved on; don't clobber
       $('aiBody').textContent = j.summary || 'No analysis available.';
       $('aiTag').textContent = j.source === 'ai' ? 'written by Claude' : 'rule-based fallback — no model key set';
       $('bullList').innerHTML = (j.bull && j.bull.length ? j.bull : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
       $('bearList').innerHTML = (j.bear && j.bear.length ? j.bear : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
       $('conclusion').textContent = j.conclusion || '';
     } catch (e) {
+      if (!lastData || lastData.symbol !== d.symbol) return;   // stale failure, ignore
       analysisFailed(e && e.name === 'AbortError'
         ? 'The summary took too long to come back (the server may have been asleep).'
         : 'Analysis unavailable.', d);
@@ -620,10 +628,14 @@
     $('imgBtn').disabled = true; $('imgBtn').textContent = 'Analyzing…';
     $('imgResult').textContent = ''; $('imgResult').classList.add('hidden');
     try {
-      const r = await fetch('/api/analyze-image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: imgData.base64, mediaType: imgData.mediaType }) });
+      const r = await fetchTimeout('/api/analyze-image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: imgData.base64, mediaType: imgData.mediaType }) }, 60000);
       const j = await r.json();
       $('imgResult').textContent = j.summary || j.error || 'No analysis available.';
-    } catch (e) { $('imgResult').textContent = 'Analysis unavailable.'; }
+    } catch (e) {
+      $('imgResult').textContent = e && e.name === 'AbortError'
+        ? 'Reading the image took too long. Try again, or use a smaller screenshot.'
+        : 'Analysis unavailable.';
+    }
     finally { $('imgResult').classList.remove('hidden'); $('imgBtn').disabled = false; $('imgBtn').textContent = 'Analyze image'; }
   });
 
@@ -810,9 +822,14 @@
     $('chatSend').disabled = true;
     try {
       const payload = { messages: chatHistory.filter(m => !m.thinking).map(m => ({ role: m.role, content: m.content })), context: chatContext() };
-      const j = await (await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })).json();
+      const j = await (await fetchTimeout('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }, 60000)).json();
       pending.content = j.reply || 'No response.'; pending.thinking = false;
-    } catch (e) { pending.content = 'Sorry — something went wrong. Please try again.'; pending.thinking = false; }
+    } catch (e) {
+      pending.content = e && e.name === 'AbortError'
+        ? 'That took too long to come back — the server may have been asleep. Ask again.'
+        : 'Something went wrong reaching Claude. Please try again.';
+      pending.thinking = false;
+    }
     finally { $('chatSend').disabled = false; renderChat(); }
   }
   $('chatForm').addEventListener('submit', (e) => { e.preventDefault(); sendChat(); });

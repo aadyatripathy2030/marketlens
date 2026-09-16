@@ -58,9 +58,19 @@ function json(res, code, obj) { res.writeHead(code, { 'Content-Type': 'applicati
 function readBody(req, maxBytes) {
   const cap = maxBytes || 1e6;
   return new Promise((resolve) => {
-    let d = ''; req.on('data', c => { d += c; if (d.length > cap) req.destroy(); });
-    req.on('end', () => { try { resolve(d ? JSON.parse(d) : {}); } catch { resolve({}); } });
-    req.on('error', () => resolve({}));
+    // req.destroy() on an over-cap body does not reliably emit 'end' or
+    // 'error', so settle explicitly and treat 'close' as a terminal event —
+    // otherwise an oversized POST leaves this promise pending forever.
+    let d = '', done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    req.on('data', c => {
+      if (done) return;
+      d += c;
+      if (d.length > cap) { finish({}); req.destroy(); }
+    });
+    req.on('end', () => { try { finish(d ? JSON.parse(d) : {}); } catch { finish({}); } });
+    req.on('error', () => finish({}));
+    req.on('close', () => finish({}));
   });
 }
 function httpsJson(options, body) {
