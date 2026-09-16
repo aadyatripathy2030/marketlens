@@ -136,8 +136,11 @@
   // Axis gutters, TradingView-style: price scale down the right edge, time
   // scale along the bottom. Dragging either one rescales that axis.
   const AXIS_W = 58, AXIS_H = 26;
-  let yScale = 1;           // manual price-axis zoom; 1 = auto-fit to visible data
-  const clampY = (v) => Math.max(0.15, Math.min(8, v));
+  // The price axis auto-fits the visible bars until you scale or drag it
+  // vertically; from then on it holds an explicit window, like TradingView,
+  // until a double-click hands it back to auto-fit.
+  let yManual = null;       // {lo, hi} in price units, or null for auto-fit
+  let lastY = null;         // last drawn {lo, hi, plotH} so drags can do maths
 
   // Candle colours are user-adjustable per element (body / border / wick) and
   // persist locally. Unset entries fall back to the theme's up/down colours.
@@ -221,6 +224,7 @@
   function sma(a, n) { return a.map((_, i) => i >= n - 1 ? a.slice(i - n + 1, i + 1).reduce((x, y) => x + y, 0) / n : null); }
 
   function resetView() {
+    yManual = null;
     if (!lastData) { view = null; return; }
     const len = lastData.prices.length;
     let n;
@@ -260,17 +264,17 @@
     fc.forEach(v => vals.push(v));
     const min = Math.min(...vals), max = Math.max(...vals);
     const pad = (max - min) * 0.08 || 1;
-    // yScale stretches the auto-fitted range around its midpoint, so dragging
-    // the price axis compresses or expands the candles vertically.
-    const aLo = min - pad, aHi = max + pad;
-    const mid = (aLo + aHi) / 2, half = ((aHi - aLo) / 2) * yScale;
-    const lo = mid - half, hi = mid + half;
+    // Auto-fit the visible bars unless the user has taken manual control of
+    // the price axis by scaling or dragging it.
+    let lo = min - pad, hi = max + pad;
+    if (yManual && yManual.hi > yManual.lo) { lo = yManual.lo; hi = yManual.hi; }
     const padL = 8, padR = AXIS_W, padT = 12, padB = AXIS_H;
     const plotW = w - padL - padR, plotH = h - padT - padB;
     const total = bars.length + fc.length;
     const X = (i) => padL + (plotW * i) / (total - 1);
     const Y = (v) => padT + plotH * (1 - (v - lo) / (hi - lo));
     const axX = padL + plotW, axY = padT + plotH;
+    lastY = { lo, hi, plotH };
 
     ctx.font = '11px ui-monospace, Menlo, monospace'; ctx.lineWidth = 1;
 
@@ -346,6 +350,18 @@
       return 'plot';
     };
     const plotWidth = (r) => Math.max(1, r.width - AXIS_W - PAD_L);
+    // Leaving auto-fit: seed the manual window from whatever is on screen now,
+    // so the first pixel of a drag doesn't make the chart jump.
+    const ensureManual = () => {
+      if (!yManual && lastY) yManual = { lo: lastY.lo, hi: lastY.hi };
+      return !!yManual;
+    };
+    const scaleY = (factor) => {
+      if (!ensureManual()) return;
+      const mid = (yManual.lo + yManual.hi) / 2;
+      const half = Math.max(1e-6, ((yManual.hi - yManual.lo) / 2) * factor);
+      yManual = { lo: mid - half, hi: mid + half };
+    };
     const clampView = (start, end, len) => {
       const span = end - start;
       if (start < 0) { start = 0; end = Math.min(len, span); }
@@ -361,7 +377,7 @@
       e.preventDefault();
       const raw = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
       const step = Math.max(-60, Math.min(60, raw));
-      if (zoneOf(e) === 'price') { yScale = clampY(yScale * Math.pow(1.0009, step)); drawChart(); return; }
+      if (zoneOf(e) === 'price') { scaleY(Math.pow(1.0009, step)); drawChart(); return; }
       const len = lastData.prices.length, r = canvas.getBoundingClientRect();
       const frac = Math.min(1, Math.max(0, (e.clientX - r.left - PAD_L) / plotWidth(r)));
       const span = view.end - view.start;
@@ -375,13 +391,20 @@
     canvas.addEventListener('mousedown', (e) => {
       if (!lastData || !view) return;
       e.preventDefault();
-      drag = { zone: zoneOf(e), x: e.clientX, y: e.clientY, span: view.end - view.start, y0: yScale };
+      drag = { zone: zoneOf(e), x: e.clientX, y: e.clientY, span: view.end - view.start,
+               man: yManual ? { lo: yManual.lo, hi: yManual.hi } : null };
     });
     window.addEventListener('mousemove', (e) => {
       if (!drag || !lastData || !view) return;
       const len = lastData.prices.length, r = canvas.getBoundingClientRect();
       if (drag.zone === 'price') {                    // drag down = zoom out
-        yScale = clampY(drag.y0 * Math.pow(1.005, e.clientY - drag.y));
+        if (!drag.man) { ensureManual(); drag.man = yManual ? { lo: yManual.lo, hi: yManual.hi } : null; }
+        if (drag.man) {
+          const f = Math.pow(1.005, e.clientY - drag.y);
+          const mid = (drag.man.lo + drag.man.hi) / 2;
+          const half = Math.max(1e-6, ((drag.man.hi - drag.man.lo) / 2) * f);
+          yManual = { lo: mid - half, hi: mid + half };
+        }
         drawChart(); return;
       }
       if (drag.zone === 'time') {                     // drag left = more history
@@ -391,8 +414,15 @@
       }
       const span = view.end - view.start;
       const dxBars = (e.clientX - drag.x) / plotWidth(r) * span;
-      drag.x = e.clientX;
       view = clampView(view.start - dxBars, view.end - dxBars, len);
+      // Vertical pan: shift the price window so the bars track the cursor.
+      // Dragging down raises the window, which moves the candles down.
+      const dy = e.clientY - drag.y;
+      if (dy && lastY && lastY.plotH > 0 && ensureManual()) {
+        const shift = dy * (yManual.hi - yManual.lo) / lastY.plotH;
+        yManual = { lo: yManual.lo + shift, hi: yManual.hi + shift };
+      }
+      drag.x = e.clientX; drag.y = e.clientY;
       drawChart();
     });
     window.addEventListener('mouseup', () => { drag = null; });
@@ -402,7 +432,7 @@
       canvas.style.cursor = z === 'price' ? 'ns-resize' : z === 'time' ? 'ew-resize' : 'crosshair';
     });
     canvas.addEventListener('dblclick', (e) => {
-      if (zoneOf(e) === 'price') yScale = 1; else { resetView(); yScale = 1; }
+      if (zoneOf(e) === 'price') yManual = null; else resetView();   // back to auto-fit
       drawChart();
     });
   })();
