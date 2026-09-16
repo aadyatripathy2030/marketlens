@@ -88,7 +88,7 @@ const RISK = {
   daytrade: 'High risk. Most day traders lose money over time. This model reads DAILY bars — real day trading needs intraday (minute/hour) data, which you can enable with a market-data key.',
   longterm: 'Even long-term trends reverse, and past performance does not guarantee future returns. Diversify; do your own research.',
 };
-const SHORT_RISK = ' ⚠️ Selling short adds UNLIMITED loss potential — a stock can keep rising with no ceiling — plus borrow fees, margin calls, and short-squeeze risk.';
+const SHORT_RISK = ' Selling short adds UNLIMITED loss potential — a stock can keep rising with no ceiling — plus borrow fees, margin calls, and short-squeeze risk.';
 
 // Normalize a direction; long-term is always long.
 function dirOf(strategy, direction) { return strategy === 'longterm' ? 'long' : (direction === 'short' ? 'short' : 'long'); }

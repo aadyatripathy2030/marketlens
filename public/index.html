@@ -11,10 +11,10 @@
 <div class="gate" id="gate">
   <div class="gate-card">
     <div class="gate-brand">MarketLens</div>
-    <p class="gate-tag">AI-powered stock analysis — for education, not advice.</p>
+    <p class="gate-tag">Price charts, technical indicators, and a written read of them. For learning, not for trading.</p>
     <div class="gate-terms">
       <p><strong>Please read and agree before continuing.</strong></p>
-      <p>MarketLens is an <strong>educational and informational tool only</strong>. Nothing here is financial, investment, legal, or tax advice, and no content is a recommendation to buy, sell, or hold any security. The AI scores, ratings, forecasts, and analyses are mechanical outputs that are <strong>frequently wrong</strong> — no tool can reliably predict markets.</p>
+      <p>MarketLens is an <strong>educational and informational tool only</strong>. Nothing here is financial, investment, legal, or tax advice, and no content is a recommendation to buy, sell, or hold any security. The scores, ratings, forecasts, and written analyses are mechanical outputs that are <strong>frequently wrong</strong> — no tool can reliably predict markets.</p>
       <p>All investing involves risk, including the possible <strong>loss of the money you invest</strong>. You alone are responsible for your decisions and their outcomes. To the fullest extent permitted by law, MarketLens and its creators are <strong>not liable for any losses, damages, or costs</strong> arising from your use of this tool or your reliance on its content.</p>
       <p>By continuing, you confirm you are using MarketLens for personal, educational purposes and accept these terms.</p>
     </div>
@@ -27,18 +27,18 @@
         <button type="button" class="btn btn-primary btn-block" id="gateSignin">Sign in</button>
         <button type="button" class="btn btn-ghost btn-block" id="gateSignup">Create account</button>
       </div>
-      <a href="#" class="gate-guest" id="gateGuest">Continue without an account →</a>
+      <button type="button" class="gate-guest" id="gateGuest">Continue without an account</button>
     </div>
-    <p class="gate-note">🔒 Please don't reuse a real banking or trading password — this is a demo login.</p>
+    <p class="gate-note">Please don’t reuse a real banking or trading password here. This is a demo login.</p>
   </div>
 </div>
 
 <header class="topbar">
-  <a class="brand" href="#" data-view="home">MarketLens</a>
+  <a class="brand" data-view="home">MarketLens</a>
   <nav class="nav" id="nav">
     <a class="nav-link active" data-view="home">Home</a>
     <a class="nav-link" data-view="analyze">Analyze</a>
-    <a class="nav-link nav-ai" data-view="chat">✨ AI Analyst</a>
+    <a class="nav-link" data-view="chat">Ask Claude</a>
     <a class="nav-link" data-view="compare">Compare</a>
     <a class="nav-link" data-view="screener">Screener</a>
     <a class="nav-link" data-view="markets">Markets</a>
@@ -57,14 +57,14 @@
   <!-- HOME -->
   <section class="view" id="view-home">
     <div class="hero">
-      <h1 class="hero-h">Invest Smarter With <span class="grad">AI.</span></h1>
-      <p class="hero-sub">Analyze stocks, understand markets, and discover opportunities with AI-powered financial intelligence.</p>
+      <h1 class="hero-h">Look up a ticker.</h1>
+      <p class="hero-sub">MarketLens pulls the price history, computes SMA 20/50/200, RSI, MACD, Bollinger bands, ATR, VWAP, support and resistance, draws them on a candlestick chart, and writes up what they say. It is a study tool. The indicators disagree with each other often, and the score built from them is wrong often.</p>
       <form class="hero-search" id="heroForm">
         <input id="heroInput" class="input" placeholder="Search a ticker or company — AAPL, Tesla, NVDA…" autocomplete="off" maxlength="12" />
-        <button type="submit" class="btn btn-primary">Analyze a Stock →</button>
+        <button type="submit" class="btn btn-primary">Analyze</button>
       </form>
       <div class="hero-cta">
-        <button type="button" class="btn btn-ghost" id="heroMarkets">Explore Markets</button>
+        <button type="button" class="btn btn-ghost" id="heroMarkets">Indices &amp; trending</button>
         <span class="hero-examples" id="heroExamples"></span>
       </div>
     </div>
@@ -89,8 +89,8 @@
 
     <div class="control-row">
       <div class="strat" id="strat" role="tablist" aria-label="Strategy">
-        <button class="strat-btn active" data-mode="daytrade" role="tab">⚡ Day trading<small>Short-term momentum</small></button>
-        <button class="strat-btn" data-mode="longterm" role="tab">🌱 Long-term<small>50 / 200-day trend</small></button>
+        <button class="strat-btn active" data-mode="daytrade" role="tab">Day trading<small>Short-term momentum</small></button>
+        <button class="strat-btn" data-mode="longterm" role="tab">Long-term<small>50 / 200-day trend</small></button>
       </div>
     </div>
     <div class="error hidden" id="error"></div>
@@ -111,7 +111,6 @@
         </div>
         <p class="reason" id="reason"></p>
         <div class="card ai-score-card">
-          <span class="ai-badge">✨ AI Powered</span>
           <div class="gauge">
             <svg width="118" height="118" viewBox="0 0 118 118">
               <circle cx="59" cy="59" r="52" fill="none" stroke="var(--card-hi)" stroke-width="10"></circle>
@@ -120,7 +119,7 @@
             <div class="gauge-num"><div class="gauge-score" id="gScore">—</div><div class="gauge-of">/ 100</div></div>
           </div>
           <div class="ai-score-info">
-            <div class="ai-score-lead">AI Score · Recommendation</div>
+            <div class="ai-score-lead">Indicator score</div>
             <div class="ai-rec" id="aiRec">—</div>
             <div class="ai-score-meta"><span>Confidence <b id="aiConf">—</b></span><span>Risk <b id="aiRisk">—</b></span></div>
           </div>
@@ -129,7 +128,7 @@
         <div class="card chart-card">
           <div class="chart-top">
             <div class="overlays" id="overlays" aria-label="Toggle chart layers">
-              <button type="button" class="ov active" data-k="type" id="ovType">📊 Candles</button>
+              <button type="button" class="ov active" data-k="type" id="ovType">Candles</button>
               <button type="button" class="ov active" data-k="fast"><i style="background:var(--sma20)"></i><span id="ovFast">SMA</span></button>
               <button type="button" class="ov active" data-k="slow"><i style="background:var(--sma50)"></i><span id="ovSlow">SMA</span></button>
               <button type="button" class="ov active" data-k="proj"><i class="dashed" style="background:var(--forecast)"></i>Projection</button>
@@ -171,17 +170,17 @@
         <p class="risk hidden" id="risk"></p>
 
         <div class="card">
-          <div class="section-h">📊 Technical analysis <span class="sub">plain-English read of every signal</span></div>
+          <div class="section-h">Technical analysis <span class="sub">what each indicator reads right now</span></div>
           <div class="tech-grid" id="techGrid"></div>
         </div>
 
         <div class="card">
-          <div class="section-h ai">🔮 AI price forecast <span class="ai-badge">✨ AI</span> <span class="sub">±1σ ≈ 68% range · model estimate, not a promise</span></div>
+          <div class="section-h">Price projection <span class="sub">a straight line fitted to recent closes, ±1σ ≈ 68% of outcomes if the past volatility holds</span></div>
           <div class="bands" id="bands"></div>
         </div>
 
         <div class="card">
-          <div class="section-h ai">🧠 AI investment thesis <span class="ai-badge">✨ AI</span></div>
+          <div class="section-h">Bull and bear case <span class="sub">drawn from the indicators above</span></div>
           <div class="thesis">
             <div class="thesis-col bull"><div class="thesis-h">▲ Bull case</div><ul id="bullList"></ul></div>
             <div class="thesis-col bear"><div class="thesis-h">▼ Bear case</div><ul id="bearList"></ul></div>
@@ -190,32 +189,32 @@
         </div>
 
         <div class="card hidden" id="fundCard">
-          <div class="section-h">🏢 Fundamentals <span class="sub" id="fundProfile"></span></div>
+          <div class="section-h">Fundamentals <span class="sub" id="fundProfile"></span></div>
           <div class="tech-grid" id="fundGrid"></div>
         </div>
 
         <div class="card hidden" id="newsCard">
-          <div class="section-h">📰 Latest news</div>
+          <div class="section-h">Latest news</div>
           <div class="news-list" id="newsList"></div>
         </div>
       </div>
 
       <aside class="sidebar">
         <div class="card ai-card">
-          <div class="ai-head">🤖 AI Analysis <span class="ai-badge">✨ AI</span> <span class="tag" id="aiTag"></span></div>
+          <div class="ai-head">Written summary <span class="ai-badge" id="aiTag"></span></div>
           <p class="ai-body" id="aiBody">Loading…</p>
         </div>
         <p class="note" id="note"></p>
 
         <div class="card ai-card upload-card">
-          <div class="ai-head">🖼️ AI chart-image reader <span class="ai-badge">✨ AI</span></div>
-          <p class="upload-sub">Upload a screenshot of any chart and Claude will read the trend and give a Buy / Sell / Hold lean.</p>
+          <div class="ai-head">Read a chart screenshot</div>
+          <p class="upload-sub">Upload a screenshot of a chart. Claude reads the trend off the picture alone — no price data behind it — and gives a buy / sell / hold lean.</p>
           <label class="dropzone" id="dropzone">
             <input type="file" id="imgInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
             <span id="dropText">Click to choose an image, or drag one here</span>
             <img id="imgPreview" class="hidden" alt="chart preview" />
           </label>
-          <button class="btn btn-ai btn-block hidden" id="imgBtn">✨ Analyze image</button>
+          <button class="btn btn-ai btn-block hidden" id="imgBtn">Analyze image</button>
           <p class="ai-body img-result hidden" id="imgResult"></p>
         </div>
       </aside>
@@ -226,14 +225,14 @@
   <!-- AI ANALYST CHAT -->
   <section class="view hidden" id="view-chat">
     <div class="chat-wrap">
-      <div class="chat-head">✨ AI Analyst <span class="ai-badge">AI</span> <span class="chat-sub">Ask about any stock or market question — grounded in live prices.</span></div>
+      <div class="chat-head">Ask Claude <span class="chat-sub">Questions about a stock or the market. Live prices are passed in where the app has them.</span></div>
       <div class="chat-msgs" id="chatMsgs"></div>
       <div class="chat-suggest" id="chatSuggest"></div>
       <form class="chat-input" id="chatForm">
         <input id="chatInput" class="input" placeholder="Ask anything — “Should I buy Apple?”, “Compare NVDA vs AMD”…" autocomplete="off" />
         <button type="submit" class="btn btn-ai" id="chatSend">Send</button>
       </form>
-      <p class="chat-note">Educational information, not financial advice. The AI can be wrong.</p>
+      <p class="chat-note">Educational information, not financial advice. Claude gets things wrong.</p>
     </div>
   </section>
 
@@ -308,7 +307,7 @@
   <!-- PRICING -->
   <section class="view hidden" id="view-pricing">
     <h1 class="view-h">Plans</h1>
-    <p class="learn-lead" id="pricingLead">Upgrade to Pro to support MarketLens and unlock everything.</p>
+    <p class="learn-lead" id="pricingLead">Every feature is free, and Pro does not unlock anything extra. It exists so people who find this useful can help cover the data and model bills.</p>
     <div class="pricing" id="pricingBody"></div>
   </section>
 
@@ -325,7 +324,7 @@
     <div id="learnHost"></div>
   </section>
 
-  <p class="disclaimer">⚠️ For education only — <strong>not financial advice</strong>. The Buy / Sell / Hold verdict is a mechanical score from past-price indicators (and, for images, a read of one picture). Signals like these are wrong <em>often</em> — no tool reliably predicts markets. This is not a recommendation to trade; decisions and their consequences are yours alone. Never trade based on this tool.</p>
+  <p class="disclaimer">For education only — <strong>not financial advice</strong>. The Buy / Sell / Hold verdict is a mechanical score from past-price indicators (and, for images, a read of one picture). Signals like these are wrong <em>often</em> — no tool reliably predicts markets. This is not a recommendation to trade; decisions and their consequences are yours alone. Never trade based on this tool.</p>
 </main>
 
 <div class="modal-overlay hidden" id="authModal">
@@ -339,8 +338,8 @@
       <div class="auth-err hidden" id="authErr"></div>
       <button type="submit" class="btn btn-primary btn-block" id="authSubmit">Sign in</button>
     </form>
-    <p class="auth-toggle"><span id="authToggleText">New to MarketLens?</span> <a href="#" id="authToggle">Create an account</a></p>
-    <p class="auth-note">🔒 Never enter a real trading or bank password here — this is a demo. Passwords are hashed, never stored in plain text.</p>
+    <p class="auth-toggle"><span id="authToggleText">New to MarketLens?</span> <button type="button" class="link-btn" id="authToggle">Create an account</button></p>
+    <p class="auth-note">Never enter a real trading or bank password here. This is a demo; passwords are hashed, never stored in plain text.</p>
   </div>
 </div>
 

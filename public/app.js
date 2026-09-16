@@ -167,7 +167,7 @@
     const k = b.dataset.k;
     if (k === 'type') {
       chartType = chartType === 'candle' ? 'line' : 'candle';
-      $('ovType').textContent = chartType === 'candle' ? '📊 Candles' : '📈 Line';
+      $('ovType').textContent = chartType === 'candle' ? 'Candles' : 'Line';
     } else {
       show[k] = !show[k];
       b.classList.toggle('active', show[k]);
@@ -227,7 +227,7 @@
     const Y = (v) => padT + plotH * (1 - (v - lo) / (hi - lo));
 
     // grid + y labels
-    ctx.strokeStyle = col('--border'); ctx.fillStyle = col('--muted'); ctx.font = '11px Inter, sans-serif'; ctx.lineWidth = 1;
+    ctx.strokeStyle = col('--border'); ctx.fillStyle = col('--muted'); ctx.font = '11px ui-monospace, Menlo, monospace'; ctx.lineWidth = 1;
     for (let g = 0; g <= 4; g++) {
       const val = lo + (hi - lo) * g / 4, y = Y(val);
       ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
@@ -413,7 +413,7 @@
       const r = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) });
       const j = await r.json();
       $('aiBody').textContent = j.summary || 'No analysis available.';
-      $('aiTag').textContent = j.source === 'ai' ? 'AI-written' : 'rule-based';
+      $('aiTag').textContent = j.source === 'ai' ? 'written by Claude' : 'rule-based fallback — no model key set';
       $('bullList').innerHTML = (j.bull && j.bull.length ? j.bull : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
       $('bearList').innerHTML = (j.bear && j.bear.length ? j.bear : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
       $('conclusion').textContent = j.conclusion || '';
@@ -454,7 +454,7 @@
       const j = await r.json();
       $('imgResult').textContent = j.summary || j.error || 'No analysis available.';
     } catch (e) { $('imgResult').textContent = 'Analysis unavailable.'; }
-    finally { $('imgResult').classList.remove('hidden'); $('imgBtn').disabled = false; $('imgBtn').textContent = '✨ Analyze image'; }
+    finally { $('imgResult').classList.remove('hidden'); $('imgBtn').disabled = false; $('imgBtn').textContent = 'Analyze image'; }
   });
 
   // ---- Accounts + watchlist ----
@@ -465,7 +465,7 @@
     if (currentUser) {
       const isPro = currentUser.plan === 'pro';
       const badge = `<span class="plan ${isPro ? 'pro' : ''}">${isPro ? 'PRO' : 'FREE'}</span>`;
-      const upgrade = (!isPro && billingOn) ? `<button class="upgrade" id="upgradeNav">✨ Upgrade</button>` : '';
+      const upgrade = (!isPro && billingOn) ? `<button class="upgrade" id="upgradeNav">Upgrade</button>` : '';
       el.innerHTML = badge + upgrade + `<span class="email">${esc(currentUser.email)}</span><button class="link-btn" id="logoutBtn">Log out</button>`;
       $('logoutBtn').addEventListener('click', logout);
       if ($('upgradeNav')) $('upgradeNav').addEventListener('click', () => showView('pricing'));
@@ -620,14 +620,14 @@
   }
   function renderChat() {
     const el = $('chatMsgs');
-    if (!chatHistory.length) { el.innerHTML = `<div class="chat-empty">Ask me about any stock or market question.<br>I’ll ground my answer in live prices where I can.</div>`; return; }
+    if (!chatHistory.length) { el.innerHTML = `<div class="chat-empty">Claude sees the live quote for any ticker you name here, and the stock you last analyzed. Nothing else from your account is sent.</div>`; return; }
     el.innerHTML = chatHistory.map(m => `<div class="bubble ${m.role === 'user' ? 'user' : 'ai'}${m.thinking ? ' thinking' : ''}">${esc(m.content)}</div>`).join('');
     el.scrollTop = el.scrollHeight;
   }
   function chatContext() {
     const d = lastData; if (!d) return '';
     const r = d.rating || {}, t = d.tech || {};
-    return `The user is currently viewing ${d.symbol} at ${(+d.latest).toFixed(2)} ${d.currency} (${d.changePct.toFixed(2)}% today). MarketLens AI score ${r.score}/100 = "${r.label}", confidence ${r.confidence}%, risk ${r.risk}. RSI ${t.rsi14}, trend ${t.trend ? t.trend.strength + '/100 ' + t.trend.direction : 'n/a'}.`;
+    return `The user is currently viewing ${d.symbol} at ${(+d.latest).toFixed(2)} ${d.currency} (${d.changePct.toFixed(2)}% today). MarketLens indicator score ${r.score}/100 = "${r.label}", confidence ${r.confidence}%, risk ${r.risk}. RSI ${t.rsi14}, trend ${t.trend ? t.trend.strength + '/100 ' + t.trend.direction : 'n/a'}.`;
   }
   async function sendChat() {
     const text = $('chatInput').value.trim();
@@ -677,7 +677,7 @@
       rows.map(r => `<th data-s="${esc(r.symbol)}">${esc(r.symbol)}<span class="ct-name">${esc(r.name || '')}</span></th>`).join('') + `</tr></thead><tbody>`;
     html += ctRow('Price', rows.map(r => '$' + (+r.price).toFixed(2)));
     html += ctRow('Change', rows.map(r => `<span class="${r.changePct >= 0 ? 'up' : 'down'}">${r.changePct >= 0 ? '+' : ''}${r.changePct.toFixed(2)}%</span>`), true);
-    html += ctRow('AI Score', rows.map(r => `<span class="ct-score">${r.rating.score}/100</span>`), true);
+    html += ctRow('Indicator score', rows.map(r => `<span class="ct-score">${r.rating.score}/100</span>`), true);
     html += ctRow('Recommendation', rows.map(r => `<span class="ct-rec ${r.rating.tone}">${esc(r.rating.label)}</span>`), true);
     html += ctRow('Risk', rows.map(r => esc(r.rating.risk || '—')));
     if (data.hasFundamentals) CMP_ROWS.forEach(label => html += ctRow(label, rows.map(r => r.metrics ? (r.metrics[label] || '—') : '—')));
@@ -739,17 +739,17 @@
   function renderPricing() {
     const pro = !!(currentUser && currentUser.plan === 'pro');
     const li = (arr) => arr.map(([t, on]) => `<li class="${on ? '' : 'off'}">${esc(t)}</li>`).join('');
-    const freeList = [['AI stock analysis, scores & thesis', 1], ['Live charts, markets & fundamentals', 1], ['AI Analyst chat', 1], ['Watchlist & price alerts', 1], ['Screener & compare', 1], ['Support the project', 0]];
-    const proList = [['Everything in Free', 1], ['Unlimited AI analysis & chat', 1], ['Priority processing', 1], ['Early access to new features', 1], ['Support MarketLens ❤️', 1]];
+    const freeList = [['Indicator scores, bull/bear case, written summary', 1], ['Charts, markets, fundamentals and news', 1], ['Ask Claude, chart-image reading', 1], ['Watchlist and price alerts', 1], ['Screener and side-by-side compare', 1]];
+    const proList = [['The same features as Free — nothing is held back', 1], ['Helps cover the price data and model bills', 1], ['Cancel from the billing portal whenever', 1]];
     let proAction;
     const periods = [['weekly', 'Weekly'], ['monthly', 'Monthly'], ['yearly', 'Yearly']].filter(([k]) => billingPlans && billingPlans[k]);
     if (!currentUser) proAction = `<button class="btn btn-ai btn-block" id="signinUpgrade">Sign in to upgrade</button>`;
-    else if (pro) proAction = `<div class="plan-current">✓ You’re on Pro — thank you!</div><button class="btn btn-ghost btn-block" id="manageBtn">Manage subscription</button>`;
-    else if (periods.length) proAction = periods.map(([k, label]) => `<button class="btn btn-ai btn-block plan-btn" data-plan="${k}" style="margin-bottom:8px">Upgrade — ${label} →</button>`).join('');
+    else if (pro) proAction = `<div class="plan-current">You’re on Pro. Thank you.</div><button class="btn btn-ghost btn-block" id="manageBtn">Manage subscription</button>`;
+    else if (periods.length) proAction = periods.map(([k, label]) => `<button class="btn btn-ai btn-block plan-btn" data-plan="${k}" style="margin-bottom:8px">${label}</button>`).join('');
     else proAction = `<div class="plan-current">Billing isn’t set up yet.</div>`;
     $('pricingBody').innerHTML = `
       <div class="plan-card"><div class="plan-name">Free</div><div class="plan-price">$0</div><ul class="plan-list">${li(freeList)}</ul>${pro ? '' : '<div class="plan-current">Your current plan</div>'}</div>
-      <div class="plan-card pro"><div class="plan-name">✨ Pro</div><div class="plan-price">Pro <small>billed via Stripe</small></div><ul class="plan-list">${li(proList)}</ul>${proAction}</div>`;
+      <div class="plan-card pro"><div class="plan-name">Pro</div><div class="plan-price">Pro <small>billed via Stripe</small></div><ul class="plan-list">${li(proList)}</ul>${proAction}</div>`;
     if ($('signinUpgrade')) $('signinUpgrade').addEventListener('click', () => openAuth('login'));
     if ($('manageBtn')) $('manageBtn').addEventListener('click', openPortal);
     $('pricingBody').querySelectorAll('.plan-btn').forEach(b => b.addEventListener('click', () => startCheckout(b.dataset.plan, b)));
@@ -790,7 +790,7 @@
   const LESSONS = window.LESSONS || [];
   function renderLearnGrid() {
     $('learnHost').innerHTML = `<div class="learn-grid">` + LESSONS.map(l =>
-      `<div class="learn-card" data-id="${l.id}"><div class="learn-icon">${l.icon}</div><div class="learn-title">${esc(l.title)}</div><div class="learn-meta">${esc(l.level)} · ${l.minutes} min · ${l.quiz.length} Q</div><p class="learn-desc">${esc(l.intro)}</p></div>`).join('') + `</div>`;
+      `<div class="learn-card" data-id="${l.id}"><div class="learn-title">${esc(l.title)}</div><div class="learn-meta">${esc(l.level)} · ${l.minutes} min · ${l.quiz.length} Q</div><p class="learn-desc">${esc(l.intro)}</p></div>`).join('') + `</div>`;
     $('learnHost').querySelectorAll('.learn-card').forEach(c => c.addEventListener('click', () => openLesson(c.dataset.id)));
   }
   function openLesson(id) {
@@ -800,7 +800,7 @@
     html += `<h2 class="learn-h">${l.icon} ${esc(l.title)}</h2><div class="learn-meta">${esc(l.level)} · ${l.minutes} min read</div>`;
     html += l.sections.map(s => `<div class="learn-section"><h3>${esc(s.h)}</h3><p>${esc(s.p)}</p></div>`).join('');
     html += `<div class="card quiz" id="quiz"></div>`;
-    html += `<button type="button" class="btn btn-ai learn-ask" id="learnAsk">✨ Ask the AI Analyst about this</button></div>`;
+    html += `<button type="button" class="btn btn-ai learn-ask" id="learnAsk">Ask Claude about this lesson</button></div>`;
     $('learnHost').innerHTML = html;
     $('learnBack').addEventListener('click', renderLearnGrid);
     $('learnAsk').addEventListener('click', () => { showView('chat'); $('chatInput').value = `Explain "${l.title}" simply, with an example.`; sendChat(); });
@@ -809,7 +809,7 @@
   function renderQuiz(l) {
     const host = $('quiz');
     const score = { right: 0, done: 0 };
-    host.innerHTML = `<div class="quiz-h">📝 Quick quiz</div>` + l.quiz.map((q, qi) =>
+    host.innerHTML = `<div class="quiz-h">Quick quiz</div>` + l.quiz.map((q, qi) =>
       `<div class="quiz-q" data-qi="${qi}"><div class="quiz-question">${qi + 1}. ${esc(q.q)}</div><div class="quiz-opts">${q.options.map((o, oi) => `<button type="button" class="quiz-opt" data-qi="${qi}" data-oi="${oi}">${esc(o)}</button>`).join('')}</div><div class="quiz-why hidden" data-why="${qi}"></div></div>`).join('') + `<div class="quiz-score hidden" id="quizScore"></div>`;
     host.querySelectorAll('.quiz-opt').forEach(btn => btn.addEventListener('click', () => {
       const qi = +btn.dataset.qi, oi = +btn.dataset.oi, q = l.quiz[qi];
@@ -853,13 +853,13 @@
   const deep = params.get('symbol'), billing = params.get('billing');
   if (billing === 'success') {
     showView('pricing');
-    $('pricingLead').textContent = '🎉 Thanks for upgrading! Your Pro plan is activating (this can take a few seconds)…';
+    $('pricingLead').textContent = 'Thanks for upgrading. Your Pro plan is activating; this can take a few seconds.';
     let tries = 0;
     const iv = setInterval(async () => {
       await checkAuth(); tries++;
       if ((currentUser && currentUser.plan === 'pro') || tries > 6) {
         clearInterval(iv); renderPricing();
-        if (currentUser && currentUser.plan === 'pro') $('pricingLead').textContent = '🎉 You’re on Pro — thank you for supporting MarketLens!';
+        if (currentUser && currentUser.plan === 'pro') $('pricingLead').textContent = 'You’re on Pro. Thank you for supporting MarketLens.';
       }
     }, 2500);
   } else if (billing === 'cancel') {

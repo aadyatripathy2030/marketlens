@@ -157,7 +157,7 @@ function ruleBasedSummary(p) {
   const sma = t.sma || {};
   const trendUp = sma[50] != null && sma[200] != null ? sma[50] > sma[200] : null;
   const rsi = t.rsi14;
-  const lead = `${sym} earns an AI technical score of ${r.score}/100 — a "${r.label}" read, with ${r.confidence}% of the signals in agreement. `;
+  const lead = `${sym} scores ${r.score}/100 on the technical composite — a "${r.label}" read, with ${r.confidence}% of the signals in agreement. `;
   const trend = trendUp == null ? '' : trendUp ? 'The long-term trend is up (50-day above the 200-day), ' : 'The long-term trend is down (50-day below the 200-day), ';
   const mom = rsi == null ? '' : rsi >= 70 ? `and momentum is hot — RSI at ${rsi} is overbought, so a pullback wouldn't surprise. `
     : rsi <= 30 ? `and momentum is washed out — RSI at ${rsi} is oversold, which can precede a bounce. `
@@ -216,7 +216,7 @@ async function handleAnalyze(req, res) {
       const rep = await callClaudeReport(p);
       if (!rep.summary) throw new Error('empty AI report');
       return json(res, 200, { ...rep, source: 'ai' });
-    } catch (e) { return json(res, 200, { ...ruleBasedReport(p), source: 'rule', note: 'AI unavailable (' + e.message + ') — rule-based report.' }); }
+    } catch (e) { return json(res, 200, { ...ruleBasedReport(p), source: 'rule', note: 'Claude was unreachable (' + e.message + '); this is the rule-based report.' }); }
   }
   return json(res, 200, { ...ruleBasedReport(p), source: 'rule', note: 'Set ANTHROPIC_API_KEY for an AI-written report.' });
 }
@@ -345,7 +345,7 @@ async function handleChat(req, res) {
     .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
     .slice(-12).map(m => ({ role: m.role, content: m.content.slice(0, 4000) }));
   if (!msgs.length) return json(res, 400, { error: 'No message.' });
-  if (!ANTHROPIC_API_KEY) return json(res, 200, { reply: 'The AI Analyst needs a Claude key (ANTHROPIC_API_KEY) configured on the server. The stock analysis features work without it.', source: 'none' });
+  if (!ANTHROPIC_API_KEY) return json(res, 200, { reply: 'Chat needs a Claude key (ANTHROPIC_API_KEY) set on the server. Everything else works without one.', source: 'none' });
 
   const lastUser = [...msgs].reverse().find(m => m.role === 'user');
   const tickers = extractTickers(lastUser && lastUser.content);
@@ -356,7 +356,7 @@ async function handleChat(req, res) {
       liveCtx += ' Live quotes — ' + qs.map(q => `${q.symbol} $${(+q.price).toFixed(2)} (${q.changePct >= 0 ? '+' : ''}${q.changePct.toFixed(2)}%)`).join(', ') + '.';
     } catch {}
   }
-  const system = 'You are the MarketLens AI Analyst — a sharp, friendly finance assistant for beginners and enthusiasts. Discuss stocks, markets, and investing concepts in clear plain English; explain what indicators or ratings suggest, compare companies, and lay out balanced bull/bear cases. Use any LIVE DATA provided. ALWAYS stay balanced, note uncertainty, and be explicit that this is educational information, NOT personalized financial advice — never tell the user what they personally should do with their money, and never promise returns. Keep replies concise: a short paragraph or a few tight bullets.'
+  const system = 'You are the analyst chat inside MarketLens, a stock-charting tool — a friendly finance assistant for beginners and enthusiasts. Discuss stocks, markets, and investing concepts in clear plain English; explain what indicators or ratings suggest, compare companies, and lay out balanced bull/bear cases. Use any LIVE DATA provided. ALWAYS stay balanced, note uncertainty, and be explicit that this is educational information, NOT personalized financial advice — never tell the user what they personally should do with their money, and never promise returns. Keep replies concise: a short paragraph or a few tight bullets.'
     + (liveCtx ? ('\n\nLIVE DATA (as of now): ' + liveCtx) : '');
   const body = JSON.stringify({ model: AI_MODEL, max_tokens: 800, system, messages: msgs });
   try {
@@ -365,7 +365,7 @@ async function handleChat(req, res) {
     const text = j && j.content && j.content[0] && j.content[0].text;
     if (!text) throw new Error(j && j.error ? (j.error.message || 'AI error') : 'No AI response');
     return json(res, 200, { reply: text.trim(), source: 'ai', grounded: tickers });
-  } catch (e) { return json(res, 200, { reply: 'Sorry — I hit an error reaching the AI (' + e.message + '). Please try again.', source: 'error' }); }
+  } catch (e) { return json(res, 200, { reply: 'I hit an error reaching Claude (' + e.message + '). Try again.', source: 'error' }); }
 }
 
 // ---- Fundamentals + news (Financial Modeling Prep) ----

@@ -2,7 +2,7 @@
 // Educational only — not financial advice.
 window.LESSONS = [
   {
-    id: 'basics', icon: '📈', title: 'Stock Market Basics', level: 'Beginner', minutes: 5,
+    id: 'basics', title: 'Stock Market Basics', level: 'Beginner', minutes: 5,
     intro: 'What a stock is, why prices move, and how the market actually works.',
     sections: [
       { h: 'What is a stock?', p: 'A stock (or share) is a small piece of ownership in a company. If a company has 1 billion shares and you own 100, you own a tiny slice of its future profits and assets.' },
@@ -17,7 +17,7 @@ window.LESSONS = [
     ],
   },
   {
-    id: 'technical', icon: '📊', title: 'Technical Analysis', level: 'Intermediate', minutes: 6,
+    id: 'technical', title: 'Technical Analysis', level: 'Intermediate', minutes: 6,
     intro: 'Reading price charts — trends, moving averages, RSI, and MACD.',
     sections: [
       { h: 'The idea', p: 'Technical analysis studies price and volume patterns to gauge momentum and trend, on the theory that price already reflects what’s known. It’s about probabilities, not certainty.' },
@@ -32,7 +32,7 @@ window.LESSONS = [
     ],
   },
   {
-    id: 'fundamental', icon: '🏢', title: 'Fundamental Analysis', level: 'Intermediate', minutes: 6,
+    id: 'fundamental', title: 'Fundamental Analysis', level: 'Intermediate', minutes: 6,
     intro: 'Judging a business by its actual results — revenue, earnings, margins, and growth.',
     sections: [
       { h: 'The idea', p: 'Fundamental analysis values a company by its business: how much it earns, how fast it grows, how profitable and financially healthy it is — rather than its chart.' },
@@ -47,7 +47,7 @@ window.LESSONS = [
     ],
   },
   {
-    id: 'valuation', icon: '⚖️', title: 'Valuation', level: 'Intermediate', minutes: 6,
+    id: 'valuation', title: 'Valuation', level: 'Intermediate', minutes: 6,
     intro: 'Is a stock cheap or expensive? P/E, PEG, and discounted cash flow.',
     sections: [
       { h: 'Price vs value', p: 'A great company can be a poor investment if you overpay. Valuation asks whether today’s price is reasonable relative to what the business earns and how fast it grows.' },
@@ -62,7 +62,7 @@ window.LESSONS = [
     ],
   },
   {
-    id: 'statements', icon: '📄', title: 'Reading Financial Statements', level: 'Intermediate', minutes: 6,
+    id: 'statements', title: 'Reading Financial Statements', level: 'Intermediate', minutes: 6,
     intro: 'The three statements every investor should recognize.',
     sections: [
       { h: 'Income statement', p: 'Shows performance over a period: revenue at the top, then costs, ending in net income (the "bottom line"). It answers: did the company make money?' },
@@ -77,7 +77,7 @@ window.LESSONS = [
     ],
   },
   {
-    id: 'risk', icon: '🛡️', title: 'Risk Management', level: 'Beginner', minutes: 5,
+    id: 'risk', title: 'Risk Management', level: 'Beginner', minutes: 5,
     intro: 'Protecting your capital — diversification, position sizing, and volatility.',
     sections: [
       { h: 'Diversification', p: 'Don’t put everything in one stock or sector. Spreading across many holdings means one blow-up won’t sink you. It’s the closest thing to a free lunch in investing.' },
@@ -92,7 +92,7 @@ window.LESSONS = [
     ],
   },
   {
-    id: 'longterm', icon: '🌱', title: 'Long-Term Investing', level: 'Beginner', minutes: 5,
+    id: 'longterm', title: 'Long-Term Investing', level: 'Beginner', minutes: 5,
     intro: 'Why time in the market usually beats timing the market.',
     sections: [
       { h: 'Compounding', p: 'Returns earn returns. A sum growing ~8%/year roughly doubles every 9 years. The longer you stay invested, the more this snowball works for you.' },
@@ -107,7 +107,7 @@ window.LESSONS = [
     ],
   },
   {
-    id: 'dividend', icon: '💵', title: 'Dividend Investing', level: 'Beginner', minutes: 5,
+    id: 'dividend', title: 'Dividend Investing', level: 'Beginner', minutes: 5,
     intro: 'Earning cash income from stocks that pay you to hold them.',
     sections: [
       { h: 'What’s a dividend?', p: 'A dividend is a cash payment a company makes to shareholders, usually quarterly, from its profits. Not all companies pay them — many growth companies reinvest instead.' },
@@ -122,7 +122,7 @@ window.LESSONS = [
     ],
   },
   {
-    id: 'growth', icon: '🚀', title: 'Growth Investing', level: 'Intermediate', minutes: 5,
+    id: 'growth', title: 'Growth Investing', level: 'Intermediate', minutes: 5,
     intro: 'Buying fast-growing companies for future potential.',
     sections: [
       { h: 'The style', p: 'Growth investing targets companies expanding revenue and earnings quickly — often in tech or innovation — betting that rapid growth justifies a high price today.' },
@@ -137,7 +137,7 @@ window.LESSONS = [
     ],
   },
   {
-    id: 'value', icon: '🔍', title: 'Value Investing', level: 'Intermediate', minutes: 5,
+    id: 'value', title: 'Value Investing', level: 'Intermediate', minutes: 5,
     intro: 'Buying solid companies for less than they’re worth.',
     sections: [
       { h: 'The style', p: 'Value investing, associated with Warren Buffett and Benjamin Graham, seeks stocks trading below their intrinsic worth — buying a dollar for 70 cents and waiting for the gap to close.' },
@@ -152,7 +152,7 @@ window.LESSONS = [
     ],
   },
   {
-    id: 'options', icon: '🎯', title: 'Options (Advanced)', level: 'Advanced', minutes: 6,
+    id: 'options', title: 'Options (Advanced)', level: 'Advanced', minutes: 6,
     intro: 'Contracts that can hedge or speculate — powerful and risky.',
     sections: [
       { h: 'Calls & puts', p: 'A call option is the right to BUY a stock at a set "strike" price by a date; a put is the right to SELL. Buyers pay a premium for that right. They’re often used to speculate or to hedge.' },
