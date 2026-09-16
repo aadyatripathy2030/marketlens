@@ -132,6 +132,7 @@
               <button type="button" class="ov active" data-k="fast"><i style="background:var(--sma20)"></i><span id="ovFast">SMA</span></button>
               <button type="button" class="ov active" data-k="slow"><i style="background:var(--sma50)"></i><span id="ovSlow">SMA</span></button>
               <button type="button" class="ov active" data-k="proj"><i class="dashed" style="background:var(--forecast)"></i>Projection</button>
+              <button type="button" class="ov" id="ovColors">Colors</button>
             </div>
             <div class="chart-time">
               <div class="tf-group">
@@ -162,8 +163,21 @@
               </div>
             </div>
           </div>
+          <div class="color-panel hidden" id="colorPanel">
+            <div class="cp-row"><span class="cp-lbl">Up</span>
+              <label>Body <input type="color" data-c="upBody" /></label>
+              <label>Border <input type="color" data-c="upBorder" /></label>
+              <label>Wick <input type="color" data-c="upWick" /></label>
+            </div>
+            <div class="cp-row"><span class="cp-lbl">Down</span>
+              <label>Body <input type="color" data-c="downBody" /></label>
+              <label>Border <input type="color" data-c="downBorder" /></label>
+              <label>Wick <input type="color" data-c="downWick" /></label>
+            </div>
+            <button type="button" class="link-btn" id="cpReset">Reset to theme colors</button>
+          </div>
           <canvas id="chart"></canvas>
-          <p class="chart-hint">Scroll to zoom · drag to pan · double-click to reset · click the labels above to toggle layers</p>
+          <p class="chart-hint">Scroll to zoom · drag to pan · drag the price scale on the right or the time scale along the bottom to stretch that axis · double-click to reset</p>
         </div>
 
         <div class="tiles" id="tiles"></div>

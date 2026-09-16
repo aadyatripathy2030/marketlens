@@ -133,6 +133,23 @@
   let chartType = 'candle'; // 'candle' | 'line'
   const show = { fast: true, slow: true, proj: true }; // overlay visibility
 
+  // Axis gutters, TradingView-style: price scale down the right edge, time
+  // scale along the bottom. Dragging either one rescales that axis.
+  const AXIS_W = 58, AXIS_H = 26;
+  let yScale = 1;           // manual price-axis zoom; 1 = auto-fit to visible data
+  const clampY = (v) => Math.max(0.15, Math.min(8, v));
+
+  // Candle colours are user-adjustable per element (body / border / wick) and
+  // persist locally. Unset entries fall back to the theme's up/down colours.
+  const CANDLE_KEY = 'chartgauge_candle_colors';
+  let candleOverrides = null;
+  try { candleOverrides = JSON.parse(localStorage.getItem(CANDLE_KEY) || 'null'); } catch (e) {}
+  function defaultCandleColors() {
+    const g = col('--good'), b = col('--bad');
+    return { upBody: g, upBorder: g, upWick: g, downBody: b, downBorder: b, downWick: b };
+  }
+  const candleColors = () => Object.assign(defaultCandleColors(), candleOverrides || {});
+
   // Approx bars per trading day per interval, so a range like "6M" spans ~6
   // months of history regardless of the candle size.
   const BARS_PER_DAY = { '1min': 390, '5min': 78, '15min': 26, '30min': 13, '1h': 7, '4h': 2, '1day': 1, '1week': 0.2, '1month': 1 / 21 };
@@ -165,6 +182,7 @@
   // Overlay toggles: candles/line, each SMA, projection (redraw only, no refetch)
   $('overlays').querySelectorAll('.ov').forEach(b => b.addEventListener('click', () => {
     const k = b.dataset.k;
+    if (!k) return;                   // the Colors pill opens a panel instead
     if (k === 'type') {
       chartType = chartType === 'candle' ? 'line' : 'candle';
       $('ovType').textContent = chartType === 'candle' ? 'Candles' : 'Line';
@@ -174,6 +192,29 @@
     }
     drawChart();
   }));
+
+  // Candle colour controls (body / border / wick, per direction)
+  const cpInputs = () => $('colorPanel').querySelectorAll('input[data-c]');
+  function syncColorInputs() {
+    const c = candleColors();
+    cpInputs().forEach(i => { if (/^#[0-9a-f]{6}$/i.test(c[i.dataset.c] || '')) i.value = c[i.dataset.c]; });
+  }
+  $('ovColors').addEventListener('click', () => {
+    const open = $('colorPanel').classList.toggle('hidden') === false;
+    $('ovColors').classList.toggle('active', open);
+    if (open) syncColorInputs();
+  });
+  cpInputs().forEach(i => i.addEventListener('input', () => {
+    candleOverrides = Object.assign(candleColors(), { [i.dataset.c]: i.value });
+    try { localStorage.setItem(CANDLE_KEY, JSON.stringify(candleOverrides)); } catch (e) {}
+    if (chartType !== 'candle') { chartType = 'candle'; $('ovType').textContent = 'Candles'; }
+    drawChart();
+  }));
+  $('cpReset').addEventListener('click', () => {
+    candleOverrides = null;
+    try { localStorage.removeItem(CANDLE_KEY); } catch (e) {}
+    syncColorInputs(); drawChart();
+  });
 
   window.addEventListener('resize', drawChart);
 
@@ -219,19 +260,43 @@
     fc.forEach(v => vals.push(v));
     const min = Math.min(...vals), max = Math.max(...vals);
     const pad = (max - min) * 0.08 || 1;
-    const lo = min - pad, hi = max + pad;
-    const padL = 52, padR = 12, padT = 12, padB = 24;
+    // yScale stretches the auto-fitted range around its midpoint, so dragging
+    // the price axis compresses or expands the candles vertically.
+    const aLo = min - pad, aHi = max + pad;
+    const mid = (aLo + aHi) / 2, half = ((aHi - aLo) / 2) * yScale;
+    const lo = mid - half, hi = mid + half;
+    const padL = 8, padR = AXIS_W, padT = 12, padB = AXIS_H;
     const plotW = w - padL - padR, plotH = h - padT - padB;
     const total = bars.length + fc.length;
     const X = (i) => padL + (plotW * i) / (total - 1);
     const Y = (v) => padT + plotH * (1 - (v - lo) / (hi - lo));
+    const axX = padL + plotW, axY = padT + plotH;
 
-    // grid + y labels
-    ctx.strokeStyle = col('--border'); ctx.fillStyle = col('--muted'); ctx.font = '11px ui-monospace, Menlo, monospace'; ctx.lineWidth = 1;
+    ctx.font = '11px ui-monospace, Menlo, monospace'; ctx.lineWidth = 1;
+
+    // gutter separators
+    ctx.strokeStyle = col('--border-strong');
+    ctx.beginPath(); ctx.moveTo(axX + .5, padT); ctx.lineTo(axX + .5, axY); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(padL, axY + .5); ctx.lineTo(axX, axY + .5); ctx.stroke();
+
+    // horizontal grid + price labels in the right gutter
     for (let g = 0; g <= 4; g++) {
       const val = lo + (hi - lo) * g / 4, y = Y(val);
-      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
-      ctx.fillText(val.toFixed(2), 6, y + 4);
+      ctx.strokeStyle = col('--border');
+      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(axX, y); ctx.stroke();
+      ctx.fillStyle = col('--muted');
+      ctx.fillText(val.toFixed(2), axX + 7, y + 4);
+    }
+
+    // vertical grid + date labels in the bottom gutter
+    const ticks = Math.max(2, Math.min(6, Math.floor(plotW / 120)));
+    for (let t = 0; t < ticks; t++) {
+      const j = Math.round((bars.length - 1) * t / (ticks - 1));
+      const lbl = bars[j].date, lw = ctx.measureText(lbl).width;
+      ctx.strokeStyle = col('--border');
+      ctx.beginPath(); ctx.moveTo(X(j) + .5, padT); ctx.lineTo(X(j) + .5, axY + 4); ctx.stroke();
+      ctx.fillStyle = col('--muted');
+      ctx.fillText(lbl, Math.max(padL, Math.min(axX - lw, X(j) - lw / 2)), axY + 17);
     }
     function line(arr, offset, color, dashed) {
       ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash(dashed ? [5, 4] : []);
@@ -242,13 +307,21 @@
 
     if (chartType === 'candle') {
       const cw = Math.max(1, (plotW / total) * 0.7);
-      const upCol = col('--good'), downCol = col('--bad');
+      const cc = candleColors();
       bars.forEach((p, j) => {
-        const x = X(j), up = p.close >= p.open, c = up ? upCol : downCol;
-        ctx.strokeStyle = c; ctx.fillStyle = c; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(x, Y(p.high)); ctx.lineTo(x, Y(p.low)); ctx.stroke();
+        const x = X(j), up = p.close >= p.open;
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = up ? cc.upWick : cc.downWick;
+        ctx.beginPath(); ctx.moveTo(Math.round(x) + .5, Y(p.high)); ctx.lineTo(Math.round(x) + .5, Y(p.low)); ctx.stroke();
         const yO = Y(p.open), yC = Y(p.close);
-        ctx.fillRect(x - cw / 2, Math.min(yO, yC), cw, Math.max(1, Math.abs(yC - yO)));
+        const top = Math.min(yO, yC), hgt = Math.max(1, Math.abs(yC - yO));
+        ctx.fillStyle = up ? cc.upBody : cc.downBody;
+        ctx.fillRect(x - cw / 2, top, cw, hgt);
+        // the border only reads as a border once the candle is wide enough
+        if (cw >= 3 && hgt >= 3) {
+          ctx.strokeStyle = up ? cc.upBorder : cc.downBorder;
+          ctx.strokeRect(Math.round(x - cw / 2) + .5, Math.round(top) + .5, Math.round(cw) - 1, Math.round(hgt) - 1);
+        }
       });
     } else {
       line(bars.map(p => p.close), 0, col('--accent'));
@@ -258,46 +331,80 @@
     if (show.fast) line(visFast, 0, col('--sma20'));
     if (fc.length) line([bars[bars.length - 1].close].concat(fc), bars.length - 1, col('--forecast'), true);
 
-    // x labels (first + last visible date)
-    ctx.fillStyle = col('--muted');
-    ctx.fillText(bars[0].date, padL, h - 6);
-    const lastLbl = bars[bars.length - 1].date;
-    ctx.fillText(lastLbl, padL + plotW * (bars.length - 1) / (total - 1) - ctx.measureText(lastLbl).width, h - 6);
   }
 
   // ---- Interactive zoom / pan ----
+  // Three zones, as in TradingView: the plot pans, the right gutter scales
+  // price, the bottom gutter scales time.
   (function setupChartInteraction() {
     const canvas = $('chart');
+    const PAD_L = 8;
+    const zoneOf = (e) => {
+      const r = canvas.getBoundingClientRect();
+      if (e.clientX - r.left >= r.width - AXIS_W) return 'price';
+      if (e.clientY - r.top >= r.height - AXIS_H) return 'time';
+      return 'plot';
+    };
+    const plotWidth = (r) => Math.max(1, r.width - AXIS_W - PAD_L);
+    const clampView = (start, end, len) => {
+      const span = end - start;
+      if (start < 0) { start = 0; end = Math.min(len, span); }
+      if (end > len) { end = len; start = Math.max(0, len - span); }
+      return { start, end };
+    };
+
+    // Wheel deltas vary wildly by device (a line-mode mouse reports 3, a
+    // trackpad reports hundreds), so normalise to pixels, clamp momentum
+    // spikes, and scale exponentially — ~6% per notch instead of the old 15%.
     canvas.addEventListener('wheel', (e) => {
       if (!lastData || !view) return;
       e.preventDefault();
-      const len = lastData.prices.length;
-      const rect = canvas.getBoundingClientRect();
-      const frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+      const raw = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+      const step = Math.max(-60, Math.min(60, raw));
+      if (zoneOf(e) === 'price') { yScale = clampY(yScale * Math.pow(1.0009, step)); drawChart(); return; }
+      const len = lastData.prices.length, r = canvas.getBoundingClientRect();
+      const frac = Math.min(1, Math.max(0, (e.clientX - r.left - PAD_L) / plotWidth(r)));
       const span = view.end - view.start;
-      const newSpan = Math.max(10, Math.min(len, span * (e.deltaY > 0 ? 1.15 : 0.87)));
+      const newSpan = Math.max(10, Math.min(len, span * Math.pow(1.0006, step)));
       const anchor = view.start + frac * span;
-      let start = anchor - frac * newSpan, end = start + newSpan;
-      if (start < 0) { start = 0; end = newSpan; }
-      if (end > len) { end = len; start = len - newSpan; }
-      view = { start, end }; drawChart();
+      view = clampView(anchor - frac * newSpan, anchor - frac * newSpan + newSpan, len);
+      drawChart();
     }, { passive: false });
 
-    let dragging = false, dragX = 0;
-    canvas.addEventListener('mousedown', (e) => { dragging = true; dragX = e.clientX; });
-    window.addEventListener('mousemove', (e) => {
-      if (!dragging || !lastData || !view) return;
-      const len = lastData.prices.length, rect = canvas.getBoundingClientRect();
-      const span = view.end - view.start;
-      const dxBars = (e.clientX - dragX) / rect.width * span;
-      dragX = e.clientX;
-      let start = view.start - dxBars, end = view.end - dxBars;
-      if (start < 0) { start = 0; end = span; }
-      if (end > len) { end = len; start = len - span; }
-      view = { start, end }; drawChart();
+    let drag = null;
+    canvas.addEventListener('mousedown', (e) => {
+      if (!lastData || !view) return;
+      e.preventDefault();
+      drag = { zone: zoneOf(e), x: e.clientX, y: e.clientY, span: view.end - view.start, y0: yScale };
     });
-    window.addEventListener('mouseup', () => { dragging = false; });
-    canvas.addEventListener('dblclick', () => { resetView(); drawChart(); });
+    window.addEventListener('mousemove', (e) => {
+      if (!drag || !lastData || !view) return;
+      const len = lastData.prices.length, r = canvas.getBoundingClientRect();
+      if (drag.zone === 'price') {                    // drag down = zoom out
+        yScale = clampY(drag.y0 * Math.pow(1.005, e.clientY - drag.y));
+        drawChart(); return;
+      }
+      if (drag.zone === 'time') {                     // drag left = more history
+        const newSpan = Math.max(10, Math.min(len, drag.span * Math.pow(1.005, drag.x - e.clientX)));
+        view = clampView(view.end - newSpan, view.end, len);
+        drawChart(); return;
+      }
+      const span = view.end - view.start;
+      const dxBars = (e.clientX - drag.x) / plotWidth(r) * span;
+      drag.x = e.clientX;
+      view = clampView(view.start - dxBars, view.end - dxBars, len);
+      drawChart();
+    });
+    window.addEventListener('mouseup', () => { drag = null; });
+    canvas.addEventListener('mousemove', (e) => {
+      if (drag) return;
+      const z = zoneOf(e);
+      canvas.style.cursor = z === 'price' ? 'ns-resize' : z === 'time' ? 'ew-resize' : 'crosshair';
+    });
+    canvas.addEventListener('dblclick', (e) => {
+      if (zoneOf(e) === 'price') yScale = 1; else { resetView(); yScale = 1; }
+      drawChart();
+    });
   })();
 
   // Fundamentals + news (Financial Modeling Prep) — only refetched per ticker.
