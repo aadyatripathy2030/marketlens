@@ -396,6 +396,18 @@
     // Stop / target lines, drawn across the plot with a label in the gutter.
     if (show.levels && d.levels) {
       const L = d.levels;
+      // Targets bunch together when the risk is small next to the visible
+      // range, so labels get nudged apart; the lines stay at their true price.
+      const usedLabelY = [];
+      const freeY = (y) => {
+        let ly = y - 3;
+        for (let guard = 0; guard < 12; guard++) {
+          if (!usedLabelY.some(u => Math.abs(u - ly) < 11)) break;
+          ly -= 11;
+        }
+        usedLabelY.push(ly);
+        return ly;
+      };
       const mark = (price, color, label, dashed) => {
         if (!Number.isFinite(price) || price < lo || price > hi) return;   // off-screen
         const y = Y(price);
@@ -403,8 +415,10 @@
         ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash(dashed ? [4, 4] : []);
         ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(axX, y); ctx.stroke();
         ctx.restore();
+        const ly = freeY(y);
+        if (ly < padT + 8) return;                                          // no room left
         ctx.fillStyle = color; ctx.font = '10px ui-monospace, Menlo, monospace';
-        ctx.fillText(label, padL + 4, y - 3);
+        ctx.fillText(label, padL + 4, ly);
       };
       mark(L.stop, col('--bad'), 'STOP ' + L.stop.toFixed(2), false);
       L.targets.forEach(t => mark(t.price, col('--good'), t.r + 'R ' + t.price.toFixed(2), true));
