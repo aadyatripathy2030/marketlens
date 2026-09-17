@@ -805,21 +805,205 @@ async function handleWebhook(req, res) {
   res.writeHead(200); res.end('ok');
 }
 
-const GA_SNIPPET = GA_ID ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script>`
-  + `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_ID}');</script>` : '';
-function serveStatic(req, res) {
-  let urlPath = decodeURIComponent(req.url.split('?')[0]);
-  if (urlPath === '/') urlPath = '/index.html';
-  const filePath = path.join(PUBLIC, urlPath);
-  if (!filePath.startsWith(PUBLIC)) { res.writeHead(403); return res.end('403'); }
-  // Inject the Google Analytics tag into index.html (Measurement ID from env).
-  if (urlPath === '/index.html') {
-    return fs.readFile(filePath, 'utf8', (err, html) => {
-      if (err) { res.writeHead(404); return res.end('Not found'); }
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(html.replace('<!--GA-->', GA_SNIPPET));
+// ---- SEO ----
+// Every view used to live at "/", which left exactly one indexable URL and hid
+// the lesson prose behind client-side rendering. Each route below is a real URL
+// with its own title, description, canonical and structured data, and the
+// lessons are rendered into the HTML so they index without JavaScript.
+const SITE_NAME = 'ChartGauge';
+const siteOrigin = (req) => (req.headers['x-forwarded-proto'] || 'http') + '://' + (req.headers.host || 'chartgauge.com');
+
+const VIEW_SEO = {
+  '': { view: 'home', title: 'ChartGauge — stock charts, indicators and a plain-English read',
+    desc: 'Free stock and crypto charts with SMA, RSI, MACD, Bollinger bands, ATR and VWAP, plus ATR-based stop-loss and take-profit levels and a written read of what the indicators say. Educational, not financial advice.' },
+  'analyze': { view: 'analyze', title: 'Analyze a stock or crypto pair — ChartGauge',
+    desc: 'Enter a ticker or crypto pair for a candlestick chart, 13 technical indicators, an indicator score, and stop-loss and take-profit levels derived from ATR and recent swing highs and lows.' },
+  'markets': { view: 'markets', title: 'Market snapshot — indices and trending stocks — ChartGauge',
+    desc: 'Live quotes for the major US indices and the most active stocks, with the percentage move on the day.' },
+  'compare': { view: 'compare', title: 'Compare stocks side by side — ChartGauge',
+    desc: 'Put two or more tickers next to each other on market cap, revenue, P/E, PEG, margins, ROE, debt to equity, dividend yield and beta.' },
+  'screener': { view: 'screener', title: 'Stock screener — filter by sector, market cap and price — ChartGauge',
+    desc: 'Filter a curated universe of stocks by sector, market capitalisation and price range to find candidates worth a closer look.' },
+  'alerts': { view: 'alerts', title: 'Price alerts — ChartGauge',
+    desc: 'Set a target above or below the current price and get flagged when a stock crosses it.' },
+  'watchlist': { view: 'watchlist', title: 'Your watchlist — ChartGauge',
+    desc: 'Keep the tickers you follow in one place, with live prices and one-click analysis.' },
+  'learn': { view: 'learn', title: 'Learn investing — free plain-English lessons — ChartGauge',
+    desc: 'Eleven short lessons covering market basics, technical and fundamental analysis, valuation, financial statements, risk management, dividends, growth, value and options — each with a quiz.' },
+  'settings': { view: 'settings', title: 'Settings — simple or advanced view — ChartGauge',
+    desc: 'Choose how much of the analysis to show: the chart and exit levels only, or every indicator and written summary.' },
+  'pricing': { view: 'pricing', title: 'Plans — ChartGauge', desc: 'Every feature is free. Pro exists so people who find ChartGauge useful can help cover the data and model costs.' },
+  'chat': { view: 'chat', title: 'Ask Claude about a stock or the market — ChartGauge',
+    desc: 'Ask questions about a ticker or a market concept and get a plain-English answer grounded in live prices.' },
+};
+
+function lessonSeo(id) {
+  const l = LESSON_INDEX[id];
+  if (!l) return null;
+  return {
+    view: 'learn', lesson: l,
+    title: `${l.title} — ${l.level} investing lesson — ${SITE_NAME}`,
+    desc: `${l.intro} A free ${l.minutes}-minute ${String(l.level).toLowerCase()} lesson with a ${l.quiz.length}-question quiz.`,
+  };
+}
+
+// The lessons file is the client's, loaded here so one copy feeds both.
+let LESSONS = [], LESSON_INDEX = {};
+try {
+  const raw = fs.readFileSync(path.join(PUBLIC, 'lessons.js'), 'utf8');
+  const sandbox = { window: {} };
+  new Function('window', raw)(sandbox.window);
+  LESSONS = Array.isArray(sandbox.window.LESSONS) ? sandbox.window.LESSONS : [];
+  LESSONS.forEach(l => { LESSON_INDEX[l.id] = l; });
+} catch (e) { logError(e); }
+
+const esc = (v) => String(v == null ? '' : v)
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+// Route -> page metadata. Unknown paths fall through to the home page rather
+// than 404-ing, since the app itself is a single document.
+function seoFor(urlPath, req) {
+  const origin = siteOrigin(req);
+  const clean = urlPath.replace(/^\/+|\/+$/g, '');
+  const parts = clean ? clean.split('/') : [];
+  if (parts[0] === 'learn' && parts[1]) {
+    const s = lessonSeo(decodeURIComponent(parts[1]).toLowerCase());
+    if (s) return { ...s, canonical: `${origin}/learn/${parts[1]}` };
+  }
+  if (parts[0] === 'stock' && parts[1]) {
+    // BTC/USD arrives as two segments once the path is decoded; rejoin it.
+    const sym = parts.slice(1).join('/').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
+    if (sym) return {
+      view: 'analyze', symbol: sym,
+      title: `${sym} chart, indicators and stop-loss levels — ${SITE_NAME}`,
+      desc: `${sym} candlestick chart with SMA, RSI, MACD, Bollinger bands, ATR and VWAP, an indicator score, and ATR-based stop-loss and take-profit levels. Educational, not financial advice.`,
+      canonical: `${origin}/stock/${sym}`,
+    };
+  }
+  const v = VIEW_SEO[parts[0] || ''];
+  if (v) return { ...v, canonical: origin + (parts[0] ? '/' + parts[0] : '/') };
+  return { ...VIEW_SEO[''], canonical: origin + '/' };
+}
+
+function jsonLd(seo, origin) {
+  const blocks = [{
+    '@context': 'https://schema.org', '@type': 'WebApplication', name: SITE_NAME, url: origin + '/',
+    applicationCategory: 'FinanceApplication', operatingSystem: 'Any',
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+    description: VIEW_SEO[''].desc,
+  }];
+  if (seo.symbol) {
+    blocks.push({
+      '@context': 'https://schema.org', '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: origin + '/' },
+        { '@type': 'ListItem', position: 2, name: 'Analyze', item: origin + '/analyze' },
+        { '@type': 'ListItem', position: 3, name: seo.symbol, item: seo.canonical },
+      ],
     });
   }
+  if (seo.lesson) {
+    const l = seo.lesson;
+    blocks.push({
+      '@context': 'https://schema.org', '@type': 'LearningResource',
+      name: l.title, description: l.intro, url: seo.canonical,
+      educationalLevel: l.level, timeRequired: `PT${l.minutes}M`,
+      learningResourceType: 'Lesson', isAccessibleForFree: true, inLanguage: 'en',
+      teaches: (l.sections || []).map(x => x.h).join(', '),
+      provider: { '@type': 'Organization', name: SITE_NAME, url: origin + '/' },
+    });
+    blocks.push({
+      '@context': 'https://schema.org', '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Home', item: origin + '/' },
+        { '@type': 'ListItem', position: 2, name: 'Learn', item: origin + '/learn' },
+        { '@type': 'ListItem', position: 3, name: l.title, item: seo.canonical },
+      ],
+    });
+  }
+  return blocks.map(b => `<script type="application/ld+json">${JSON.stringify(b).replace(/</g, '\\u003c')}</script>`).join('');
+}
+
+function seoHead(seo, origin) {
+  const img = origin + '/favicon.svg';
+  return [
+    `<link rel="canonical" href="${esc(seo.canonical)}" />`,
+    `<meta property="og:type" content="website" />`,
+    `<meta property="og:site_name" content="${SITE_NAME}" />`,
+    `<meta property="og:title" content="${esc(seo.title)}" />`,
+    `<meta property="og:description" content="${esc(seo.desc)}" />`,
+    `<meta property="og:url" content="${esc(seo.canonical)}" />`,
+    `<meta property="og:image" content="${esc(img)}" />`,
+    `<meta name="twitter:card" content="summary" />`,
+    `<meta name="twitter:title" content="${esc(seo.title)}" />`,
+    `<meta name="twitter:description" content="${esc(seo.desc)}" />`,
+    `<meta name="twitter:image" content="${esc(img)}" />`,
+    `<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1" />`,
+    jsonLd(seo, origin),
+  ].join('\n');
+}
+
+// Lesson prose, rendered into the document so it indexes without JavaScript and
+// is present regardless of what the client-side app does with it afterwards.
+function lessonHtml(l) {
+  if (!l) return '';
+  const secs = (l.sections || []).map(x => `<section><h2>${esc(x.h)}</h2><p>${esc(x.p)}</p></section>`).join('');
+  const quiz = (l.quiz || []).map(q => `<li><p>${esc(q.q)}</p><p>${esc(q.why)}</p></li>`).join('');
+  return `<article class="ssr-lesson" id="ssrLesson">`
+    + `<h1>${esc(l.title)}</h1>`
+    + `<p>${esc(l.intro)}</p>`
+    + `<p>${esc(l.level)} · ${esc(l.minutes)} minute read · ${(l.quiz || []).length} question quiz</p>`
+    + secs
+    + (quiz ? `<h2>Check yourself</h2><ol>${quiz}</ol>` : '')
+    + `<p><a href="/learn">All lessons</a> · <a href="/">Analyze a stock</a></p>`
+    + `</article>`;
+}
+
+const GA_SNIPPET = GA_ID ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script>`
+  + `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_ID}');</script>` : '';
+// Paths the single-page app owns. Anything matching is served the document
+// with that route's metadata rather than a 404.
+const APP_PATH = /^\/(analyze|markets|compare|screener|alerts|watchlist|learn|settings|pricing|chat)(\/|$)|^\/stock\//;
+
+function serveDocument(req, res, urlPath) {
+  const origin = siteOrigin(req);
+  const seo = seoFor(urlPath, req);
+  fs.readFile(path.join(PUBLIC, 'index.html'), 'utf8', (err, html) => {
+    if (err) { res.writeHead(404); return res.end('Not found'); }
+    let out = html
+      .replace(/<title>[\s\S]*?<\/title>/, `<title>${esc(seo.title)}</title>`)
+      .replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${esc(seo.desc)}" />`)
+      .replace('<!--SEO-->', seoHead(seo, origin))
+      .replace('<!--GA-->', GA_SNIPPET);
+    // One <h1> per rendered page: the active view keeps it, the rest step down.
+    out = out.replace(/<h1 class="(hero-h|view-h)"/g, '<h2 class="$1"');
+    if (seo.lesson) { /* the rendered lesson supplies the h1 */ }
+    else if (seo.view === 'home') out = out.replace('<h2 class="hero-h"', '<h1 class="hero-h"');
+    else {
+      const marker = `id="view-${seo.view}">`;
+      const at = out.indexOf(marker);
+      if (at >= 0) {
+        const hAt = out.indexOf('<h2 class="view-h"', at);
+        if (hAt >= 0) out = out.slice(0, hAt) + '<h1 class="view-h"' + out.slice(hAt + '<h2 class="view-h"'.length);
+      }
+    }
+    // Lesson prose goes into the document itself so it indexes without JS.
+    if (seo.lesson) out = out.replace('<div id="learnHost"></div>', `<div id="learnHost"></div>${lessonHtml(seo.lesson)}`);
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+    res.end(out);
+  });
+}
+
+function serveStatic(req, res) {
+  let urlPath = decodeURIComponent(req.url.split('?')[0]);
+  // A path with a file extension is an asset request, never an app route —
+  // otherwise /learn/app.js would be answered with the HTML document.
+  const looksLikeFile = /\.[a-z0-9]{2,5}$/i.test(urlPath);
+  if (urlPath === '/' || (!looksLikeFile && APP_PATH.test(urlPath))) return serveDocument(req, res, urlPath);
+  const filePath = path.join(PUBLIC, urlPath);
+  if (!filePath.startsWith(PUBLIC)) { res.writeHead(403); return res.end('403'); }
+  if (urlPath === '/index.html') return serveDocument(req, res, '/');
   fs.stat(filePath, (err, stat) => {
     if (err || !stat.isFile()) { res.writeHead(404); return res.end('Not found'); }
     // Filenames are not content-hashed, so a long max-age would pin stale code
@@ -840,6 +1024,26 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = req.url.split('?')[0];
     if (url.startsWith('/api/')) { usage.total++; usage[url] = (usage[url] || 0) + 1; }
+    if (url === '/robots.txt') {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end(`User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${siteOrigin(req)}/sitemap.xml\n`);
+    }
+    if (url === '/sitemap.xml') {
+      const origin = siteOrigin(req);
+      const today = new Date().toISOString().slice(0, 10);
+      // A curated list only: publishing a URL per ticker would be thousands of
+      // near-identical pages, which is thin content rather than coverage.
+      const FEATURED = ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AMD','NFLX','JPM','V','WMT','XOM','KO','DIS','BAC','INTC','CRM','ORCL','AVGO','BTC/USD','ETH/USD','SOL/USD','XRP/USD','DOGE/USD'];
+      const urls = [
+        { loc: origin + '/', pri: '1.0', freq: 'daily' },
+        ...Object.keys(VIEW_SEO).filter(Boolean).map(k => ({ loc: `${origin}/${k}`, pri: '0.8', freq: 'weekly' })),
+        ...LESSONS.map(l => ({ loc: `${origin}/learn/${l.id}`, pri: '0.7', freq: 'monthly' })),
+        ...FEATURED.map(sym => ({ loc: `${origin}/stock/${sym}`, pri: '0.6', freq: 'daily' })),
+      ];
+      const body = urls.map(u => `  <url><loc>${esc(u.loc)}</loc><lastmod>${today}</lastmod><changefreq>${u.freq}</changefreq><priority>${u.pri}</priority></url>`).join('\n');
+      res.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8' });
+      return res.end(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`);
+    }
     if (url === '/api/admin' && req.method === 'GET') return await handleAdmin(req, res);
     if (url === '/api/stock' && req.method === 'GET') {
       const q = new URLSearchParams(req.url.split('?')[1] || '');

@@ -874,6 +874,10 @@
       else $('risk').className = 'risk hidden';
       $('note').textContent = d.note || '';
       $('result').classList.remove('hidden');
+      try {
+        const want = '/stock/' + d.symbol;
+        if (location.pathname !== want) history.replaceState({ view: 'analyze' }, '', want);
+      } catch (e) {}
       resetView(); drawChart(); tiles(d); renderTech(d.tech); renderBands(d.bands); renderLevels(d);
       setAnalysisPending();
       loadAnalysis(d);
@@ -1115,8 +1119,25 @@
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
   const VIEWS = ['home', 'analyze', 'chat', 'compare', 'screener', 'markets', 'watchlist', 'alerts', 'learn', 'settings', 'pricing', 'admin'];
-  function showView(name) {
+  // Each view has a real URL now, so navigation updates the address bar and
+  // the back button works. pushUrl is skipped when we are *reacting* to a URL
+  // (initial load, popstate) to avoid pushing a duplicate entry.
+  function urlForView(name) {
+    if (name === 'home') return '/';
+    if (name === 'analyze' && lastData && lastData.symbol) return '/stock/' + lastData.symbol;
+    return '/' + name;
+  }
+  function syncUrl(name, replace) {
+    const want = urlForView(name);
+    try {
+      if (location.pathname === want) return;
+      history[replace ? 'replaceState' : 'pushState']({ view: name }, '', want);
+    } catch (e) {}
+  }
+
+  function showView(name, opts) {
     if (!VIEWS.includes(name)) name = 'home';
+    if (!opts || !opts.fromUrl) syncUrl(name, !!(opts && opts.replace));
     VIEWS.forEach(v => $('view-' + v).classList.toggle('hidden', v !== name));
     document.querySelectorAll('.nav-link').forEach(l => l.classList.toggle('active', l.dataset.view === name));
     window.scrollTo(0, 0);
@@ -1133,6 +1154,34 @@
   }
   function goAnalyze(sym) { showView('analyze'); if (sym) { $('symbol').value = sym; run(sym); } }
   document.querySelectorAll('[data-view]').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); showView(el.dataset.view); }));
+
+  // The server renders the lesson into the document so it indexes without
+  // JavaScript. Once the app is running it renders the same lesson itself, so
+  // drop the static copy rather than showing both.
+  (function dropServerRenderedLesson() {
+    const el = document.getElementById('ssrLesson');
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+  })();
+
+  // Open whatever the URL asks for, including a ticker or a single lesson.
+  function routeFromPath(replace) {
+    const parts = decodeURIComponent(location.pathname).replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+    if (!parts.length) return showView('home', { fromUrl: true, replace });
+    if (parts[0] === 'stock' && parts[1]) {
+      const sym = parts.slice(1).join('/').toUpperCase();
+      showView('analyze', { fromUrl: true, replace });
+      $('symbol').value = sym;
+      run(sym);
+      return;
+    }
+    if (parts[0] === 'learn' && parts[1]) {
+      showView('learn', { fromUrl: true, replace });
+      if (typeof openLesson === 'function') openLesson(parts[1].toLowerCase());
+      return;
+    }
+    showView(VIEWS.includes(parts[0]) ? parts[0] : 'home', { fromUrl: true, replace });
+  }
+  window.addEventListener('popstate', () => routeFromPath(true));
 
   // Hero
   $('heroForm').addEventListener('submit', (e) => { e.preventDefault(); const s = $('heroInput').value.trim().toUpperCase(); if (s) goAnalyze(s); });
@@ -1373,14 +1422,19 @@
   const LESSONS = window.LESSONS || [];
   function renderLearnGrid() {
     $('learnHost').innerHTML = `<div class="learn-grid">` + LESSONS.map(l =>
-      `<div class="learn-card" data-id="${l.id}"><div class="learn-title">${esc(l.title)}</div><div class="learn-meta">${esc(l.level)} · ${l.minutes} min · ${l.quiz.length} Q</div><p class="learn-desc">${esc(l.intro)}</p></div>`).join('') + `</div>`;
-    $('learnHost').querySelectorAll('.learn-card').forEach(c => c.addEventListener('click', () => openLesson(c.dataset.id)));
+      `<a class="learn-card" href="/learn/${encodeURIComponent(l.id)}" data-id="${l.id}"><div class="learn-title">${esc(l.title)}</div><div class="learn-meta">${esc(l.level)} · ${l.minutes} min · ${l.quiz.length} Q</div><p class="learn-desc">${esc(l.intro)}</p></a>`).join('') + `</div>`;
+    $('learnHost').querySelectorAll('.learn-card').forEach(c => c.addEventListener('click', (e) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button > 0) return;   // let the browser open it
+      e.preventDefault();
+      try { history.pushState({ view: 'learn' }, '', '/learn/' + c.dataset.id); } catch (err) {}
+      openLesson(c.dataset.id);
+    }));
   }
   function openLesson(id) {
     const l = LESSONS.find(x => x.id === id); if (!l) return renderLearnGrid();
     window.scrollTo(0, 0);
     let html = `<div class="learn-detail"><button type="button" class="link-btn learn-back" id="learnBack">← All lessons</button>`;
-    html += `<h2 class="learn-h">${l.icon} ${esc(l.title)}</h2><div class="learn-meta">${esc(l.level)} · ${l.minutes} min read</div>`;
+    html += `<h2 class="learn-h">${esc(l.title)}</h2><div class="learn-meta">${esc(l.level)} · ${l.minutes} min read · ${l.quiz.length} question quiz</div>`;
     html += l.sections.map(s => `<div class="learn-section"><h3>${esc(s.h)}</h3><p>${esc(s.p)}</p></div>`).join('');
     html += `<div class="card quiz" id="quiz"></div>`;
     html += `<button type="button" class="btn btn-ai learn-ask" id="learnAsk">Ask Claude about this lesson</button></div>`;
@@ -1448,5 +1502,5 @@
   } else if (billing === 'cancel') {
     showView('pricing');
   } else if (deep) { goAnalyze(deep.toUpperCase()); }
-  else showView('home');
+  else routeFromPath(true);          // the path decides the opening view
 })();
