@@ -443,8 +443,7 @@ body.mode-simple #fundCard,
 body.mode-simple #newsCard,
 body.mode-simple .sidebar,
 body.mode-simple .reason,
-body.mode-simple #overlays,
-body.mode-simple .tf-interval { display: none !important; }
+body.mode-simple #overlays { display: none !important; }
 body.mode-simple .layout { grid-template-columns: minmax(0, 1fr); }
 
 .disclaimer { font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); padding: 16px 0 0; line-height: 1.6; margin-top: 20px; max-width: 78ch; }

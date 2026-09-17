@@ -416,7 +416,6 @@
     if (chartType === 'candle') {
       const cw = Math.max(1, (plotW / total) * 0.68);
       const cc = candleColors();
-      const bodyR = cw >= 7 ? 2 : cw >= 4 ? 1 : 0;
       bars.forEach((p, j) => {
         const x = X(j), up = p.close >= p.open;
         ctx.lineWidth = Math.min(2, Math.max(1, cw * 0.16));
@@ -425,11 +424,10 @@
         const yO = Y(p.open), yC = Y(p.close);
         const top = Math.min(yO, yC), hgt = Math.max(1.5, Math.abs(yC - yO));
         ctx.fillStyle = up ? cc.upBody : cc.downBody;
-        if (bodyR) { roundRect(x - cw / 2, top, cw, hgt, bodyR); ctx.fill(); }
-        else ctx.fillRect(x - cw / 2, top, cw, hgt);
+        ctx.fillRect(x - cw / 2, top, cw, hgt);
         if (cw >= 5 && hgt >= 4) {
           ctx.strokeStyle = up ? cc.upBorder : cc.downBorder; ctx.lineWidth = 1;
-          roundRect(Math.round(x - cw / 2) + .5, Math.round(top) + .5, Math.round(cw) - 1, Math.round(hgt) - 1, bodyR); ctx.stroke();
+          ctx.strokeRect(Math.round(x - cw / 2) + .5, Math.round(top) + .5, Math.round(cw) - 1, Math.round(hgt) - 1);
         }
       });
     } else {
