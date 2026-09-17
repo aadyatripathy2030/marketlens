@@ -821,7 +821,16 @@ function serveStatic(req, res) {
   }
   fs.stat(filePath, (err, stat) => {
     if (err || !stat.isFile()) { res.writeHead(404); return res.end('Not found'); }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream' });
+    // Filenames are not content-hashed, so a long max-age would pin stale code
+    // after a deploy. Revalidate instead: an unchanged asset costs a 304 with
+    // an empty body rather than a re-download.
+    const tag = `W/"${stat.size}-${Math.round(stat.mtimeMs)}"`;
+    if (req.headers['if-none-match'] === tag) { res.writeHead(304, { ETag: tag }); return res.end(); }
+    res.writeHead(200, {
+      'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
+      'ETag': tag,
+      'Cache-Control': 'public, max-age=60, must-revalidate',
+    });
     fs.createReadStream(filePath).pipe(res);
   });
 }
