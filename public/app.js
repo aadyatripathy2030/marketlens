@@ -360,7 +360,7 @@
       const j = Math.round((bars.length - 1) * t / (ticks - 1));
       const lbl = bars[j].date, lw = ctx.measureText(lbl).width;
       ctx.strokeStyle = col('--border');
-      ctx.beginPath(); ctx.moveTo(X(j) + .5, padT); ctx.lineTo(X(j) + .5, axY + 4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(X(j) + .5, axY); ctx.lineTo(X(j) + .5, axY + 4); ctx.stroke();
       ctx.fillStyle = col('--muted');
       ctx.fillText(lbl, Math.max(padL, Math.min(axX - lw, X(j) - lw / 2)), axY + 17);
     }
