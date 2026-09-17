@@ -165,6 +165,33 @@
   let chartType = 'candle'; // 'candle' | 'line'
   const show = { fast: true, slow: true, proj: true, levels: false }; // overlay visibility
 
+  // Display mode. Simple keeps the chart and the exit levels and hides the rest;
+  // it changes what is rendered, never what is computed.
+  const MODE_KEY = 'chartgauge_mode';
+  let uiMode = 'advanced';
+  try { if (localStorage.getItem(MODE_KEY) === 'simple') uiMode = 'simple'; } catch (e) {}
+  function applyMode() {
+    document.body.classList.toggle('mode-simple', uiMode === 'simple');
+    // In simple mode the levels are the point, so draw them on the chart; the
+    // overlay pills that would normally toggle them are hidden.
+    if (uiMode === 'simple') { show.levels = true; show.fast = false; show.slow = false; show.proj = false; }
+    document.querySelectorAll('#modeOpts .mode-opt').forEach(b => b.classList.toggle('active', b.dataset.mode === uiMode));
+    if (typeof drawChart === 'function' && lastData) drawChart();
+  }
+  function setMode(m) {
+    uiMode = m === 'simple' ? 'simple' : 'advanced';
+    try { localStorage.setItem(MODE_KEY, uiMode); } catch (e) {}
+    if (uiMode === 'advanced') {                 // restore the default overlays
+      show.fast = true; show.slow = true; show.proj = true; show.levels = false;
+      document.querySelectorAll('#overlays .ov[data-k]').forEach(b => {
+        const k = b.dataset.k;
+        if (k === 'type') return;
+        b.classList.toggle('active', !!show[k]);
+      });
+    }
+    applyMode();
+  }
+
   // Axis gutters, TradingView-style: price scale down the right edge, time
   // scale along the bottom. Dragging either one rescales that axis.
   const AXIS_W = 58, AXIS_H = 26;
@@ -250,6 +277,9 @@
     try { localStorage.removeItem(CANDLE_KEY); } catch (e) {}
     syncColorInputs(); drawChart();
   });
+
+  document.querySelectorAll('#modeOpts .mode-opt').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+  applyMode();
 
   window.addEventListener('resize', drawChart);
 
@@ -899,7 +929,7 @@
   checkAuth();
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
-  const VIEWS = ['home', 'analyze', 'chat', 'compare', 'screener', 'markets', 'watchlist', 'alerts', 'learn', 'pricing', 'admin'];
+  const VIEWS = ['home', 'analyze', 'chat', 'compare', 'screener', 'markets', 'watchlist', 'alerts', 'learn', 'settings', 'pricing', 'admin'];
   function showView(name) {
     if (!VIEWS.includes(name)) name = 'home';
     VIEWS.forEach(v => $('view-' + v).classList.toggle('hidden', v !== name));

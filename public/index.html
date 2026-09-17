@@ -49,6 +49,7 @@
     <a class="nav-link" data-view="watchlist">Watchlist</a>
     <a class="nav-link" data-view="alerts">Alerts <span class="nav-badge hidden" id="alertBadge"></span></a>
     <a class="nav-link" data-view="learn">Learn</a>
+    <a class="nav-link" data-view="settings">Settings</a>
     <a class="nav-link hidden" data-view="admin" id="navAdmin">Admin</a>
   </nav>
   <div class="topbar-right">
@@ -140,7 +141,7 @@
               <button type="button" class="ov" id="ovColors">Colors</button>
             </div>
             <div class="chart-time">
-              <div class="tf-group">
+              <div class="tf-group tf-interval">
                 <span class="tf-label">Each candle</span>
                 <div class="range" id="interval" role="tablist" aria-label="Candle interval — how much time each candle covers">
                   <button class="range-btn" data-iv="1min">1m</button>
@@ -188,17 +189,17 @@
         <div class="tiles" id="tiles"></div>
         <p class="risk hidden" id="risk"></p>
 
-        <div class="card">
+        <div class="card" id="techCard">
           <div class="section-h">Technical analysis <span class="sub">what each indicator reads right now</span></div>
           <div class="tech-grid" id="techGrid"></div>
         </div>
 
-        <div class="card">
+        <div class="card" id="bandsCard">
           <div class="section-h">Price projection <span class="sub">a straight line fitted to recent closes, ±1σ ≈ 68% of outcomes if the past volatility holds</span></div>
           <div class="bands" id="bands"></div>
         </div>
 
-        <div class="card">
+        <div class="card" id="thesisCard">
           <div class="section-h">Bull and bear case <span class="sub">drawn from the indicators above</span></div>
           <div class="thesis">
             <div class="thesis-col bull"><div class="thesis-h">▲ Bull case</div><ul id="bullList"></ul></div>
@@ -342,6 +343,22 @@
   <section class="view hidden" id="view-admin">
     <h1 class="view-h">Admin dashboard</h1>
     <div id="adminBody"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view hidden" id="view-settings">
+    <h1 class="view-h">Settings</h1>
+    <p class="learn-lead">How much of the analysis to show. This only changes what is displayed — the numbers behind it are the same either way.</p>
+    <div class="mode-opts" id="modeOpts">
+      <button type="button" class="mode-opt" data-mode="simple">
+        <span class="mode-name">Simple</span>
+        <span class="mode-desc">The candlestick chart, and where the stop loss and take-profit levels sit. Nothing else.</span>
+      </button>
+      <button type="button" class="mode-opt" data-mode="advanced">
+        <span class="mode-name">Advanced</span>
+        <span class="mode-desc">Everything: indicator score, all 13 technical readings, price projection, the written summary, bull and bear case, fundamentals and news.</span>
+      </button>
+    </div>
   </section>
 
   <!-- LEARN -->
