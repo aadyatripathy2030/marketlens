@@ -73,7 +73,7 @@
           ? `just beyond the 60-bar ${dirWord === 'long' ? 'low' : 'high'} (ATR method would say ${f(L.stopAtr)})`
           : `${L.atrMult}x ATR (swing level at ${f(L.stopStructure)} was too far to use)`)),
     ];
-    for (const t of L.targets) {
+    for (const t of targetsFor(L)) {
       rows.push(cell(`Take profit ${t.r}R`, f(t.price), 'target', `${f(t.pct)}% away · ${t.r}x the risk taken`));
     }
     rows.push(L.structureTarget
@@ -82,7 +82,16 @@
       : cell('Swing level ahead', 'none', '',
           `Price is already outside its 60-bar range, so there is no prior level ahead of it to aim at`));
 
-    $('levelsBody').innerHTML = `<div class="levels-grid">${rows.join('')}</div>`;
+    const tpBtns = [1, 2, 3, 4, 5].map(n =>
+      `<button type="button" class="tp-btn${n === tpCount ? ' active' : ''}" data-tp="${n}">${n}</button>`).join('');
+    $('levelsBody').innerHTML =
+      `<div class="tp-row"><span class="tp-label">Take-profit levels</span><div class="tp-group">${tpBtns}</div></div>` +
+      `<div class="levels-grid">${rows.join('')}</div>`;
+    $('levelsBody').querySelectorAll('.tp-btn').forEach(b => b.addEventListener('click', () => {
+      tpCount = parseInt(b.dataset.tp, 10);
+      try { localStorage.setItem(TP_KEY, String(tpCount)); } catch (e) {}
+      renderLevels(d); drawChart();
+    }));
     $('levelsCard').classList.remove('hidden');
   }
 
@@ -200,6 +209,23 @@
   // until a double-click hands it back to auto-fit.
   let yManual = null;       // {lo, hi} in price units, or null for auto-fit
   let lastY = null;         // last drawn {lo, hi, plotH} so drags can do maths
+  let hover = null;         // {x, y} in CSS px for the crosshair, or null
+
+  // How many take-profit levels to show. Each is a multiple of the risk the
+  // stop implies, so they are derived here rather than refetched — changing
+  // the count is instant.
+  const TP_KEY = 'chartgauge_tp_count';
+  let tpCount = 3;
+  try { const n = parseInt(localStorage.getItem(TP_KEY), 10); if (n >= 1 && n <= 6) tpCount = n; } catch (e) {}
+  function targetsFor(L) {
+    if (!L || !(L.riskPerShare > 0)) return [];
+    const long = L.direction !== 'short';
+    return Array.from({ length: tpCount }, (_, i) => {
+      const r = i + 1;
+      const price = long ? L.entry + r * L.riskPerShare : L.entry - r * L.riskPerShare;
+      return { r, price, pct: Math.abs(price - L.entry) / L.entry * 100 };
+    });
+  }
 
   // Candle colours are user-adjustable per element (body / border / wick) and
   // persist locally. Unset entries fall back to the theme's up/down colours.
@@ -338,31 +364,47 @@
     const axX = padL + plotW, axY = padT + plotH;
     lastY = { lo, hi, plotH };
 
-    ctx.font = '11px ui-monospace, Menlo, monospace'; ctx.lineWidth = 1;
+    const AXF = '11px ui-sans-serif, system-ui, -apple-system, sans-serif';
+    const NUMF = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+    ctx.font = NUMF; ctx.lineWidth = 1;
 
-    // gutter separators
-    ctx.strokeStyle = col('--border-strong');
-    ctx.beginPath(); ctx.moveTo(axX + .5, padT); ctx.lineTo(axX + .5, axY); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(padL, axY + .5); ctx.lineTo(axX, axY + .5); ctx.stroke();
+    // A rounded tag on an axis, which is how prices and times read on a modern
+    // chart — far quieter than text floating over the plot.
+    const roundRect = (x, y, rw, rh, r) => {
+      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, rw, rh, r); return; }
+      ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + rw, y, x + rw, y + rh, r);
+      ctx.arcTo(x + rw, y + rh, x, y + rh, r); ctx.arcTo(x, y + rh, x, y, r); ctx.arcTo(x, y, x + rw, y, r); ctx.closePath();
+    };
+    const axisTagY = [];   // centres of tags already placed in the price gutter
+    const priceTag = (text, y, bg, fg) => {
+      ctx.font = NUMF;
+      const tw = Math.min(ctx.measureText(text).width, AXIS_W - 14);
+      const bw = tw + 11, bh = 16, bx = axX + 4, by = Math.max(padT, Math.min(axY - bh, y - bh / 2));
+      ctx.fillStyle = bg; roundRect(bx, by, bw, bh, 4); ctx.fill();
+      ctx.fillStyle = fg; ctx.fillText(text, bx + 5.5, by + 11.5);
+      axisTagY.push(by + bh / 2);
+      return by;
+    };
 
-    // horizontal grid + price labels in the right gutter
+    // Horizontal grid only, and faint: vertical rules made it read as paper.
+    // The numbers are drawn last, once tags have claimed their positions.
+    const gridLabels = [];
+    ctx.strokeStyle = col('--border');
     for (let g = 0; g <= 4; g++) {
       const val = lo + (hi - lo) * g / 4, y = Y(val);
-      ctx.strokeStyle = col('--border');
-      ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(axX, y); ctx.stroke();
-      ctx.fillStyle = col('--muted');
-      ctx.fillText(val.toFixed(2), axX + 7, y + 4);
+      ctx.globalAlpha = .55;
+      ctx.beginPath(); ctx.moveTo(padL, Math.round(y) + .5); ctx.lineTo(axX, Math.round(y) + .5); ctx.stroke();
+      ctx.globalAlpha = 1;
+      gridLabels.push({ text: val.toFixed(2), y });
     }
 
-    // vertical grid + date labels in the bottom gutter
-    const ticks = Math.max(2, Math.min(6, Math.floor(plotW / 120)));
+    // Dates sit in the gutter with no tick marks.
+    const ticks = Math.max(2, Math.min(6, Math.floor(plotW / 130)));
+    ctx.font = AXF; ctx.fillStyle = col('--muted');
     for (let t = 0; t < ticks; t++) {
       const j = Math.round((bars.length - 1) * t / (ticks - 1));
       const lbl = bars[j].date, lw = ctx.measureText(lbl).width;
-      ctx.strokeStyle = col('--border');
-      ctx.beginPath(); ctx.moveTo(X(j) + .5, axY); ctx.lineTo(X(j) + .5, axY + 4); ctx.stroke();
-      ctx.fillStyle = col('--muted');
-      ctx.fillText(lbl, Math.max(padL, Math.min(axX - lw, X(j) - lw / 2)), axY + 17);
+      ctx.fillText(lbl, Math.max(padL, Math.min(axX - lw, X(j) - lw / 2)), axY + 18);
     }
     function line(arr, offset, color, dashed) {
       ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash(dashed ? [5, 4] : []);
@@ -372,63 +414,121 @@
     }
 
     if (chartType === 'candle') {
-      const cw = Math.max(1, (plotW / total) * 0.7);
+      const cw = Math.max(1, (plotW / total) * 0.68);
       const cc = candleColors();
+      const bodyR = cw >= 7 ? 2 : cw >= 4 ? 1 : 0;
       bars.forEach((p, j) => {
         const x = X(j), up = p.close >= p.open;
-        ctx.lineWidth = 1;
+        ctx.lineWidth = Math.min(2, Math.max(1, cw * 0.16));
         ctx.strokeStyle = up ? cc.upWick : cc.downWick;
         ctx.beginPath(); ctx.moveTo(Math.round(x) + .5, Y(p.high)); ctx.lineTo(Math.round(x) + .5, Y(p.low)); ctx.stroke();
         const yO = Y(p.open), yC = Y(p.close);
-        const top = Math.min(yO, yC), hgt = Math.max(1, Math.abs(yC - yO));
+        const top = Math.min(yO, yC), hgt = Math.max(1.5, Math.abs(yC - yO));
         ctx.fillStyle = up ? cc.upBody : cc.downBody;
-        ctx.fillRect(x - cw / 2, top, cw, hgt);
-        // the border only reads as a border once the candle is wide enough
-        if (cw >= 3 && hgt >= 3) {
-          ctx.strokeStyle = up ? cc.upBorder : cc.downBorder;
-          ctx.strokeRect(Math.round(x - cw / 2) + .5, Math.round(top) + .5, Math.round(cw) - 1, Math.round(hgt) - 1);
+        if (bodyR) { roundRect(x - cw / 2, top, cw, hgt, bodyR); ctx.fill(); }
+        else ctx.fillRect(x - cw / 2, top, cw, hgt);
+        if (cw >= 5 && hgt >= 4) {
+          ctx.strokeStyle = up ? cc.upBorder : cc.downBorder; ctx.lineWidth = 1;
+          roundRect(Math.round(x - cw / 2) + .5, Math.round(top) + .5, Math.round(cw) - 1, Math.round(hgt) - 1, bodyR); ctx.stroke();
         }
       });
     } else {
-      line(bars.map(p => p.close), 0, col('--accent'));
+      // Area fill under the line, fading out — the single biggest visual
+      // difference between a plotted line and a chart people expect today.
+      const cl = bars.map(p => p.close);
+      const grad = ctx.createLinearGradient(0, padT, 0, axY);
+      grad.addColorStop(0, 'rgba(76,158,255,.26)');
+      grad.addColorStop(1, 'rgba(76,158,255,0)');
+      ctx.beginPath();
+      cl.forEach((v, i) => { const x = X(i), y = Y(v); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      ctx.lineTo(X(cl.length - 1), axY); ctx.lineTo(X(0), axY); ctx.closePath();
+      ctx.fillStyle = grad; ctx.fill();
+      line(cl, 0, col('--accent'));
     }
 
     // Stop / target lines, drawn across the plot with a label in the gutter.
-    if (show.levels && d.levels) {
-      const L = d.levels;
-      // Targets bunch together when the risk is small next to the visible
-      // range, so labels get nudged apart; the lines stay at their true price.
-      const usedLabelY = [];
-      const freeY = (y) => {
-        let ly = y - 3;
-        for (let guard = 0; guard < 12; guard++) {
-          if (!usedLabelY.some(u => Math.abs(u - ly) < 11)) break;
-          ly -= 11;
-        }
-        usedLabelY.push(ly);
-        return ly;
-      };
-      const mark = (price, color, label, dashed) => {
-        if (!Number.isFinite(price) || price < lo || price > hi) return;   // off-screen
-        const y = Y(price);
-        ctx.save();
-        ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash(dashed ? [4, 4] : []);
-        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(axX, y); ctx.stroke();
-        ctx.restore();
-        const ly = freeY(y);
-        if (ly < padT + 8) return;                                          // no room left
-        ctx.fillStyle = color; ctx.font = '10px ui-monospace, Menlo, monospace';
-        ctx.fillText(label, padL + 4, ly);
-      };
-      mark(L.stop, col('--bad'), 'STOP ' + L.stop.toFixed(2), false);
-      L.targets.forEach(t => mark(t.price, col('--good'), t.r + 'R ' + t.price.toFixed(2), true));
-      if (L.structureTarget) mark(L.structureTarget.price, col('--sma20'), 'SWING ' + L.structureTarget.price.toFixed(2), true);
-    }
-
     if (show.slow) line(visSlow, 0, col('--sma50'));
     if (show.fast) line(visFast, 0, col('--sma20'));
     if (fc.length) line([bars[bars.length - 1].close].concat(fc), bars.length - 1, col('--forecast'), true);
 
+    if (show.levels && d.levels) {
+      const L = d.levels;
+      const usedY = [];
+      const mark = (price, color, label, dashed) => {
+        if (!Number.isFinite(price) || price < lo || price > hi) return;
+        const y = Y(price);
+        ctx.save();
+        ctx.strokeStyle = color; ctx.globalAlpha = .75; ctx.lineWidth = 1;
+        ctx.setLineDash(dashed ? [5, 5] : []);
+        ctx.beginPath(); ctx.moveTo(padL, Math.round(y) + .5); ctx.lineTo(axX, Math.round(y) + .5); ctx.stroke();
+        ctx.restore();
+        // Tag sits on the axis; nudge it clear of tags already placed.
+        let ty = y;
+        for (let g = 0; g < 14 && usedY.some(u => Math.abs(u - ty) < 17); g++) ty -= 17;
+        if (ty < padT + 8) return;
+        usedY.push(ty);
+        priceTag(label, ty, color, '#0b0e12');
+      };
+      mark(L.stop, col('--bad'), L.stop.toFixed(2), false);
+      targetsFor(L).forEach(t => mark(t.price, col('--good'), t.price.toFixed(2), true));
+      if (L.structureTarget) mark(L.structureTarget.price, col('--sma20'), L.structureTarget.price.toFixed(2), true);
+    }
+
+    // Last price: dashed marker plus a tag, so the current level is obvious.
+    const lastClose = bars[bars.length - 1].close;
+    if (lastClose >= lo && lastClose <= hi) {
+      const ly = Y(lastClose);
+      ctx.save();
+      ctx.strokeStyle = col('--muted'); ctx.globalAlpha = .5; ctx.setLineDash([2, 4]);
+      ctx.beginPath(); ctx.moveTo(padL, Math.round(ly) + .5); ctx.lineTo(axX, Math.round(ly) + .5); ctx.stroke();
+      ctx.restore();
+      const upDay = bars.length > 1 && lastClose >= bars[bars.length - 2].close;
+      priceTag(lastClose.toFixed(2), ly, upDay ? col('--good') : col('--bad'), '#0b0e12');
+    }
+
+    // Crosshair + OHLC readout for the bar under the cursor.
+    if (hover && hover.x > padL && hover.x < axX && hover.y > padT && hover.y < axY) {
+      const j = Math.max(0, Math.min(bars.length - 1, Math.round((hover.x - padL) / plotW * (total - 1))));
+      const b = bars[j], hx = X(j);
+      ctx.save();
+      ctx.strokeStyle = col('--border-strong'); ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(Math.round(hx) + .5, padT); ctx.lineTo(Math.round(hx) + .5, axY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(padL, Math.round(hover.y) + .5); ctx.lineTo(axX, Math.round(hover.y) + .5); ctx.stroke();
+      ctx.restore();
+      const atCursor = lo + (1 - (hover.y - padT) / plotH) * (hi - lo);
+      priceTag(atCursor.toFixed(2), hover.y, col('--border-strong'), col('--text'));
+      // date tag on the time axis
+      ctx.font = AXF;
+      const dl = b.date, dw = ctx.measureText(dl).width + 12;
+      const dx = Math.max(padL, Math.min(axX - dw, hx - dw / 2));
+      ctx.fillStyle = col('--border-strong'); roundRect(dx, axY + 5, dw, 17, 4); ctx.fill();
+      ctx.fillStyle = col('--text'); ctx.fillText(dl, dx + 6, axY + 17);
+      // floating OHLC panel
+      const up = b.close >= b.open;
+      const rows = [['O', b.open], ['H', b.high], ['L', b.low], ['C', b.close]];
+      ctx.font = NUMF;
+      const bw = 112, bh = 26 + rows.length * 15;
+      const bx = hx < padL + plotW / 2 ? Math.min(axX - bw - 8, hx + 14) : Math.max(padL + 8, hx - bw - 14);
+      const by = padT + 8;
+      ctx.globalAlpha = .96; ctx.fillStyle = col('--card-hi'); roundRect(bx, by, bw, bh, 8); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.fillStyle = col('--muted'); ctx.font = AXF; ctx.fillText(b.date, bx + 10, by + 15);
+      ctx.font = NUMF;
+      rows.forEach((r, i) => {
+        const ry = by + 32 + i * 15;
+        ctx.fillStyle = col('--muted'); ctx.fillText(r[0], bx + 10, ry);
+        const t = (+r[1]).toFixed(2);
+        ctx.fillStyle = i === 3 ? (up ? col('--good') : col('--bad')) : col('--text');
+        ctx.fillText(t, bx + bw - 10 - ctx.measureText(t).width, ry);
+      });
+    }
+
+    // Axis numbers last, and only where no tag has taken the space — a pill
+    // half-covering a number was the messiest thing on the old axis.
+    ctx.font = NUMF; ctx.fillStyle = col('--muted');
+    gridLabels.forEach(g => {
+      if (axisTagY.some(t => Math.abs(t - g.y) < 11)) return;
+      ctx.fillText(g.text, axX + 9, g.y + 4);
+    });
   }
 
   // ---- Interactive zoom / pan ----
@@ -527,11 +627,15 @@
       drawChart();
     });
     window.addEventListener('mouseup', () => { drag = null; });
+    let raf = 0;
     canvas.addEventListener('mousemove', (e) => {
-      if (drag) return;
       const z = zoneOf(e);
-      canvas.style.cursor = z === 'price' ? 'ns-resize' : z === 'time' ? 'ew-resize' : 'crosshair';
+      if (!drag) canvas.style.cursor = z === 'price' ? 'ns-resize' : z === 'time' ? 'ew-resize' : 'crosshair';
+      const r = canvas.getBoundingClientRect();
+      hover = drag ? null : { x: e.clientX - r.left, y: e.clientY - r.top };
+      if (!raf) raf = requestAnimationFrame(() => { raf = 0; drawChart(); });
     });
+    canvas.addEventListener('mouseleave', () => { hover = null; drawChart(); });
     canvas.addEventListener('dblclick', (e) => {
       if (zoneOf(e) === 'price') yManual = null; else resetView();   // back to auto-fit
       drawChart();

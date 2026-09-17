@@ -398,6 +398,8 @@ function tradeLevels(candles, direction, atrMult = 1.5) {
     stopAtr: atrStop, stopStructure: structStop,
     riskPerShare: risk,
     stopPct: (risk / entry) * 100,
+    // Three is a sensible default for anything reading the API directly; the
+    // UI derives its own from riskPerShare so the count can change instantly.
     targets: [1, 2, 3].map(r => ({ r, price: at(r), pct: (Math.abs(at(r) - entry) / entry) * 100 })),
     structureTarget: passed ? null : {
       price: structTarget,

@@ -410,6 +410,13 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .dropzone img { max-width: 100%; max-height: 260px; border-radius: 8px; }
 .img-result { margin-top: 12px; white-space: pre-wrap; }
 
+.tp-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.tp-label { font-size: 12.5px; color: var(--muted); }
+.tp-group { display: inline-flex; gap: 3px; background: var(--card-hi); border-radius: 999px; padding: 4px; }
+.tp-btn { font-family: var(--font-num); font-size: 12.5px; font-weight: 500; color: var(--muted); background: none; border: none; border-radius: 999px; min-width: 30px; padding: 5px 0; cursor: pointer; transition: background .12s, color .12s; }
+.tp-btn:hover { color: var(--text); }
+.tp-btn.active { color: #0b0e12; background: var(--accent); }
+
 .levels-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 24px; }
 .lv { border-top: 1px solid var(--border); padding: 10px 0 11px; }
 .lv-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
