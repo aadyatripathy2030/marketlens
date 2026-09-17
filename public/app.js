@@ -54,6 +54,38 @@
     }).join('');
   }
 
+  function renderLevels(d) {
+    const L = d && d.levels;
+    if (!L) { $('levelsCard').classList.add('hidden'); return; }
+    const ccy = d.currency || '';
+    const f = (v) => (+v).toFixed(2);
+    const dirWord = L.direction === 'short' ? 'short' : 'long';
+    $('levelsSub').textContent = `${dirWord} from ${f(L.entry)} ${ccy} · stop placed by ${L.method === 'structure' ? 'recent swing level' : 'ATR'}`;
+
+    const cell = (name, val, cls, note) =>
+      `<div class="lv"><div class="lv-top"><span class="lv-name">${esc(name)}</span><span class="lv-val ${cls || ''}">${esc(val)}</span></div>${note ? `<div class="lv-note">${esc(note)}</div>` : ''}</div>`;
+
+    const rows = [
+      cell('Entry (last)', f(L.entry), '', `ATR ${f(L.atr)} — the average daily range this is sized from`),
+      cell('Stop loss', f(L.stop), 'stop',
+        `${f(L.stopPct)}% away · risk ${f(L.riskPerShare)} ${ccy} per share · ` +
+        (L.method === 'structure'
+          ? `just beyond the 60-bar ${dirWord === 'long' ? 'low' : 'high'} (ATR method would say ${f(L.stopAtr)})`
+          : `${L.atrMult}x ATR (swing level at ${f(L.stopStructure)} was too far to use)`)),
+    ];
+    for (const t of L.targets) {
+      rows.push(cell(`Take profit ${t.r}R`, f(t.price), 'target', `${f(t.pct)}% away · ${t.r}x the risk taken`));
+    }
+    rows.push(L.structureTarget
+      ? cell('Swing level ahead', f(L.structureTarget.price), 'target',
+          `${f(L.structureTarget.pct)}% away · ${f(L.structureTarget.r)}R — the 60-bar ${dirWord === 'long' ? 'high' : 'low'}, where price has turned before`)
+      : cell('Swing level ahead', 'none', '',
+          `Price is already outside its 60-bar range, so there is no prior level ahead of it to aim at`));
+
+    $('levelsBody').innerHTML = `<div class="levels-grid">${rows.join('')}</div>`;
+    $('levelsCard').classList.remove('hidden');
+  }
+
   const EXAMPLES = ['AAPL', 'TSLA', 'MSFT', 'NVDA', 'AMZN', 'GOOGL'];
   $('examples').innerHTML = EXAMPLES.map(s => `<button class="chip" data-s="${s}">${s}</button>`).join('');
   $('examples').querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => { $('symbol').value = b.dataset.s; run(b.dataset.s); }));
@@ -131,7 +163,7 @@
   let viewCandles = null;   // when set, view shows exactly this many recent candles
   const DEFAULT_CANDLES = 90; // zoomed-in default when the interval changes
   let chartType = 'candle'; // 'candle' | 'line'
-  const show = { fast: true, slow: true, proj: true }; // overlay visibility
+  const show = { fast: true, slow: true, proj: true, levels: false }; // overlay visibility
 
   // Axis gutters, TradingView-style: price scale down the right edge, time
   // scale along the bottom. Dragging either one rescales that axis.
@@ -329,6 +361,24 @@
       });
     } else {
       line(bars.map(p => p.close), 0, col('--accent'));
+    }
+
+    // Stop / target lines, drawn across the plot with a label in the gutter.
+    if (show.levels && d.levels) {
+      const L = d.levels;
+      const mark = (price, color, label, dashed) => {
+        if (!Number.isFinite(price) || price < lo || price > hi) return;   // off-screen
+        const y = Y(price);
+        ctx.save();
+        ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash(dashed ? [4, 4] : []);
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(axX, y); ctx.stroke();
+        ctx.restore();
+        ctx.fillStyle = color; ctx.font = '10px ui-monospace, Menlo, monospace';
+        ctx.fillText(label, padL + 4, y - 3);
+      };
+      mark(L.stop, col('--bad'), 'STOP ' + L.stop.toFixed(2), false);
+      L.targets.forEach(t => mark(t.price, col('--good'), t.r + 'R ' + t.price.toFixed(2), true));
+      if (L.structureTarget) mark(L.structureTarget.price, col('--sma20'), 'SWING ' + L.structureTarget.price.toFixed(2), true);
     }
 
     if (show.slow) line(visSlow, 0, col('--sma50'));
@@ -609,7 +659,7 @@
       else $('risk').className = 'risk hidden';
       $('note').textContent = d.note || '';
       $('result').classList.remove('hidden');
-      resetView(); drawChart(); tiles(d); renderTech(d.tech); renderBands(d.bands);
+      resetView(); drawChart(); tiles(d); renderTech(d.tech); renderBands(d.bands); renderLevels(d);
       setAnalysisPending();
       loadAnalysis(d);
       loadFundamentals(d.symbol);

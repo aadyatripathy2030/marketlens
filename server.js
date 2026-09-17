@@ -174,6 +174,7 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   const tech = I.techReport(candles);
   const rating = I.overallRating(tech);
   const bands = I.forecastBands(closes);
+  const levels = I.tradeLevels(candles, a.direction);
   const last = closes[closes.length - 1];
   const prev = closes[closes.length - 2] || last;
   json(res, 200, {
@@ -185,7 +186,7 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
     indicators: { maFast: a.maFast.value, maSlow: a.maSlow.value, rsi: a.rsi, rsiPeriod: a.rsiPeriod, trendSlope: a.slope },
     signal: a.signal, verdict: a.verdict, risk: a.risk,
     forecast: a.forecast, horizon: a.horizon,
-    tech, rating, bands,
+    tech, rating, bands, levels,
   });
 }
 

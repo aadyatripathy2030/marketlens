@@ -136,6 +136,7 @@
               <button type="button" class="ov active" data-k="fast"><i style="background:var(--sma20)"></i><span id="ovFast">SMA</span></button>
               <button type="button" class="ov active" data-k="slow"><i style="background:var(--sma50)"></i><span id="ovSlow">SMA</span></button>
               <button type="button" class="ov active" data-k="proj"><i class="dashed" style="background:var(--forecast)"></i>Projection</button>
+              <button type="button" class="ov" data-k="levels"><i style="background:var(--bad)"></i>Stop / target</button>
               <button type="button" class="ov" id="ovColors">Colors</button>
             </div>
             <div class="chart-time">
@@ -204,6 +205,14 @@
             <div class="thesis-col bear"><div class="thesis-h">▼ Bear case</div><ul id="bearList"></ul></div>
           </div>
           <p class="thesis-concl" id="conclusion"></p>
+        </div>
+
+        <div class="card hidden" id="levelsCard">
+          <div class="section-h">Stop loss &amp; take profit <span class="sub" id="levelsSub"></span></div>
+          <div id="levelsBody"></div>
+          <p class="levels-note">These are arithmetic, not a recommendation: the stop is placed from ATR or the recent
+            swing level, and each target is a multiple of that same distance. Nothing here knows your position size,
+            your costs, or whether the trade is worth taking. Gaps and fast markets can skip straight past a stop.</p>
         </div>
 
         <div class="card hidden" id="fundCard">

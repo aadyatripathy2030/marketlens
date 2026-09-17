@@ -362,9 +362,54 @@ function forecastBands(closes) {
   });
 }
 
+// ---- Exit levels ----
+// Mechanical stop / target arithmetic from ATR and recent structure. These are
+// formula outputs, nothing more: they say where a level sits given a volatility
+// measure and a 60-bar high/low, not whether any trade is worth taking.
+function tradeLevels(candles, direction, atrMult = 1.5) {
+  if (!Array.isArray(candles) || candles.length < 20) return null;
+  const entry = candles[candles.length - 1].close;
+  const a = atr(candles), sr = supportResistance(candles);
+  if (!Number.isFinite(entry) || !a || !sr) return null;
+  const long = direction !== 'short';
+
+  // Two independent stop methods. ATR sizes the stop to how much this symbol
+  // actually moves; structure puts it beyond the recent extreme, with a
+  // quarter-ATR buffer so a single wick through the level doesn't trigger it.
+  const atrStop = long ? entry - atrMult * a : entry + atrMult * a;
+  const structStop = long ? sr.support - 0.25 * a : sr.resistance + 0.25 * a;
+  // Prefer structure when it is close enough to be a real level rather than a
+  // far-away extreme that would make the risk per share absurd.
+  const useStruct = Math.abs(entry - structStop) <= 3 * a && (long ? structStop < entry : structStop > entry);
+  const stop = useStruct ? structStop : atrStop;
+  const risk = Math.abs(entry - stop);
+  if (!(risk > 0) || !Number.isFinite(risk)) return null;
+
+  const at = (r) => long ? entry + r * risk : entry - r * risk;
+  const structTarget = long ? sr.resistance : sr.support;
+  // Price can sit outside the 60-bar range, which leaves no structure target
+  // ahead of it; say so rather than quoting a target already behind price.
+  const passed = long ? structTarget <= entry : structTarget >= entry;
+
+  return {
+    direction: long ? 'long' : 'short',
+    entry, atr: a, atrMult,
+    stop, method: useStruct ? 'structure' : 'atr',
+    stopAtr: atrStop, stopStructure: structStop,
+    riskPerShare: risk,
+    stopPct: (risk / entry) * 100,
+    targets: [1, 2, 3].map(r => ({ r, price: at(r), pct: (Math.abs(at(r) - entry) / entry) * 100 })),
+    structureTarget: passed ? null : {
+      price: structTarget,
+      r: Math.abs(structTarget - entry) / risk,
+      pct: (Math.abs(structTarget - entry) / entry) * 100,
+    },
+  };
+}
+
 module.exports = {
   sma, rsi, linearForecast, computeSignal, demoCloses, demoCandles, analyze, verdict, STRAT, RISK,
   ema, macd, bollinger, atr, vwap, supportResistance, fibonacci, volatility, trendStrength,
-  techReport, overallRating, forecastBands,
+  techReport, overallRating, forecastBands, tradeLevels,
 };
 
