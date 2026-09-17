@@ -154,7 +154,7 @@ function buildDemo(symbol, interval) {
 }
 
 async function handleStock(req, res, symbol, strategy, direction, interval) {
-  symbol = String(symbol || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
+  symbol = String(symbol || '').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
   if (!symbol) return json(res, 400, { error: 'Enter a ticker symbol.' });
   strategy = I.STRAT[strategy] ? strategy : 'daytrade';
   direction = direction === 'short' ? 'short' : 'long';
@@ -472,7 +472,7 @@ async function handleWatchlist(req, res) {
   if (!user) return json(res, 401, { error: 'Please sign in.' });
   if (req.method === 'GET') return json(res, 200, { symbols: await db.listWatch(user.id) });
   const b = await readBody(req);
-  const symbol = String(b.symbol || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
+  const symbol = String(b.symbol || '').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
   if (!symbol) return json(res, 400, { error: 'No symbol.' });
   if (b.action === 'remove') await db.removeWatch(user.id, symbol); else await db.addWatch(user.id, symbol);
   return json(res, 200, { symbols: await db.listWatch(user.id) });
@@ -572,7 +572,7 @@ function buildMetrics(r, k, inc, p) {
   ];
 }
 async function handleFundamentals(req, res, symbol) {
-  symbol = String(symbol || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
+  symbol = String(symbol || '').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
   if (!symbol) return json(res, 400, { error: 'No symbol.' });
   const enc = encodeURIComponent(symbol);
   if (!FMP_API_KEY && !FINNHUB_API_KEY) return json(res, 200, { available: false, message: 'Set FMP_API_KEY / FINNHUB_API_KEY on the server for fundamentals & news.' });
@@ -612,7 +612,7 @@ function buildCompareMetrics(r, k, inc, p) {
   };
 }
 async function handleCompare(req, res, raw) {
-  const symbols = String(raw || '').toUpperCase().split(',').map(s => s.replace(/[^A-Z0-9.\-]/g, '').slice(0, 12)).filter(Boolean).filter((s, i, a) => a.indexOf(s) === i).slice(0, 4);
+  const symbols = String(raw || '').toUpperCase().split(',').map(s => s.replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16)).filter(Boolean).filter((s, i, a) => a.indexOf(s) === i).slice(0, 4);
   if (symbols.length < 2) return json(res, 400, { error: 'Add at least two tickers to compare.' });
   const rows = await Promise.all(symbols.map(async (sym) => {
     try {
@@ -644,9 +644,9 @@ function demoQuote(sym) {
 }
 function fetchQuotes(symbols) {
   if (!STOCK_API_KEY) return Promise.resolve(symbols.map(demoQuote));
-  // 20s matches the client's live-quote poll, so polling costs one call per
-  // symbol set per interval no matter how many tabs are open.
-  return cached(`quotes:${symbols.join(',')}`, 20000, () => fetchQuotesUncached(symbols));
+  // Matches the client's live-quote poll, so polling costs one upstream call
+  // per symbol set per interval no matter how many tabs are open.
+  return cached(`quotes:${symbols.join(',')}`, 10000, () => fetchQuotesUncached(symbols));
 }
 async function fetchQuotesUncached(symbols) {
   try {
@@ -662,7 +662,7 @@ async function fetchQuotesUncached(symbols) {
   } catch { return symbols.map(demoQuote); }
 }
 async function handleQuotes(req, res, raw) {
-  const symbols = String(raw || '').toUpperCase().split(',').map(s => s.replace(/[^A-Z0-9.\-]/g, '').slice(0, 12)).filter(Boolean).slice(0, 24);
+  const symbols = String(raw || '').toUpperCase().split(',').map(s => s.replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16)).filter(Boolean).slice(0, 24);
   if (!symbols.length) return json(res, 400, { error: 'No symbols.' });
   return json(res, 200, { quotes: await fetchQuotes(symbols), source: STOCK_API_KEY ? 'live' : 'demo' });
 }
@@ -689,7 +689,7 @@ async function handleAlerts(req, res) {
   }
   const b = await readBody(req);
   if (b.action === 'remove') { await db.removeAlert(user.id, String(b.id || '')); return json(res, 200, { ok: true }); }
-  const symbol = String(b.symbol || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
+  const symbol = String(b.symbol || '').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
   const direction = b.direction === 'below' ? 'below' : 'above';
   const target = Number(b.target);
   if (!symbol || !Number.isFinite(target) || target <= 0) return json(res, 400, { error: 'Enter a ticker and a target price above 0.' });

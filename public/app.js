@@ -100,6 +100,16 @@
   $('examples').querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => { $('symbol').value = b.dataset.s; run(b.dataset.s); }));
 
   // ---- Ticker autocomplete ----
+  // Twelve Data quotes crypto as a pair. Listed here so the picker surfaces
+  // them the same way it does equities.
+  const CRYPTO = [
+    ['BTC/USD', 'Bitcoin'], ['ETH/USD', 'Ethereum'], ['SOL/USD', 'Solana'], ['XRP/USD', 'XRP'],
+    ['ADA/USD', 'Cardano'], ['DOGE/USD', 'Dogecoin'], ['AVAX/USD', 'Avalanche'], ['LINK/USD', 'Chainlink'],
+    ['DOT/USD', 'Polkadot'], ['MATIC/USD', 'Polygon'], ['LTC/USD', 'Litecoin'], ['BCH/USD', 'Bitcoin Cash'],
+    ['UNI/USD', 'Uniswap'], ['ATOM/USD', 'Cosmos'], ['ETC/USD', 'Ethereum Classic'], ['XLM/USD', 'Stellar'],
+  ];
+  const isCrypto = (sym) => String(sym || '').includes('/');
+
   const TICKERS = [
     ['AAPL', 'Apple'], ['MSFT', 'Microsoft'], ['GOOGL', 'Alphabet (Class A)'], ['GOOG', 'Alphabet (Class C)'],
     ['AMZN', 'Amazon'], ['NVDA', 'NVIDIA'], ['META', 'Meta Platforms'], ['TSLA', 'Tesla'],
@@ -134,8 +144,9 @@
     const q = (qRaw || '').trim().toUpperCase();
     if (!q) return hideSuggest();
     const starts = [], byName = [];
-    for (const t of TICKERS) {
-      if (t[0].startsWith(q)) starts.push(t);
+    for (const t of TICKERS.concat(CRYPTO)) {
+      // "BTC" should find BTC/USD, so match the base of a pair as well.
+      if (t[0].startsWith(q) || t[0].split('/')[0] === q) starts.push(t);
       else if (t[1].toUpperCase().startsWith(q)) byName.push(t);
     }
     sugItems = starts.concat(byName).slice(0, 8);
@@ -210,6 +221,7 @@
   let yManual = null;       // {lo, hi} in price units, or null for auto-fit
   let lastY = null;         // last drawn {lo, hi, plotH} so drags can do maths
   let hover = null;         // {x, y} in CSS px for the crosshair, or null
+  let liveBar = null;       // index of the bar currently being formed by ticks
 
   // How many take-profit levels to show. Each is a multiple of the risk the
   // stop implies, so they are derived here rather than refetched — changing
@@ -241,6 +253,21 @@
   // Approx bars per trading day per interval, so a range like "6M" spans ~6
   // months of history regardless of the candle size.
   const BARS_PER_DAY = { '1min': 390, '5min': 78, '15min': 26, '30min': 13, '1h': 7, '4h': 2, '1day': 1, '1week': 0.2, '1month': 1 / 21 };
+  // How long one bar covers, so a live tick can tell "still this candle" from
+  // "a new candle has started".
+  const INTERVAL_MS = { '1min': 60e3, '5min': 300e3, '15min': 900e3, '30min': 1800e3, '1h': 3600e3, '4h': 144e5, '1day': 864e5, '1week': 6048e5, '1month': 26298e5 };
+  // API dates are "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS"; parse as local time so
+  // bucket maths lines up with the series already on screen.
+  function barTime(dateStr) {
+    const m = String(dateStr || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/);
+    if (!m) return NaN;
+    return new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0)).getTime();
+  }
+  const fmtBarDate = (ms, iv) => {
+    const d = new Date(ms), p2 = (n) => String(n).padStart(2, '0');
+    const day = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+    return (INTERVAL_MS[iv] || 864e5) < 864e5 ? `${day} ${p2(d.getHours())}:${p2(d.getMinutes())}:00` : day;
+  };
 
   // Strategy tabs (Day trading / Long-term). Long-term is long-only, so the
   // Long/Short toggle only shows for day trading.
@@ -365,7 +392,7 @@
     lastY = { lo, hi, plotH };
 
     const AXF = '11px ui-sans-serif, system-ui, -apple-system, sans-serif';
-    const NUMF = '11px ui-monospace, SFMono-Regular, Menlo, monospace';
+    const NUMF = '11.5px ui-sans-serif, system-ui, -apple-system, sans-serif';
     ctx.font = NUMF; ctx.lineWidth = 1;
 
     // A rounded tag on an axis, which is how prices and times read on a modern
@@ -428,6 +455,10 @@
         if (cw >= 5 && hgt >= 4) {
           ctx.strokeStyle = up ? cc.upBorder : cc.downBorder; ctx.lineWidth = 1;
           ctx.strokeRect(Math.round(x - cw / 2) + .5, Math.round(top) + .5, Math.round(cw) - 1, Math.round(hgt) - 1);
+        }
+        if (liveBar != null && start + j === liveBar && cw >= 3) {
+          ctx.strokeStyle = col('--accent'); ctx.lineWidth = 1;
+          ctx.strokeRect(Math.round(x - cw / 2) - 1.5, Math.round(top) - 1.5, Math.round(cw) + 3, Math.round(hgt) + 3);
         }
       });
     } else {
@@ -730,7 +761,10 @@
 
   // Live updating: poll the latest quote every 20s and update the last candle + header.
   let liveTimer = null;
-  function startLive() { if (!liveTimer) liveTimer = setInterval(liveTick, 20000); }
+  // 8s: fast enough that the forming candle visibly moves, slow enough to stay
+  // inside the upstream rate limit once the server-side quote cache absorbs
+  // repeats. A new ticker resets the forming-bar marker.
+  function startLive() { if (!liveTimer) liveTimer = setInterval(liveTick, 10000); }
   async function liveTick() {
     if (!lastData || document.hidden || $('view-analyze').classList.contains('hidden')) return;
     const sym = lastData.symbol;
@@ -743,9 +777,26 @@
     // A tick more than 25% from the last close is mismatched data, not a move.
     if (!Number.isFinite(price) || price <= 0) return;
     if (last.close > 0 && Math.abs(price - last.close) / last.close > 0.25) return;
-    last.close = price;
-    if (price > last.high) last.high = price;
-    if (price < last.low) last.low = price;
+
+    // If the clock has moved past the end of the last bar, the tick opens a new
+    // one rather than stretching the old one forever.
+    const step = INTERVAL_MS[interval] || 864e5;
+    const lastT = barTime(last.date);
+    const rolled = Number.isFinite(lastT) && Date.now() >= lastT + step;
+    if (rolled) {
+      const startedAt = lastT + Math.floor((Date.now() - lastT) / step) * step;
+      const atEnd = view && view.end >= prices.length;          // following the right edge?
+      prices.push({ date: fmtBarDate(startedAt, interval), open: last.close,
+                    high: Math.max(last.close, price), low: Math.min(last.close, price),
+                    close: price, volume: 0 });
+      if (atEnd) { view = { start: view.start + 1, end: prices.length }; }
+      liveBar = prices.length - 1;
+    } else {
+      last.close = price;
+      if (price > last.high) last.high = price;
+      if (price < last.low) last.low = price;
+      if (liveBar == null) liveBar = prices.length - 1;
+    }
     lastData.latest = price;
     $('price').textContent = price.toFixed(2) + ' ' + lastData.currency;
     const up = q.changePct >= 0;
@@ -781,7 +832,7 @@
       const d = await r.json();
       if (seq !== runSeq) return;                    // superseded by a newer ticker
       if (!r.ok) throw new Error(d.error || 'Could not load');
-      lastData = d;
+      lastData = d; liveBar = null;
       $('modeTag').textContent = d.source === 'live' ? 'live data' : 'demo data';
       $('symName').textContent = d.symbol + (d.name && d.name !== d.symbol ? ' · ' + d.name : '');
       updateWatchBtn(d.symbol);

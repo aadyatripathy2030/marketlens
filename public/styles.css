@@ -17,7 +17,9 @@
      The pairing carries the contrast, so headings do not need a third face. */
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --font-head: var(--font);
-  --font-num: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* Same sans as everything else; tabular figures keep columns aligned
+     without the typewriter look a monospace face brings. */
+  --font-num: var(--font);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; max-width: 100%; overflow-x: hidden; }
@@ -41,7 +43,7 @@ html, body { height: 100%; max-width: 100%; overflow-x: hidden; }
 .gate-guest:hover { color: var(--accent); }
 .gate-note { font-size: 11px; color: var(--muted); margin-top: 16px; text-align: center; line-height: 1.5; }
 img, canvas { max-width: 100%; }
-body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.55; min-height: 100vh; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.6; min-height: 100vh; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; font-variant-numeric: tabular-nums; overflow-x: hidden; }
 
 .topbar { display: flex; align-items: center; justify-content: flex-start; padding: 15px 32px; background: var(--bg2); position: sticky; top: 0; z-index: 30; }
 .brand { display: flex; align-items: center; gap: 10px; flex: none; font-weight: 680; font-size: 17.5px; letter-spacing: -.4px; color: var(--text); text-decoration: none; cursor: pointer; }

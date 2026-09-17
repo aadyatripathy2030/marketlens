@@ -65,7 +65,7 @@
       <h1 class="hero-h">Look up a ticker.</h1>
       <p class="hero-sub">ChartGauge pulls the price history, computes SMA 20/50/200, RSI, MACD, Bollinger bands, ATR, VWAP, support and resistance, draws them on a candlestick chart, and writes up what they say. It is a study tool. The indicators disagree with each other often, and the score built from them is wrong often.</p>
       <form class="hero-search" id="heroForm">
-        <input id="heroInput" class="input" placeholder="Search a ticker or company — AAPL, Tesla, NVDA…" autocomplete="off" maxlength="12" />
+        <input id="heroInput" class="input" placeholder="Search a ticker, company, or crypto — AAPL, Tesla, BTC/USD…" autocomplete="off" maxlength="16" />
         <button type="submit" class="btn btn-primary">Analyze</button>
       </form>
       <div class="hero-cta">
@@ -84,7 +84,7 @@
   <div class="controls">
     <form class="search" id="searchForm">
       <div class="search-box">
-        <input type="text" id="symbol" class="input" placeholder="Enter a ticker — e.g. AAPL, TSLA, MSFT" autocomplete="off" maxlength="12" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest" />
+        <input type="text" id="symbol" class="input" placeholder="Ticker or crypto pair — AAPL, TSLA, BTC/USD" autocomplete="off" maxlength="16" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest" />
         <div class="suggest hidden" id="suggest" role="listbox"></div>
       </div>
       <button type="submit" class="btn btn-primary" id="goBtn">Analyze</button>
@@ -313,7 +313,7 @@
     <h1 class="view-h">Price alerts</h1>
     <p class="learn-lead">Get flagged when a stock crosses your target. Alerts are checked each time you open this page.</p>
     <form class="alert-form" id="alertForm">
-      <input id="alSymbol" class="input sc-in" placeholder="Ticker" maxlength="12" autocomplete="off" />
+      <input id="alSymbol" class="input sc-in" placeholder="Ticker or pair" maxlength="16" autocomplete="off" />
       <select id="alDir" class="sel"><option value="above">rises above</option><option value="below">falls below</option></select>
       <input id="alTarget" class="input sc-in" placeholder="Target $" inputmode="decimal" />
       <button class="btn btn-primary" type="submit">Add alert</button>
@@ -325,7 +325,7 @@
   <section class="view hidden" id="view-compare">
     <h1 class="view-h">Compare stocks</h1>
     <form class="compare-add" id="compareForm">
-      <input id="compareInput" class="input" placeholder="Add a ticker — e.g. NVDA" maxlength="12" autocomplete="off" />
+      <input id="compareInput" class="input" placeholder="Add a ticker or pair — NVDA, BTC/USD" maxlength="16" autocomplete="off" />
       <button class="btn btn-primary" type="submit">Add</button>
     </form>
     <div class="compare-chips" id="compareChips"></div>
