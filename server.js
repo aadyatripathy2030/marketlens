@@ -240,7 +240,7 @@ function reportPrompt(p) {
 
 async function callClaudeReport(p) {
   const { system, user } = reportPrompt(p);
-  const body = JSON.stringify({ model: AI_MODEL, max_tokens: 700, system, messages: [{ role: 'user', content: user }] });
+  const body = JSON.stringify({ model: AI_MODEL, max_tokens: 1000, system, messages: [{ role: 'user', content: user }] });
   const { json: j } = await httpsJson({ method: 'POST', hostname: 'api.anthropic.com', path: '/v1/messages',
     headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) } }, body);
   const text = j && j.content && j.content[0] && j.content[0].text;
@@ -315,7 +315,7 @@ async function handleAnalyzeStream(req, res) {
     return res.end();
   }
   const { system, user } = reportPrompt(p);
-  const body = JSON.stringify({ model: AI_MODEL, max_tokens: 700, stream: true, system, messages: [{ role: 'user', content: user }] });
+  const body = JSON.stringify({ model: AI_MODEL, max_tokens: 1000, stream: true, system, messages: [{ role: 'user', content: user }] });
   let full = '', sent = 0, sse = '';
   try {
     await httpsStream({ method: 'POST', hostname: 'api.anthropic.com', path: '/v1/messages',
@@ -342,8 +342,20 @@ async function handleAnalyzeStream(req, res) {
       conclusion: String(parsed.conclusion || ''), source: 'ai' });
   } catch (e) {
     logError(e);
-    send({ t: 'done', ...ruleBasedReport(p), source: 'rule',
-      note: 'Claude was unreachable (' + e.message + '); this is the rule-based report.' });
+    const rb = ruleBasedReport(p);
+    const partial = summaryPrefix(full);
+    // The reader has already watched this text arrive. Replacing it with a
+    // different summary is more jarring than keeping it and filling in the
+    // structured parts mechanically, so only fall back wholesale if there is
+    // nothing substantial to keep.
+    if (partial && partial.length > 80) {
+      send({ t: 'done', summary: partial, bull: rb.bull, bear: rb.bear, conclusion: rb.conclusion,
+        source: 'ai-partial',
+        note: 'Claude’s reply was cut short, so the bull and bear points below are the rule-based ones.' });
+    } else {
+      send({ t: 'done', ...rb, source: 'rule',
+        note: 'Claude was unreachable (' + e.message + '); this is the rule-based report.' });
+    }
   }
   res.end();
 }

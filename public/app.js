@@ -652,9 +652,14 @@
 
   const stale = (d) => !lastData || lastData.symbol !== d.symbol;
 
+  const SOURCE_LABEL = {
+    ai: 'written by Claude',
+    'ai-partial': 'written by Claude — reply was cut short',
+    rule: 'rule-based fallback — no model key set',
+  };
   function applyReport(j) {
     $('aiBody').textContent = j.summary || 'No analysis available.';
-    $('aiTag').textContent = j.source === 'ai' ? 'written by Claude' : 'rule-based fallback — no model key set';
+    $('aiTag').textContent = SOURCE_LABEL[j.source] || SOURCE_LABEL.rule;
     $('bullList').innerHTML = (j.bull && j.bull.length ? j.bull : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
     $('bearList').innerHTML = (j.bear && j.bear.length ? j.bear : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
     $('conclusion').textContent = j.conclusion || '';
