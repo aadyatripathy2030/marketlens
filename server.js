@@ -638,7 +638,7 @@ async function handleCompare(req, res, raw) {
 
 // ---- Lightweight quotes (for Markets / Watchlist grids) ----
 function demoQuote(sym) {
-  const c = I.demoCandles(sym, 3);
+  const c = I.demoCandles(sym, OUTPUTSIZE['1day']);
   const price = c[c.length - 1].c, prev = c[c.length - 2].c;
   return { symbol: sym, price, change: price - prev, changePct: prev ? ((price - prev) / prev) * 100 : 0 };
 }

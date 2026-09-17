@@ -634,13 +634,18 @@
     const sym = lastData.symbol;
     let q; try { q = (await getQuotes([sym]))[0]; } catch { return; }
     if (!q || !lastData || lastData.symbol !== sym) return;
+    if (q.source && lastData.source && q.source !== lastData.source) return;   // demo vs live
     const prices = lastData.prices; if (!prices.length) return;
     const last = prices[prices.length - 1];
-    last.close = q.price;
-    if (q.price > last.high) last.high = q.price;
-    if (q.price < last.low) last.low = q.price;
-    lastData.latest = q.price;
-    $('price').textContent = (+q.price).toFixed(2) + ' ' + lastData.currency;
+    const price = Number(q.price);
+    // A tick more than 25% from the last close is mismatched data, not a move.
+    if (!Number.isFinite(price) || price <= 0) return;
+    if (last.close > 0 && Math.abs(price - last.close) / last.close > 0.25) return;
+    last.close = price;
+    if (price > last.high) last.high = price;
+    if (price < last.low) last.low = price;
+    lastData.latest = price;
+    $('price').textContent = price.toFixed(2) + ' ' + lastData.currency;
     const up = q.changePct >= 0;
     $('chg').textContent = (up ? '▲ ' : '▼ ') + Math.abs(q.change).toFixed(2) + ' (' + q.changePct.toFixed(2) + '%)';
     $('chg').className = 'chg ' + (up ? 'up' : 'down');
@@ -974,7 +979,12 @@
   const TRENDING = ['AAPL', 'NVDA', 'TSLA', 'MSFT', 'AMZN', 'META', 'GOOGL', 'AMD', 'NFLX', 'COIN', 'PLTR', 'AVGO'];
   const nameOf = {}; TICKERS.forEach(t => nameOf[t[0]] = t[1]); INDICES.forEach(i => nameOf[i[0]] = i[1]);
   async function getQuotes(symbols) {
-    try { const j = await (await fetch('/api/quotes?symbols=' + encodeURIComponent(symbols.join(',')))).json(); return j.quotes || []; } catch { return []; }
+    try {
+      const j = await (await fetch('/api/quotes?symbols=' + encodeURIComponent(symbols.join(',')))).json();
+      const qs = j.quotes || [];
+      qs.forEach(q => { q.source = j.source; });
+      return qs;
+    } catch { return []; }
   }
   function quoteCard(q) {
     const up = q.changePct >= 0;
