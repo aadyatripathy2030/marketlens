@@ -214,7 +214,14 @@
 
   // Axis gutters, TradingView-style: price scale down the right edge, time
   // scale along the bottom. Dragging either one rescales that axis.
-  const AXIS_W = 58, AXIS_H = 26;
+  let AXIS_W = 58;            // price gutter, re-measured per draw
+  const AXIS_H = 26;
+  // Decimals that suit the magnitude: 2dp is noise on BTC and far too few on
+  // a sub-cent coin.
+  const pxFmt = (v) => {
+    const a = Math.abs(v);
+    return a >= 1000 ? v.toFixed(0) : a >= 1 ? v.toFixed(2) : a >= 0.01 ? v.toFixed(4) : v.toFixed(6);
+  };
   // The price axis auto-fits the visible bars until you scale or drag it
   // vertically; from then on it holds an explicit window, like TradingView,
   // until a double-click hands it back to auto-fit.
@@ -383,6 +390,10 @@
     // the price axis by scaling or dragging it.
     let lo = min - pad, hi = max + pad;
     if (yManual && yManual.hi > yManual.lo) { lo = yManual.lo; hi = yManual.hi; }
+    const AXF0 = '11.5px ui-sans-serif, system-ui, -apple-system, sans-serif';
+    ctx.font = AXF0;
+    const widest = Math.max(ctx.measureText(pxFmt(hi)).width, ctx.measureText(pxFmt(lo)).width);
+    AXIS_W = Math.round(Math.max(56, Math.min(104, widest + 26)));
     const padL = 8, padR = AXIS_W, padT = 12, padB = AXIS_H;
     const plotW = w - padL - padR, plotH = h - padT - padB;
     const total = bars.length + fc.length;
@@ -422,7 +433,7 @@
       ctx.globalAlpha = .55;
       ctx.beginPath(); ctx.moveTo(padL, Math.round(y) + .5); ctx.lineTo(axX, Math.round(y) + .5); ctx.stroke();
       ctx.globalAlpha = 1;
-      gridLabels.push({ text: val.toFixed(2), y });
+      gridLabels.push({ text: pxFmt(val), y });
     }
 
     // Dates sit in the gutter with no tick marks.
@@ -498,9 +509,9 @@
         usedY.push(ty);
         priceTag(label, ty, color, '#0b0e12');
       };
-      mark(L.stop, col('--bad'), L.stop.toFixed(2), false);
-      targetsFor(L).forEach(t => mark(t.price, col('--good'), t.price.toFixed(2), true));
-      if (L.structureTarget) mark(L.structureTarget.price, col('--sma20'), L.structureTarget.price.toFixed(2), true);
+      mark(L.stop, col('--bad'), pxFmt(L.stop), false);
+      targetsFor(L).forEach(t => mark(t.price, col('--good'), pxFmt(t.price), true));
+      if (L.structureTarget) mark(L.structureTarget.price, col('--sma20'), pxFmt(L.structureTarget.price), true);
     }
 
     // Last price: dashed marker plus a tag, so the current level is obvious.
@@ -512,7 +523,7 @@
       ctx.beginPath(); ctx.moveTo(padL, Math.round(ly) + .5); ctx.lineTo(axX, Math.round(ly) + .5); ctx.stroke();
       ctx.restore();
       const upDay = bars.length > 1 && lastClose >= bars[bars.length - 2].close;
-      priceTag(lastClose.toFixed(2), ly, upDay ? col('--good') : col('--bad'), '#0b0e12');
+      priceTag(pxFmt(lastClose), ly, upDay ? col('--good') : col('--bad'), '#0b0e12');
     }
 
     // Crosshair + OHLC readout for the bar under the cursor.
@@ -525,7 +536,7 @@
       ctx.beginPath(); ctx.moveTo(padL, Math.round(hover.y) + .5); ctx.lineTo(axX, Math.round(hover.y) + .5); ctx.stroke();
       ctx.restore();
       const atCursor = lo + (1 - (hover.y - padT) / plotH) * (hi - lo);
-      priceTag(atCursor.toFixed(2), hover.y, col('--border-strong'), col('--text'));
+      priceTag(pxFmt(atCursor), hover.y, col('--border-strong'), col('--text'));
       // date tag on the time axis
       ctx.font = AXF;
       const dl = b.date, dw = ctx.measureText(dl).width + 12;
@@ -536,7 +547,9 @@
       const up = b.close >= b.open;
       const rows = [['O', b.open], ['H', b.high], ['L', b.low], ['C', b.close]];
       ctx.font = NUMF;
-      const bw = 112, bh = 26 + rows.length * 15;
+      ctx.font = NUMF;
+      const widestVal = Math.max(...rows.map(r => ctx.measureText(pxFmt(+r[1])).width));
+      const bw = Math.max(112, Math.round(widestVal + 46)), bh = 26 + rows.length * 15;
       const bx = hx < padL + plotW / 2 ? Math.min(axX - bw - 8, hx + 14) : Math.max(padL + 8, hx - bw - 14);
       const by = padT + 8;
       ctx.globalAlpha = .96; ctx.fillStyle = col('--card-hi'); roundRect(bx, by, bw, bh, 8); ctx.fill(); ctx.globalAlpha = 1;
@@ -545,7 +558,7 @@
       rows.forEach((r, i) => {
         const ry = by + 32 + i * 15;
         ctx.fillStyle = col('--muted'); ctx.fillText(r[0], bx + 10, ry);
-        const t = (+r[1]).toFixed(2);
+        const t = pxFmt(+r[1]);
         ctx.fillStyle = i === 3 ? (up ? col('--good') : col('--bad')) : col('--text');
         ctx.fillText(t, bx + bw - 10 - ctx.measureText(t).width, ry);
       });
