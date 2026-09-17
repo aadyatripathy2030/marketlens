@@ -356,6 +356,21 @@
       if (!yManual && lastY) yManual = { lo: lastY.lo, hi: lastY.hi };
       return !!yManual;
     };
+    // Shared with the touch handlers below so both input paths behave alike.
+    const panBy = (dxPx, dyPx, r) => {
+      const len = lastData.prices.length, span = view.end - view.start;
+      view = clampView(view.start - (dxPx / plotWidth(r)) * span, view.end - (dxPx / plotWidth(r)) * span, len);
+      if (dyPx && lastY && lastY.plotH > 0 && ensureManual()) {
+        const shift = dyPx * (yManual.hi - yManual.lo) / lastY.plotH;
+        yManual = { lo: yManual.lo + shift, hi: yManual.hi + shift };
+      }
+    };
+    const scaleTime = (factor, pinEnd) => {
+      const len = lastData.prices.length;
+      const newSpan = Math.max(10, Math.min(len, (view.end - view.start) * factor));
+      view = pinEnd ? clampView(view.end - newSpan, view.end, len)
+                    : clampView(view.start, view.start + newSpan, len);
+    };
     const scaleY = (factor) => {
       if (!ensureManual()) return;
       const mid = (yManual.lo + yManual.hi) / 2;
@@ -412,16 +427,8 @@
         view = clampView(view.end - newSpan, view.end, len);
         drawChart(); return;
       }
-      const span = view.end - view.start;
-      const dxBars = (e.clientX - drag.x) / plotWidth(r) * span;
-      view = clampView(view.start - dxBars, view.end - dxBars, len);
-      // Vertical pan: shift the price window so the bars track the cursor.
-      // Dragging down raises the window, which moves the candles down.
-      const dy = e.clientY - drag.y;
-      if (dy && lastY && lastY.plotH > 0 && ensureManual()) {
-        const shift = dy * (yManual.hi - yManual.lo) / lastY.plotH;
-        yManual = { lo: yManual.lo + shift, hi: yManual.hi + shift };
-      }
+      // Pan both axes; dragging down raises the price window, moving bars down.
+      panBy(e.clientX - drag.x, e.clientY - drag.y, r);
       drag.x = e.clientX; drag.y = e.clientY;
       drawChart();
     });
@@ -435,6 +442,69 @@
       if (zoneOf(e) === 'price') yManual = null; else resetView();   // back to auto-fit
       drawChart();
     });
+
+    // ---- Touch ----
+    // One finger pans (or scales, if it starts on a gutter); two fingers pinch
+    // — horizontal spread zooms time, vertical spread zooms price, so the same
+    // gesture does whichever the user actually meant. Double-tap re-fits.
+    const spread = (t) => ({
+      x: Math.abs(t[0].clientX - t[1].clientX),
+      y: Math.abs(t[0].clientY - t[1].clientY),
+    });
+    let touch = null, lastTap = 0;
+    canvas.addEventListener('touchstart', (e) => {
+      if (!lastData || !view) return;
+      if (e.touches.length === 1) {
+        const t = e.touches[0], now = Date.now();
+        if (now - lastTap < 300) {                       // double-tap
+          if (zoneOf(t) === 'price') yManual = null; else resetView();
+          drawChart(); lastTap = 0; touch = null; e.preventDefault(); return;
+        }
+        lastTap = now;
+        touch = { mode: 'one', zone: zoneOf(t), x: t.clientX, y: t.clientY,
+                  span: view.end - view.start, man: yManual ? { lo: yManual.lo, hi: yManual.hi } : null };
+      } else if (e.touches.length === 2) {
+        touch = { mode: 'pinch', s0: spread(e.touches) };
+        lastTap = 0;
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (e) => {
+      if (!touch || !lastData || !view) return;
+      e.preventDefault();
+      const r = canvas.getBoundingClientRect();
+      if (touch.mode === 'pinch' && e.touches.length === 2) {
+        const s = spread(e.touches);
+        if (touch.s0.x > 12 && s.x > 12) scaleTime(touch.s0.x / s.x, false);
+        if (touch.s0.y > 12 && s.y > 12) scaleY(touch.s0.y / s.y);
+        touch.s0 = s;
+        drawChart(); return;
+      }
+      if (touch.mode !== 'one' || !e.touches.length) return;
+      const t = e.touches[0];
+      if (touch.zone === 'price') {
+        if (!touch.man) { ensureManual(); touch.man = yManual ? { lo: yManual.lo, hi: yManual.hi } : null; }
+        if (touch.man) {
+          const f = Math.pow(1.005, t.clientY - touch.y);
+          const mid = (touch.man.lo + touch.man.hi) / 2;
+          const half = Math.max(1e-6, ((touch.man.hi - touch.man.lo) / 2) * f);
+          yManual = { lo: mid - half, hi: mid + half };
+        }
+      } else if (touch.zone === 'time') {
+        const len = lastData.prices.length;
+        const newSpan = Math.max(10, Math.min(len, touch.span * Math.pow(1.005, touch.x - t.clientX)));
+        view = clampView(view.end - newSpan, view.end, len);
+      } else {
+        panBy(t.clientX - touch.x, t.clientY - touch.y, r);
+        touch.x = t.clientX; touch.y = t.clientY;
+      }
+      drawChart();
+    }, { passive: false });
+
+    const endTouch = () => { touch = null; };
+    canvas.addEventListener('touchend', endTouch);
+    canvas.addEventListener('touchcancel', endTouch);
   })();
 
   // Fundamentals + news (Financial Modeling Prep) — only refetched per ticker.
@@ -580,18 +650,62 @@
     $('bullList').innerHTML = ''; $('bearList').innerHTML = ''; $('conclusion').textContent = '';
   }
 
+  const stale = (d) => !lastData || lastData.symbol !== d.symbol;
+
+  function applyReport(j) {
+    $('aiBody').textContent = j.summary || 'No analysis available.';
+    $('aiTag').textContent = j.source === 'ai' ? 'written by Claude' : 'rule-based fallback — no model key set';
+    $('bullList').innerHTML = (j.bull && j.bull.length ? j.bull : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
+    $('bearList').innerHTML = (j.bear && j.bear.length ? j.bear : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
+    $('conclusion').textContent = j.conclusion || '';
+  }
+
+  // Streams the summary so the panel fills as Claude writes rather than sitting
+  // blank for ~8s. Returns false if streaming is unavailable, so the caller can
+  // fall back to the buffered endpoint (some proxies will not pass a stream).
+  async function streamAnalysis(d) {
+    const ac = new AbortController();
+    let idle = setTimeout(() => ac.abort(), 45000);
+    const touch = () => { clearTimeout(idle); idle = setTimeout(() => ac.abort(), 30000); };
+    let started = false, done = null, shown = '';
+    try {
+      const r = await fetch('/api/analyze-stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d), signal: ac.signal });
+      if (!r.ok || !r.body || !r.body.getReader) return false;
+      const reader = r.body.getReader(), dec = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { value, done: fin } = await reader.read();
+        if (fin) break;
+        touch();
+        buf += dec.decode(value, { stream: true });
+        let nl;
+        while ((nl = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+          if (!line) continue;
+          let msg; try { msg = JSON.parse(line); } catch { continue; }
+          if (stale(d)) { ac.abort(); return true; }        // superseded; stop quietly
+          if (msg.t === 'd') { started = true; shown += msg.v; $('aiBody').textContent = shown; }
+          else if (msg.t === 'done') done = msg;
+        }
+      }
+      if (!done) throw new Error('stream ended early');
+      if (!stale(d)) applyReport(done);                     // final parse corrects the stream
+      return true;
+    } catch (e) {
+      if (started || (e && e.name === 'AbortError')) throw e;  // mid-stream: real failure
+      return false;                                           // never started: let caller fall back
+    } finally { clearTimeout(idle); }
+  }
+
   async function loadAnalysis(d) {
     try {
+      if (await streamAnalysis(d)) return;
       const r = await fetchTimeout('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) }, 45000);
       const j = await r.json();
-      if (!lastData || lastData.symbol !== d.symbol) return;   // user moved on; don't clobber
-      $('aiBody').textContent = j.summary || 'No analysis available.';
-      $('aiTag').textContent = j.source === 'ai' ? 'written by Claude' : 'rule-based fallback — no model key set';
-      $('bullList').innerHTML = (j.bull && j.bull.length ? j.bull : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
-      $('bearList').innerHTML = (j.bear && j.bear.length ? j.bear : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
-      $('conclusion').textContent = j.conclusion || '';
+      if (stale(d)) return;                                 // user moved on; don't clobber
+      applyReport(j);
     } catch (e) {
-      if (!lastData || lastData.symbol !== d.symbol) return;   // stale failure, ignore
+      if (stale(d)) return;                                 // stale failure, ignore
       analysisFailed(e && e.name === 'AbortError'
         ? 'The summary took too long to come back (the server may have been asleep).'
         : 'Analysis unavailable.', d);
@@ -816,12 +930,19 @@
     if (!text) return;
     $('chatInput').value = '';
     chatHistory.push({ role: 'user', content: text });
+    if (chatHistory.length > 200) chatHistory.splice(0, chatHistory.length - 200);  // bound memory
     const pending = { role: 'assistant', content: 'Thinking…', thinking: true };
     chatHistory.push(pending);
     renderChatSuggest(); renderChat();
     $('chatSend').disabled = true;
     try {
-      const payload = { messages: chatHistory.filter(m => !m.thinking).map(m => ({ role: m.role, content: m.content })), context: chatContext() };
+      // The server keeps only the last 12 messages, so sending more just wastes
+      // bandwidth — and a long enough session would exceed its 2MB body cap and
+      // be dropped outright. Send the same window it will actually use.
+      const payload = {
+        messages: chatHistory.filter(m => !m.thinking).slice(-12).map(m => ({ role: m.role, content: String(m.content).slice(0, 4000) })),
+        context: chatContext(),
+      };
       const j = await (await fetchTimeout('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }, 60000)).json();
       pending.content = j.reply || 'No response.'; pending.thinking = false;
     } catch (e) {

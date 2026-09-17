@@ -86,8 +86,39 @@ function httpsJson(options, body) {
   });
 }
 
+// ---- Upstream response cache ----
+// Twelve Data's free tier allows 8 credits per minute and every page view
+// spends several, so identical lookups inside a short window are collapsed.
+// In-flight requests are shared too: a burst of identical requests becomes
+// one upstream call, not one per caller. Failures are never cached.
+const dataCache = new Map();   // key -> { at, value }
+const inFlight = new Map();    // key -> Promise
+function cached(key, ttlMs, producer) {
+  const hit = dataCache.get(key);
+  if (hit && Date.now() - hit.at < ttlMs) return Promise.resolve(hit.value);
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+  const p = Promise.resolve().then(producer)
+    .then(v => { dataCache.set(key, { at: Date.now(), value: v }); return v; })
+    .finally(() => inFlight.delete(key));
+  inFlight.set(key, p);
+  return p;
+}
+const sweep = setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of dataCache) if (now - v.at > 600000) dataCache.delete(k);
+}, 120000);
+if (sweep.unref) sweep.unref();
+// Intraday bars move constantly; daily and above do not.
+const barsTtl = (interval) => /min|^1h$|^4h$/.test(String(interval)) ? 30000 : 120000;
+
 // ---- Market data ----
 async function fetchLive(symbol, interval, sizeOverride) {
+  const size0 = sizeOverride || OUTPUTSIZE[interval] || 1300;
+  return cached(`bars:${symbol}:${interval}:${size0}`, barsTtl(interval),
+    () => fetchLiveUncached(symbol, interval, sizeOverride));
+}
+async function fetchLiveUncached(symbol, interval, sizeOverride) {
   // Twelve Data: /time_series?symbol=AAPL&interval=1day&outputsize=N&apikey=KEY
   const size = sizeOverride || OUTPUTSIZE[interval] || 1300;
   const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${size}&apikey=${STOCK_API_KEY}`;
@@ -194,7 +225,7 @@ function ruleBasedReport(p) {
   return { summary: ruleBasedSummary(p), bull: bull.slice(0, 4), bear: bear.slice(0, 4), conclusion };
 }
 
-async function callClaudeReport(p) {
+function reportPrompt(p) {
   const t = p.tech || {}, r = p.rating || {}, sma = t.sma || {};
   const fmt = (x) => x == null ? 'n/a' : (typeof x === 'number' ? x.toFixed(2) : x);
   const system = 'You are a sharp, balanced equity analyst writing for curious beginners. You will be given a stock and a set of already-computed technical indicators plus a mechanical rating. Respond with ONLY a JSON object (no markdown, no prose outside it) of the form: {"summary": string (3-4 lively plain-English sentences on where the stock stands and what is driving the rating), "bull": [3 short bullet strings — the strongest reasons it could go up], "bear": [3 short bullet strings — the strongest risks], "conclusion": string (2 sentences tying it together)}. Ground every point in the numbers provided; do not invent fundamentals, news, or price targets. Be explicit in the conclusion that this is a mechanical technical read, often wrong, and NOT financial advice.';
@@ -204,6 +235,11 @@ async function callClaudeReport(p) {
     + `MACD hist: ${fmt(t.macd && t.macd.hist)} | VWAP: ${fmt(t.vwap)} | Bollinger %B: ${fmt(t.bollinger && t.bollinger.pctB)}\n`
     + `ATR: ${fmt(t.atr)} | Volatility(annual %): ${fmt(t.volatility && t.volatility.annual)} | Trend: ${t.trend ? t.trend.strength + '/100 ' + t.trend.direction : 'n/a'}\n`
     + `Support ${fmt(t.supportResistance && t.supportResistance.support)} / Resistance ${fmt(t.supportResistance && t.supportResistance.resistance)}\nReturn the JSON now.`;
+  return { system, user };
+}
+
+async function callClaudeReport(p) {
+  const { system, user } = reportPrompt(p);
   const body = JSON.stringify({ model: AI_MODEL, max_tokens: 700, system, messages: [{ role: 'user', content: user }] });
   const { json: j } = await httpsJson({ method: 'POST', hostname: 'api.anthropic.com', path: '/v1/messages',
     headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) } }, body);
@@ -218,6 +254,100 @@ async function callClaudeReport(p) {
     conclusion: String(parsed.conclusion || ''),
   };
 }
+// Streams the response body to a callback instead of buffering it.
+function httpsStream(options, body, onChunk) {
+  return new Promise((resolve, reject) => {
+    const r = https.request(options, resp => {
+      resp.setEncoding('utf8');
+      if (resp.statusCode !== 200) {
+        let err = ''; resp.on('data', c => err += c);
+        resp.on('end', () => reject(new Error('upstream ' + resp.statusCode)));
+        return;
+      }
+      resp.on('data', onChunk);
+      resp.on('end', resolve);
+      resp.on('error', reject);
+    });
+    r.on('error', reject);
+    r.setTimeout(60000, () => r.destroy(new Error('upstream timeout')));
+    if (body) r.write(body);
+    r.end();
+  });
+}
+
+// Pull the summary field out of a partially-received JSON object. Anything the
+// streaming extractor gets slightly wrong (a \uXXXX escape, say) is corrected
+// when the final parsed report replaces it, so this only has to be close.
+function summaryPrefix(buf) {
+  const i = buf.indexOf('"summary"');
+  if (i < 0) return null;
+  const colon = buf.indexOf(':', i);
+  if (colon < 0) return null;
+  const q = buf.indexOf('"', colon + 1);
+  if (q < 0) return null;
+  const MAP = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f' };
+  let out = '', esc = false;
+  for (let k = q + 1; k < buf.length; k++) {
+    const ch = buf[k];
+    if (esc) { out += (MAP[ch] || ch); esc = false; continue; }
+    if (ch === '\\') { esc = true; continue; }
+    if (ch === '"') break;
+    out += ch;
+  }
+  return out;
+}
+
+// NDJSON: one {"t":"d","v":"…"} per delta, then a final {"t":"done", …report}.
+// The client never has to parse half-formed JSON, and a client that cannot
+// stream can still use the plain /api/analyze route.
+async function handleAnalyzeStream(req, res) {
+  const p = await readBody(req);
+  if (!p || !p.symbol) return json(res, 400, { error: 'Missing data.' });
+  res.writeHead(200, {
+    'Content-Type': 'application/x-ndjson; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    'X-Accel-Buffering': 'no',
+  });
+  const send = (o) => { try { res.write(JSON.stringify(o) + '\n'); } catch (e) {} };
+
+  if (!ANTHROPIC_API_KEY) {
+    send({ t: 'done', ...ruleBasedReport(p), source: 'rule', note: 'Set ANTHROPIC_API_KEY for an AI-written report.' });
+    return res.end();
+  }
+  const { system, user } = reportPrompt(p);
+  const body = JSON.stringify({ model: AI_MODEL, max_tokens: 700, stream: true, system, messages: [{ role: 'user', content: user }] });
+  let full = '', sent = 0, sse = '';
+  try {
+    await httpsStream({ method: 'POST', hostname: 'api.anthropic.com', path: '/v1/messages',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) } },
+      body, (chunk) => {
+        sse += chunk;
+        let nl;
+        while ((nl = sse.indexOf('\n')) >= 0) {
+          const line = sse.slice(0, nl).trim(); sse = sse.slice(nl + 1);
+          if (!line.startsWith('data:')) continue;
+          let ev; try { ev = JSON.parse(line.slice(5).trim()); } catch { continue; }
+          if (ev.type !== 'content_block_delta' || !ev.delta || typeof ev.delta.text !== 'string') continue;
+          full += ev.delta.text;
+          const sofar = summaryPrefix(full);
+          if (sofar != null && sofar.length > sent) { send({ t: 'd', v: sofar.slice(sent) }); sent = sofar.length; }
+        }
+      });
+    const m = full.match(/\{[\s\S]*\}/);
+    const parsed = JSON.parse(m ? m[0] : full);
+    if (!parsed.summary) throw new Error('empty AI report');
+    send({ t: 'done', summary: String(parsed.summary),
+      bull: Array.isArray(parsed.bull) ? parsed.bull.map(String).slice(0, 4) : [],
+      bear: Array.isArray(parsed.bear) ? parsed.bear.map(String).slice(0, 4) : [],
+      conclusion: String(parsed.conclusion || ''), source: 'ai' });
+  } catch (e) {
+    logError(e);
+    send({ t: 'done', ...ruleBasedReport(p), source: 'rule',
+      note: 'Claude was unreachable (' + e.message + '); this is the rule-based report.' });
+  }
+  res.end();
+}
+
 async function handleAnalyze(req, res) {
   const p = await readBody(req);
   if (!p || !p.symbol) return json(res, 400, { error: 'Missing data.' });
@@ -379,17 +509,23 @@ async function handleChat(req, res) {
 }
 
 // ---- Fundamentals + news (Financial Modeling Prep) ----
-async function fetchFMP(pathNoKey) {
-  const path = pathNoKey + (pathNoKey.includes('?') ? '&' : '?') + 'apikey=' + FMP_API_KEY;
-  const { json: j } = await httpsJson({ method: 'GET', hostname: 'financialmodelingprep.com', path });
-  return j;
+function fetchFMP(pathNoKey) {
+  // Fundamentals change daily at most; news a little faster.
+  return cached('fmp:' + pathNoKey, 300000, async () => {
+    const path = pathNoKey + (pathNoKey.includes('?') ? '&' : '?') + 'apikey=' + FMP_API_KEY;
+    const { json: j } = await httpsJson({ method: 'GET', hostname: 'financialmodelingprep.com', path });
+    return j;
+  });
 }
 const fmpSafe = (p) => fetchFMP(p).catch(() => null);
 const arr0 = (x) => Array.isArray(x) ? x[0] : null;
 
 // Finnhub company news (free tier), last ~14 days.
-async function fetchFinnhubNews(symbol) {
-  if (!FINNHUB_API_KEY) return null;
+function fetchFinnhubNews(symbol) {
+  if (!FINNHUB_API_KEY) return Promise.resolve(null);
+  return cached('news:' + symbol, 300000, () => fetchFinnhubNewsUncached(symbol));
+}
+async function fetchFinnhubNewsUncached(symbol) {
   const to = new Date(), from = new Date(to.getTime() - 14 * 86400000);
   const fmt = (d) => d.toISOString().slice(0, 10);
   const path = `/api/v1/company-news?symbol=${encodeURIComponent(symbol)}&from=${fmt(from)}&to=${fmt(to)}&token=${FINNHUB_API_KEY}`;
@@ -493,8 +629,13 @@ function demoQuote(sym) {
   const price = c[c.length - 1].c, prev = c[c.length - 2].c;
   return { symbol: sym, price, change: price - prev, changePct: prev ? ((price - prev) / prev) * 100 : 0 };
 }
-async function fetchQuotes(symbols) {
-  if (!STOCK_API_KEY) return symbols.map(demoQuote);
+function fetchQuotes(symbols) {
+  if (!STOCK_API_KEY) return Promise.resolve(symbols.map(demoQuote));
+  // 20s matches the client's live-quote poll, so polling costs one call per
+  // symbol set per interval no matter how many tabs are open.
+  return cached(`quotes:${symbols.join(',')}`, 20000, () => fetchQuotesUncached(symbols));
+}
+async function fetchQuotesUncached(symbols) {
   try {
     const path = `/quote?symbol=${encodeURIComponent(symbols.join(','))}&apikey=${STOCK_API_KEY}`;
     const { json: j } = await httpsJson({ method: 'GET', hostname: 'api.twelvedata.com', path });
@@ -683,6 +824,7 @@ const server = http.createServer(async (req, res) => {
       return await handleStock(req, res, q.get('symbol'), q.get('strategy'), q.get('direction'), q.get('interval'));
     }
     if (url === '/api/analyze' && req.method === 'POST') return await handleAnalyze(req, res);
+    if (url === '/api/analyze-stream' && req.method === 'POST') return await handleAnalyzeStream(req, res);
     if (url === '/api/analyze-image' && req.method === 'POST') return await handleAnalyzeImage(req, res);
     if (url === '/api/auth/signup' && req.method === 'POST') return await handleSignup(req, res);
     if (url === '/api/auth/login' && req.method === 'POST') return await handleLogin(req, res);
