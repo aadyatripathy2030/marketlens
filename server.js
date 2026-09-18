@@ -926,7 +926,9 @@ function jsonLd(seo, origin) {
 }
 
 function seoHead(seo, origin) {
-  const img = origin + '/favicon.svg';
+  // A raster square: most platforms will not render an SVG social image, and
+  // twitter:card=summary crops to a square anyway.
+  const img = origin + '/avatar-512.png';
   return [
     `<link rel="canonical" href="${esc(seo.canonical)}" />`,
     `<meta property="og:type" content="website" />`,
