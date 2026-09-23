@@ -10,16 +10,25 @@ function sma(a, n) {
   return s / n;
 }
 
-// Relative Strength Index over `period` (classic simple-average form).
+// Relative Strength Index, Wilder's smoothing (the standard form).
+// The previous implementation averaged only the last `period` bars, which is a
+// different indicator: it discards all earlier history, is far noisier, and
+// disagrees with every charting platform. Wilder seeds with a simple average
+// and then smooths, so the whole series informs the value.
 function rsi(closes, period) {
   period = period || 14;
   if (!Array.isArray(closes) || closes.length <= period) return null;
-  let gains = 0, losses = 0;
-  for (let i = closes.length - period; i < closes.length; i++) {
+  let gain = 0, loss = 0;
+  for (let i = 1; i <= period; i++) {
     const d = closes[i] - closes[i - 1];
-    if (d >= 0) gains += d; else losses -= d;
+    if (d >= 0) gain += d; else loss -= d;
   }
-  const avgG = gains / period, avgL = losses / period;
+  let avgG = gain / period, avgL = loss / period;
+  for (let i = period + 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    avgG = (avgG * (period - 1) + (d > 0 ? d : 0)) / period;
+    avgL = (avgL * (period - 1) + (d < 0 ? -d : 0)) / period;
+  }
   if (avgL === 0) return avgG === 0 ? 50 : 100;
   const rs = avgG / avgL;
   return Math.round((100 - 100 / (1 + rs)) * 10) / 10;
@@ -240,7 +249,9 @@ function bollinger(closes, period = 20, mult = 2) {
   return { upper, mid, lower, pctB: upper === lower ? 0.5 : (last - lower) / (upper - lower) };
 }
 
-// Average True Range (14) — absolute volatility.
+// Average True Range, Wilder's smoothing (the standard form). A plain average
+// of the last `period` true ranges is a different, noisier number — and since
+// ATR sizes the stop-loss levels, that fed straight through to the exits.
 function atr(candles, period = 14) {
   if (candles.length < period + 1) return null;
   const trs = [];
@@ -248,7 +259,10 @@ function atr(candles, period = 14) {
     const h = candles[i].high, l = candles[i].low, pc = candles[i - 1].close;
     trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
   }
-  return avg(trs.slice(-period));
+  if (trs.length < period) return null;
+  let a = avg(trs.slice(0, period));
+  for (let i = period; i < trs.length; i++) a = (a * (period - 1) + trs[i]) / period;
+  return a;
 }
 
 // Rolling VWAP over the last `period` bars (volume-weighted average price).
@@ -322,30 +336,103 @@ function techReport(candles) {
 
 // Composite AI rating (0–100) from the technicals — explainable, not black-box.
 function overallRating(rep) {
-  const w = [];              // {v: signal in [-1,1], weight}
-  const push = (v, weight) => { if (v != null && !Number.isNaN(v)) w.push({ v: clamp(v, -1, 1), weight }); };
   const { sma, ema, macd, bollinger, vwap, rsi14, trend, price } = rep;
-  if (sma[20] != null && sma[50] != null) push(sma[20] > sma[50] ? 1 : -1, 0.18);
-  if (sma[50] != null && sma[200] != null) push(sma[50] > sma[200] ? 1 : -1, 0.15);
-  if (macd && macd.hist != null) push(Math.tanh(macd.hist / (price * 0.01)), 0.18);
-  if (vwap != null) push(price > vwap ? 1 : -1, 0.1);
-  if (rsi14 != null) push(Math.tanh((rsi14 - 50) / 15), 0.15);
-  if (bollinger) push((bollinger.pctB - 0.5) * 2, 0.09);
-  if (ema[20] != null && ema[50] != null) push(ema[20] > ema[50] ? 1 : -1, 0.1);
-  if (trend) push((trend.strength / 100) * (trend.direction === 'up' ? 1 : -1), 0.05);
-  const wsum = w.reduce((a, b) => a + b.weight, 0) || 1;
-  const bull = w.reduce((a, b) => a + b.v * b.weight, 0) / wsum;   // -1..1
+  // Five INDEPENDENT groups, each counted once.
+  //
+  // The previous version spent 56% of its weight on four different views of the
+  // same short-versus-medium trend (SMA20/50, EMA20/50, MACD, price vs VWAP),
+  // then reported "confidence" from how many of those eight inputs agreed. They
+  // agreed because they were one idea repeated, so confidence was near-100 by
+  // construction. Grouping them means agreement now compares things that can
+  // genuinely disagree.
+  const groups = [];
+  const add = (name, v, w) => { if (v != null && Number.isFinite(v)) groups.push({ name, v: clamp(v, -1, 1), w }); };
+  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+
+  // 1. Trend. Scaled by how far apart the averages are, not a binary cross: a
+  //    0.05% gap and a 5% gap used to score identically.
+  const t = [];
+  if (sma[20] != null && sma[50] != null) t.push(clamp((sma[20] - sma[50]) / (price * 0.02), -1, 1));
+  if (ema[20] != null && ema[50] != null) t.push(clamp((ema[20] - ema[50]) / (price * 0.02), -1, 1));
+  if (macd && macd.hist != null) t.push(clamp(macd.hist / (price * 0.01), -1, 1));
+  if (vwap != null) t.push(clamp((price - vwap) / (price * 0.02), -1, 1));
+  if (t.length) add('trend', mean(t), 0.34);
+
+  // 2. Long-term trend.
+  if (sma[50] != null && sma[200] != null) add('long trend', (sma[50] - sma[200]) / (price * 0.04), 0.22);
+
+  // 3. Momentum, rising through the mid range then fading and turning back at
+  //    the extremes. The old curve peaked at RSI 90, so the score called a
+  //    stretched chart maximally bullish while the written read beside it said
+  //    "overbought, pullback risk". The two now agree.
+  if (rsi14 != null) { const d = (rsi14 - 50) / 20; add('momentum', d * (1 - Math.abs(d) * 0.9), 0.22); }
+
+  // 4. Stretch: sitting on a band edge is a caution, not a confirmation.
+  if (bollinger) add('stretch', -(bollinger.pctB - 0.5) * 1.2, 0.12);
+
+  // 5. How cleanly it is trending at all.
+  if (trend) add('trend quality', (trend.strength / 100) * (trend.direction === 'up' ? 1 : -1), 0.10);
+
+  const wsum = groups.reduce((a, g) => a + g.w, 0) || 1;
+  const bull = groups.reduce((a, g) => a + g.v * g.w, 0) / wsum;
   const score = Math.round(clamp(50 + 50 * bull, 0, 100));
-  const label = score >= 78 ? 'Strong Buy' : score >= 60 ? 'Buy' : score >= 45 ? 'Hold' : score >= 30 ? 'Sell' : 'Strong Sell';
-  const tone = score >= 60 ? 'bullish' : score <= 44 ? 'bearish' : 'neutral';
-  const agree = w.length ? w.filter(x => Math.sign(x.v) === Math.sign(bull) && x.v !== 0).length / w.length : 0;
-  const confidence = Math.round(clamp(52 + agree * 43, 40, 96));
+
+  // Thresholds calibrated so the labels actually partition: the old scale
+  // returned Strong Buy on 30% of all bars, which tells a reader nothing.
+  const label = score >= 72 ? 'Strong Buy' : score >= 58 ? 'Buy' : score >= 42 ? 'Hold' : score >= 28 ? 'Sell' : 'Strong Sell';
+  const tone = score >= 58 ? 'bullish' : score <= 41 ? 'bearish' : 'neutral';
+
+  // Agreement is now a countable fact — how many of the independent groups
+  // lean the same way as the total — not a percentage implying precision.
+  const dir = Math.sign(bull);
+  const agreeing = groups.filter(g => Math.sign(g.v) === dir && g.v !== 0).length;
+  const confidence = groups.length ? Math.round((agreeing / groups.length) * 100) : 0;
+
   const annual = rep.volatility ? rep.volatility.annual : null;
   const risk = annual == null ? 'Unknown' : annual < 25 ? 'Low' : annual < 45 ? 'Moderate' : annual < 70 ? 'High' : 'Very High';
-  return { score, label, tone, confidence, risk };
+  return { score, label, tone, confidence, risk, agreeing, groupCount: groups.length, groups };
 }
 
 // Probabilistic forecast bands (±1σ ≈ 68% range) per horizon, in trading days.
+// ---- Historical base rate ----
+// The score is an opinion. This is a measurement: walk this symbol's own past,
+// find the bars where it looked roughly like it does now, and report what
+// actually happened next — next to what happened on an average bar, so the
+// reader can see whether the setup added anything at all. Usually it does not,
+// and saying so is the point.
+function historicalEdge(candles, score, horizon, opts) {
+  const H = horizon || 20;
+  const o = opts || {};
+  const WINDOW = o.window || 260;          // enough history for SMA200
+  const STEP = o.step || 3;                // sample every Nth bar; adjacent bars are near-duplicates
+  const BAND = o.band || 10;               // "looked like this" = score within +/- BAND
+  if (!Array.isArray(candles) || candles.length < WINDOW + H + 60) return null;
+
+  const matched = [], all = [];
+  for (let i = WINDOW; i + H < candles.length - 1; i += STEP) {
+    const c0 = candles[i].close, c1 = candles[i + H].close;
+    if (!(c0 > 0) || !(c1 > 0)) continue;
+    const fwd = c1 / c0 - 1;
+    all.push(fwd);
+    let past;
+    try { past = overallRating(techReport(candles.slice(i - WINDOW, i + 1))); } catch (e) { continue; }
+    if (past && past.score != null && Math.abs(past.score - score) <= BAND) matched.push(fwd);
+  }
+  if (matched.length < 20 || all.length < 40) return null;
+  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  const winRate = (a) => a.filter(v => v > 0).length / a.length * 100;
+  return {
+    horizon: H,
+    n: matched.length,
+    winRate: Math.round(winRate(matched) * 10) / 10,
+    meanReturn: Math.round(mean(matched) * 1000) / 10,
+    baseWinRate: Math.round(winRate(all) * 10) / 10,
+    baseMeanReturn: Math.round(mean(all) * 1000) / 10,
+    // The honest headline: did the setup beat simply being invested?
+    edge: Math.round((mean(matched) - mean(all)) * 1000) / 10,
+  };
+}
+
 function forecastBands(closes) {
   const last = closes[closes.length - 1];
   const v = volatility(closes, Math.min(60, closes.length - 1));
@@ -412,6 +499,6 @@ function tradeLevels(candles, direction, atrMult = 1.5) {
 module.exports = {
   sma, rsi, linearForecast, computeSignal, demoCloses, demoCandles, analyze, verdict, STRAT, RISK,
   ema, macd, bollinger, atr, vwap, supportResistance, fibonacci, volatility, trendStrength,
-  techReport, overallRating, forecastBands, tradeLevels,
+  techReport, overallRating, forecastBands, tradeLevels, historicalEdge,
 };
 

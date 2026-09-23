@@ -54,6 +54,24 @@
     }).join('');
   }
 
+  // The measured base rate, stated next to the score it is judging. If the
+  // setup did not beat simply being invested, that is the interesting fact and
+  // it gets said first.
+  function renderEdge(e, rt) {
+    const el = $('edgeLine');
+    if (!el) return;
+    if (!e) { el.textContent = 'Not enough history on this symbol to check whether this setup has meant anything before.'; return; }
+    const diff = e.winRate - e.baseWinRate;
+    const verdict = diff > 3
+      ? `<b>beat</b> simply being invested by ${diff.toFixed(1)} points`
+      : diff < -3
+        ? `<span class="none">did worse than</span> simply being invested, by ${Math.abs(diff).toFixed(1)} points`
+        : `<span class="none">made no difference</span> versus simply being invested`;
+    el.innerHTML = `Measured on this symbol's own history: at scores near <b>${rt.score}</b>, it was higher `
+      + `${e.horizon} bars later <b>${e.winRate}%</b> of the time across <b>${e.n}</b> past occurrences. `
+      + `On any bar it was higher <b>${e.baseWinRate}%</b> of the time — so this setup ${verdict}.`;
+  }
+
   function renderLevels(d) {
     const L = d && d.levels;
     if (!L) { $('levelsCard').classList.add('hidden'); return; }
@@ -865,7 +883,9 @@
       $('gScore').textContent = rt.score != null ? rt.score : '—';
       $('aiRec').textContent = rt.label || '—';
       $('aiRec').className = 'ai-rec ' + (rt.tone || 'neutral');
-      $('aiConf').textContent = rt.confidence != null ? rt.confidence + '%' : '—';
+      $('aiConf').textContent = (rt.agreeing != null && rt.groupCount)
+        ? `${rt.agreeing} of ${rt.groupCount}` : (rt.confidence != null ? rt.confidence + '%' : '—');
+      renderEdge(d.edge, rt);
       $('aiRisk').textContent = rt.risk || '—';
       $('aiRisk').className = 'risk-' + String(rt.risk || 'neutral').split(' ')[0];
       $('ovFast').textContent = d.maFast ? d.maFast.label : 'SMA 20';
@@ -1247,7 +1267,7 @@
   function chatContext() {
     const d = lastData; if (!d) return '';
     const r = d.rating || {}, t = d.tech || {};
-    return `The user is currently viewing ${d.symbol} at ${(+d.latest).toFixed(2)} ${d.currency} (${d.changePct.toFixed(2)}% today). ChartGauge indicator score ${r.score}/100 = "${r.label}", confidence ${r.confidence}%, risk ${r.risk}. RSI ${t.rsi14}, trend ${t.trend ? t.trend.strength + '/100 ' + t.trend.direction : 'n/a'}.`;
+    return `The user is currently viewing ${d.symbol} at ${(+d.latest).toFixed(2)} ${d.currency} (${d.changePct.toFixed(2)}% today). ChartGauge indicator score ${r.score}/100 = "${r.label}", ${r.agreeing}/${r.groupCount} indicator groups agreeing, risk ${r.risk}. RSI ${t.rsi14}, trend ${t.trend ? t.trend.strength + '/100 ' + t.trend.direction : 'n/a'}.`;
   }
   async function sendChat() {
     const text = $('chatInput').value.trim();

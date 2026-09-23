@@ -175,6 +175,10 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   const rating = I.overallRating(tech);
   const bands = I.forecastBands(closes);
   const levels = I.tradeLevels(candles, a.direction);
+  // What actually happened, historically, at scores like today's. Roughly 50ms
+  // on a full series; null when there is not enough history to say anything.
+  let edge = null;
+  try { edge = I.historicalEdge(candles, rating.score, 20); } catch (e) { logError(e); }
   const last = closes[closes.length - 1];
   const prev = closes[closes.length - 2] || last;
   json(res, 200, {
@@ -186,7 +190,7 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
     indicators: { maFast: a.maFast.value, maSlow: a.maSlow.value, rsi: a.rsi, rsiPeriod: a.rsiPeriod, trendSlope: a.slope },
     signal: a.signal, verdict: a.verdict, risk: a.risk,
     forecast: a.forecast, horizon: a.horizon,
-    tech, rating, bands, levels,
+    tech, rating, bands, levels, edge,
   });
 }
 
@@ -199,7 +203,7 @@ function ruleBasedSummary(p) {
   const sma = t.sma || {};
   const trendUp = sma[50] != null && sma[200] != null ? sma[50] > sma[200] : null;
   const rsi = t.rsi14;
-  const lead = `${sym} scores ${r.score}/100 on the technical composite — a "${r.label}" read, with ${r.confidence}% of the signals in agreement. `;
+  const lead = `${sym} scores ${r.score}/100 on the technical composite — a "${r.label}" read, with ${r.agreeing} of its ${r.groupCount} indicator groups pointing that way. `;
   const trend = trendUp == null ? '' : trendUp ? 'The long-term trend is up (50-day above the 200-day), ' : 'The long-term trend is down (50-day below the 200-day), ';
   const mom = rsi == null ? '' : rsi >= 70 ? `and momentum is hot — RSI at ${rsi} is overbought, so a pullback wouldn't surprise. `
     : rsi <= 30 ? `and momentum is washed out — RSI at ${rsi} is oversold, which can precede a bounce. `
@@ -222,7 +226,12 @@ function ruleBasedReport(p) {
   if (t.volatility) (t.volatility.annual >= 45 ? bear : bull).push(`Volatility is ${t.volatility.annual >= 45 ? 'elevated' : 'contained'} (~${Math.round(t.volatility.annual)}% annualized).`);
   if (!bull.length) bull.push('No clear bullish signals right now.');
   if (!bear.length) bear.push('No glaring red flags in the technicals right now.');
-  const conclusion = `The technical model scores ${p.symbol} ${r.score}/100 — a "${r.label}" read with ${r.confidence}% signal agreement and ${String(r.risk).toLowerCase()} risk. This is a mechanical read of price action, not advice; confirm with your own research.`;
+  const edgeLine = p.edge
+    ? ` Measured on this symbol\u2019s own history, setups scoring near this were higher ${p.edge.horizon} bars later ${p.edge.winRate}% of the time, against ${p.edge.baseWinRate}% on any given bar.`
+    : "";
+  const conclusion = `The technical model scores ${p.symbol} ${r.score}/100 — a "${r.label}" read, ${r.agreeing} of ${r.groupCount} indicator groups agreeing, ${String(r.risk).toLowerCase()} risk.`
+    + edgeLine
+    + " This is a mechanical read of price action, not advice; confirm with your own research.";
   return { summary: ruleBasedSummary(p), bull: bull.slice(0, 4), bear: bear.slice(0, 4), conclusion };
 }
 
@@ -231,11 +240,13 @@ function reportPrompt(p) {
   const fmt = (x) => x == null ? 'n/a' : (typeof x === 'number' ? x.toFixed(2) : x);
   const system = 'You are a sharp, balanced equity analyst writing for curious beginners. You will be given a stock and a set of already-computed technical indicators plus a mechanical rating. Respond with ONLY a JSON object (no markdown, no prose outside it) of the form: {"summary": string (3-4 lively plain-English sentences on where the stock stands and what is driving the rating), "bull": [3 short bullet strings — the strongest reasons it could go up], "bear": [3 short bullet strings — the strongest risks], "conclusion": string (2 sentences tying it together)}. Ground every point in the numbers provided; do not invent fundamentals, news, or price targets. Be explicit in the conclusion that this is a mechanical technical read, often wrong, and NOT financial advice.';
   const user = `SYMBOL: ${p.symbol} @ ${fmt(p.latest)} ${p.currency} (${p.changePct.toFixed(2)}% today)\n`
-    + `RATING: ${r.label} — score ${r.score}/100, confidence ${r.confidence}%, risk ${r.risk}\n`
+    + `RATING: ${r.label} — score ${r.score}/100, ${r.agreeing}/${r.groupCount} indicator groups agreeing, risk ${r.risk}\n`
     + `RSI14: ${fmt(t.rsi14)} | SMA20 ${fmt(sma[20])} / SMA50 ${fmt(sma[50])} / SMA200 ${fmt(sma[200])}\n`
     + `MACD hist: ${fmt(t.macd && t.macd.hist)} | VWAP: ${fmt(t.vwap)} | Bollinger %B: ${fmt(t.bollinger && t.bollinger.pctB)}\n`
     + `ATR: ${fmt(t.atr)} | Volatility(annual %): ${fmt(t.volatility && t.volatility.annual)} | Trend: ${t.trend ? t.trend.strength + '/100 ' + t.trend.direction : 'n/a'}\n`
-    + `Support ${fmt(t.supportResistance && t.supportResistance.support)} / Resistance ${fmt(t.supportResistance && t.supportResistance.resistance)}\nReturn the JSON now.`;
+    + `Support ${fmt(t.supportResistance && t.supportResistance.support)} / Resistance ${fmt(t.supportResistance && t.supportResistance.resistance)}\n`
+    + (p.edge ? `MEASURED BASE RATE: at scores near ${r.score}, this symbol was higher ${p.edge.horizon} bars later ${p.edge.winRate}% of the time across ${p.edge.n} past occurrences; the rate on any bar was ${p.edge.baseWinRate}%. Treat this as the ground truth about whether the setup has predicted anything for this symbol, and say plainly when it has not.\n` : '')
+    + `Return the JSON now.`;
   return { system, user };
 }
 
