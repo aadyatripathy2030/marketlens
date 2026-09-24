@@ -538,3 +538,8 @@ body.mode-simple .layout { grid-template-columns: minmax(0, 1fr); }
 /* The message shown where a Pro-only feature would have rendered. */
 .pro-gate { font-size: 13px; line-height: 1.55; color: var(--muted); margin: 0; padding: 18px 0; }
 .pro-gate .link-btn { font-size: 13px; }
+
+/* The agreement links sit inside the checkbox label, so they must not trigger
+   the label's own toggle when clicked. */
+.gate-check a { color: var(--text); text-decoration: underline; }
+.gate-check a:hover { color: var(--accent); }

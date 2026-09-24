@@ -44,12 +44,29 @@
   }
   initConsent();
 
-  // First-visit gate: hide instantly for anyone who already agreed on this device.
+  // First-visit gate. The overlay is opaque, but covering the chart is not the
+  // same as withholding it: before this, a deep link like /stock/AAPL fetched
+  // and drew the whole chart underneath, so anything that removed the overlay —
+  // a stylesheet that failed to load, an element deleted in devtools — revealed
+  // a working chart nobody had agreed to. Nothing is fetched or drawn now until
+  // the box is ticked.
   const ON_LEGAL_PAGE = /^\/(terms|privacy|refunds|contact)\/?$/.test(location.pathname);
-  try {
-    if (ON_LEGAL_PAGE || localStorage.getItem('marketlens_agreed')) document.getElementById('gate').classList.add('hidden');
-  } catch (e) { if (ON_LEGAL_PAGE) document.getElementById('gate').classList.add('hidden'); }
+  // Versioned, so a future change to the terms can ask again. The old key still
+  // counts: the substance of what it accepted has not changed.
+  const AGREE_KEY = 'chartgauge_agreed_v1';
+  const LEGACY_AGREE_KEY = 'marketlens_agreed';
+  function hasAgreed() {
+    try { return !!(localStorage.getItem(AGREE_KEY) || localStorage.getItem(LEGACY_AGREE_KEY)); }
+    catch (e) { return false; }   // storage blocked → treat as not agreed
+  }
+  function setAgreed() { try { localStorage.setItem(AGREE_KEY, '1'); } catch (e) {} }
+
+  if (ON_LEGAL_PAGE || hasAgreed()) document.getElementById('gate').classList.add('hidden');
   function hideGate() { const g = document.getElementById('gate'); if (g) g.classList.add('hidden'); }
+  function showGate() { const g = document.getElementById('gate'); if (g) g.classList.remove('hidden'); }
+
+  // A symbol asked for before agreeing, loaded once the gate is cleared.
+  let pendingSymbol = null;
 
   // Plain-English technical-indicator grid.
   function renderTech(t) {
@@ -917,6 +934,8 @@
   async function run(symbol) {
     symbol = (symbol || $('symbol').value || '').trim().toUpperCase();
     if (!symbol) return;
+    // No agreement, no chart — not even the request for its data.
+    if (!hasAgreed()) { pendingSymbol = symbol; showGate(); return; }
     $('error').classList.add('hidden');
     $('goBtn').disabled = true; $('goBtn').textContent = 'Loading…';
     const seq = ++runSeq;
@@ -1132,7 +1151,9 @@
     renderAcct();
     $('watchBtn').classList.toggle('hidden', !currentUser);
     $('navAdmin').classList.toggle('hidden', !(currentUser && currentUser.admin));
-    if (currentUser) { try { localStorage.setItem('marketlens_agreed', '1'); } catch (e) {} hideGate(); loadWatchlist(); }
+    // A live session means this device agreed when it signed in, so the gate
+    // stays down — but it is not written as a fresh acceptance here.
+    if (currentUser) { if (hasAgreed()) hideGate(); loadWatchlist(); }
     else { watchSymbols = []; renderWatchStrip(); }
     // The initial route renders before this resolves, so a direct load of
     // /pricing would otherwise show no price and "Sign in to upgrade" to
@@ -1618,11 +1639,15 @@
   // ---- First-visit gate (terms agreement + sign in) ----
   const gateAuthEl = document.querySelector('.gate-auth');
   $('gateAgree').addEventListener('change', () => gateAuthEl.classList.toggle('disabled', !$('gateAgree').checked));
+  // The Terms and Privacy links live inside the checkbox label, where a click
+  // would otherwise tick the box as a side effect of opening the document.
+  document.querySelectorAll('.gate-check a').forEach(a =>
+    a.addEventListener('click', (e) => e.stopPropagation()));
   function gateErr(m) { $('gateErr').textContent = m; $('gateErr').classList.remove('hidden'); }
   async function gateGo(mode) {
-    if (!$('gateAgree').checked) return gateErr('Please check the box to agree to the terms.');
-    try { localStorage.setItem('marketlens_agreed', '1'); } catch (e) {}
-    if (mode === 'guest') return hideGate();
+    if (!$('gateAgree').checked) return gateErr('Please tick the box to agree to the Terms of Service and Privacy Policy.');
+    setAgreed();
+    if (mode === 'guest') { hideGate(); return releasePending(); }
     const email = $('gateEmail').value.trim(), password = $('gatePass').value;
     if (!email || password.length < 8) return gateErr('Enter your email and a password (8+ characters).');
     try {
@@ -1632,8 +1657,13 @@
       currentUser = j.user; renderAcct();
       $('watchBtn').classList.remove('hidden');
       $('navAdmin').classList.toggle('hidden', !(currentUser && currentUser.admin));
-      loadWatchlist(); hideGate();
+      loadWatchlist(); hideGate(); releasePending();
     } catch (e) { gateErr(e.message); }
+  }
+  function releasePending() {
+    if (!pendingSymbol) return;
+    const sym = pendingSymbol; pendingSymbol = null;
+    $('symbol').value = sym; run(sym);
   }
   $('gateSignin').addEventListener('click', () => gateGo('login'));
   $('gateSignup').addEventListener('click', () => gateGo('signup'));
