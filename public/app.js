@@ -50,7 +50,11 @@
   // a stylesheet that failed to load, an element deleted in devtools — revealed
   // a working chart nobody had agreed to. Nothing is fetched or drawn now until
   // the box is ticked.
-  const ON_LEGAL_PAGE = /^\/(terms|privacy|refunds|contact)\/?$/.test(location.pathname);
+  // Pages with no market data on them stay readable without an account: the
+  // policy pages, which must be reachable to be agreed to, and the lessons,
+  // which are the site's search-visible writing and would otherwise meet
+  // arrivals from Google with a sign-in wall.
+  const ON_OPEN_PAGE = /^\/(terms|privacy|refunds|contact|learn)(\/|$)/.test(location.pathname);
   // Versioned, so a future change to the terms can ask again. The old key still
   // counts: the substance of what it accepted has not changed.
   const AGREE_KEY = 'chartgauge_agreed_v1';
@@ -61,7 +65,10 @@
   }
   function setAgreed() { try { localStorage.setItem(AGREE_KEY, '1'); } catch (e) {} }
 
-  if (ON_LEGAL_PAGE || hasAgreed()) document.getElementById('gate').classList.add('hidden');
+  // Hidden immediately only on the legal pages. Everywhere else it waits for
+  // checkAuth to say whether there is a session, so the chart is never briefly
+  // reachable on the strength of a localStorage flag alone.
+  if (ON_OPEN_PAGE) document.getElementById('gate').classList.add('hidden');
   function hideGate() { const g = document.getElementById('gate'); if (g) g.classList.add('hidden'); }
   function showGate() { const g = document.getElementById('gate'); if (g) g.classList.remove('hidden'); }
 
@@ -81,12 +88,14 @@
   const rawFetch = window.fetch.bind(window);
   const fetch = (input, init) => {
     const url = typeof input === 'string' ? input : (input && input.url) || '';
-    if (url.startsWith('/api/') && !PRE_AGREEMENT_OK.test(url) && !hasAgreed()) {
+    if (url.startsWith('/api/') && !PRE_AGREEMENT_OK.test(url) && !(hasAgreed() && isSignedIn())) {
       showGate();
-      return Promise.reject(new Error('Agree to the terms before loading market data.'));
+      return Promise.reject(new Error('Sign in and accept the terms before loading market data.'));
     }
     return rawFetch(input, init);
   };
+  // Mirrors the server, which is the authority: both must hold to load data.
+  function isSignedIn() { return !!currentUser; }
 
   // Plain-English technical-indicator grid.
   function renderTech(t) {
@@ -976,8 +985,8 @@
   async function run(symbol) {
     symbol = (symbol || $('symbol').value || '').trim().toUpperCase();
     if (!symbol) return;
-    // No agreement, no chart — not even the request for its data.
-    if (!hasAgreed()) { pendingSymbol = symbol; showGate(); return; }
+    // No account and no agreement, no chart — not even the request for data.
+    if (!hasAgreed() || !isSignedIn()) { pendingSymbol = symbol; showGate(); return; }
     $('error').classList.add('hidden');
     $('goBtn').disabled = true; $('goBtn').textContent = 'Loading…';
     const seq = ++runSeq;
@@ -1193,9 +1202,11 @@
     renderAcct();
     $('watchBtn').classList.toggle('hidden', !currentUser);
     $('navAdmin').classList.toggle('hidden', !(currentUser && currentUser.admin));
-    // A live session means this device agreed when it signed in, so the gate
-    // stays down — but it is not written as a fresh acceptance here.
-    if (currentUser) { if (hasAgreed()) hideGate(); loadWatchlist(); }
+    // The gate comes down only for a signed-in visitor who has agreed on this
+    // device; anything else leaves it up, including a stale agreement flag
+    // with no session behind it.
+    if (currentUser && hasAgreed()) { hideGate(); releasePending(); loadWatchlist(); }
+    else if (!ON_OPEN_PAGE) showGate();
     else { watchSymbols = []; renderWatchStrip(); }
     // The initial route renders before this resolves, so a direct load of
     // /pricing would otherwise show no price and "Sign in to upgrade" to
@@ -1547,6 +1558,7 @@
     const aiN = limits.aiPerDay || 3;
     const freeList = [
       ['Full charts, every indicator, stocks and crypto', 1],
+      ['Free account — email and password', 1],
       ['Stop-loss and one take-profit level', 1],
       ['The score and the measured base rate', 1],
       [`${aiN} written reports a day, then the rule-based read`, 1],
@@ -1689,7 +1701,6 @@
   async function gateGo(mode) {
     if (!$('gateAgree').checked) return gateErr('Please tick the box to agree to the Terms of Service and Privacy Policy.');
     setAgreed();
-    if (mode === 'guest') { hideGate(); return releasePending(); }
     const email = $('gateEmail').value.trim(), password = $('gatePass').value;
     if (!email || password.length < 8) return gateErr('Enter your email and a password (8+ characters).');
     try {
@@ -1715,7 +1726,7 @@
   }
   $('gateSignin').addEventListener('click', () => gateGo('login'));
   $('gateSignup').addEventListener('click', () => gateGo('signup'));
-  $('gateGuest').addEventListener('click', (e) => { e.preventDefault(); gateGo('guest'); });
+
 
   // Initial view: deep-link → analyze; billing return → pricing; else home.
   const params = new URLSearchParams(location.search);

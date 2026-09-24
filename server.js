@@ -497,6 +497,17 @@ async function plan(req) {
   return { user, pro: !!(user && user.plan === 'pro'), key: clientKey(req, user) };
 }
 
+// Market data needs an account. Enforced here rather than only in the browser,
+// because a gate that lives in the client is a suggestion — the endpoints were
+// answering anyone who asked. Returns true when the request should stop.
+async function requireAccount(req, res) {
+  const user = await currentUser(req).catch(() => null);
+  if (user) return false;
+  json(res, 401, { error: 'auth_required',
+    message: 'Sign in to load market data. An account is free.' });
+  return true;
+}
+
 const PRO_ONLY = (what) => ({ error: 'pro_required', feature: what,
   message: `${what} is part of Pro. Everything else on ChartGauge — the chart, the indicators, the levels and the measured base rate — stays free.` });
 
@@ -1149,8 +1160,11 @@ function serveDocument(req, res, urlPath) {
     }
     // Lesson prose goes into the document itself so it indexes without JS.
     if (seo.lesson) out = out.replace('<div id="learnHost"></div>', `<div id="learnHost"></div>${lessonHtml(seo.lesson)}`);
-    if (seo.legal) {
-      out = out.replace('<div id="legalHost"></div>', `<div id="legalHost">${seo.legal.html}</div>`);
+    if (seo.legal) out = out.replace('<div id="legalHost"></div>', `<div id="legalHost">${seo.legal.html}</div>`);
+    // Pages with no market data ship with the gate already down, so they do
+    // not flash a sign-in wall before app.js reaches the same conclusion.
+    // Must stay in step with ON_OPEN_PAGE in app.js.
+    if (seo.legal || seo.lesson || seo.view === 'learn') {
       out = out.replace('<div class="gate" id="gate">', '<div class="gate hidden" id="gate">');
     }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
@@ -1239,6 +1253,12 @@ const server = http.createServer(async (req, res) => {
       const body = urls.map(u => `  <url><loc>${esc(u.loc)}</loc><lastmod>${today}</lastmod><changefreq>${u.freq}</changefreq><priority>${u.pri}</priority></url>`).join('\n');
       res.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8' });
       return res.end(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`);
+    }
+    // Everything that returns market data, in one list. Auth, billing, robots
+    // and the sitemap are deliberately absent: sign-in has to work before you
+    // are signed in, and crawlers must still reach the documents.
+    if (/^\/api\/(stock|quotes|fundamentals|analyze|analyze-stream|analyze-image|chat|compare|screen|watchlist|alerts)\b/.test(url)) {
+      if (await requireAccount(req, res)) return;
     }
     if (url === '/api/admin' && req.method === 'GET') return await handleAdmin(req, res);
     if (url === '/api/stock' && req.method === 'GET') {

@@ -52,7 +52,7 @@ const TERMS = h('Terms of Service', [
 
   s('Pro subscriptions',
     `Pro is a paid subscription that covers the market-data and model costs of running ${SITE}, and unlocks the features that cost money each time they run.`,
-    `<strong>Free, for everyone, with or without an account:</strong> the full chart and every indicator on it, for stocks and crypto; the stop-loss level and one take-profit level; the mechanical score and the measured base rate beside it; a limited number of AI-written reports each day, with the rule-based written read always available after that; a watchlist and a small number of price alerts; and every lesson.`,
+    `<strong>Free with any account:</strong> the full chart and every indicator on it, for stocks and crypto; the stop-loss level and one take-profit level; the mechanical score and the measured base rate beside it; a limited number of AI-written reports each day, with the rule-based written read always available after that; a watchlist and a small number of price alerts; and every lesson. A free account — an email address and a password — is required to load charts and market data; the lessons and these policy pages are readable without one.`,
     `<strong>Pro adds:</strong> AI-written reports without the daily limit; Ask Claude; reading an uploaded chart image; the screener and side-by-side compare; additional take-profit levels; and a watchlist and alerts without limits.`,
     `The daily limits and allowances above may be adjusted as running costs change. Any reduction applies from your next renewal.`,
     `Subscriptions are billed in advance on the period you choose and renew automatically until cancelled. Payments are processed by Stripe; ${SITE} never receives or stores your card details. Prices may change, and any change applies from your next renewal, not retroactively.`,
@@ -79,7 +79,7 @@ const PRIVACY = h('Privacy Policy', [
       '<strong>Watchlist and price alerts</strong> — the ticker symbols and targets you choose to save',
       '<strong>Plan status</strong> — whether the account is free or Pro',
     ]),
-    `If you use ${SITE} without an account, none of the above is created. Your display preferences — simple or advanced mode, candle colours, the number of take-profit levels — are kept in your own browser and are never sent to the server.`),
+    `Charts and market data require an account, so using those features means the above exists. The lessons and these policy pages can be read without an account, and reading them creates none of it. Your display preferences — simple or advanced mode, candle colours, the number of take-profit levels — are kept in your own browser and are never sent to the server.`),
 
   s('What is never stored',
     ul([
