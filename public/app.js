@@ -7,7 +7,10 @@
   const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   // First-visit gate: hide instantly for anyone who already agreed on this device.
-  try { if (localStorage.getItem('marketlens_agreed')) document.getElementById('gate').classList.add('hidden'); } catch (e) {}
+  const ON_LEGAL_PAGE = /^\/(terms|privacy|refunds|contact)\/?$/.test(location.pathname);
+  try {
+    if (ON_LEGAL_PAGE || localStorage.getItem('marketlens_agreed')) document.getElementById('gate').classList.add('hidden');
+  } catch (e) { if (ON_LEGAL_PAGE) document.getElementById('gate').classList.add('hidden'); }
   function hideGate() { const g = document.getElementById('gate'); if (g) g.classList.add('hidden'); }
 
   // Plain-English technical-indicator grid.
@@ -1138,12 +1141,14 @@
   checkAuth();
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
-  const VIEWS = ['home', 'analyze', 'chat', 'compare', 'screener', 'markets', 'watchlist', 'alerts', 'learn', 'settings', 'pricing', 'admin'];
+  const VIEWS = ['home', 'analyze', 'chat', 'compare', 'screener', 'markets', 'watchlist', 'alerts', 'learn', 'settings', 'pricing', 'admin', 'legal'];
+  const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact'];
   // Each view has a real URL now, so navigation updates the address bar and
   // the back button works. pushUrl is skipped when we are *reacting* to a URL
   // (initial load, popstate) to avoid pushing a duplicate entry.
   function urlForView(name) {
     if (name === 'home') return '/';
+    if (name === 'legal') return location.pathname;     // already on /terms, /privacy, ...
     if (name === 'analyze' && lastData && lastData.symbol) return '/stock/' + lastData.symbol;
     return '/' + name;
   }
@@ -1199,6 +1204,7 @@
       if (typeof openLesson === 'function') openLesson(parts[1].toLowerCase());
       return;
     }
+    if (LEGAL_PATHS.includes(parts[0])) return showView('legal', { fromUrl: true, replace });
     showView(VIEWS.includes(parts[0]) ? parts[0] : 'home', { fromUrl: true, replace });
   }
   window.addEventListener('popstate', () => routeFromPath(true));

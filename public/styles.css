@@ -459,6 +459,23 @@ body.mode-simple .layout { grid-template-columns: minmax(0, 1fr); }
 .ssr-lesson li { font-size: 14px; line-height: 1.6; color: var(--muted); margin-bottom: 10px; }
 .ssr-lesson a { color: var(--accent); }
 
+.site-foot { margin-top: 28px; padding-top: 18px; border-top: 1px solid var(--border); }
+.foot-links { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 10px; }
+.foot-links a { font-size: 13px; color: var(--muted); text-decoration: none; }
+.foot-links a:hover { color: var(--text); text-decoration: underline; }
+.foot-note { font-size: 12.5px; color: var(--muted); }
+
+.legal { max-width: 72ch; }
+.legal h1 { font-size: 27px; font-weight: 680; letter-spacing: -.5px; margin-bottom: 6px; }
+.legal h2 { font-size: 16.5px; font-weight: 650; margin: 26px 0 8px; }
+.legal p { font-size: 15px; line-height: 1.75; color: var(--muted); margin-bottom: 10px; }
+.legal ul { margin: 6px 0 12px 20px; }
+.legal li { font-size: 15px; line-height: 1.7; color: var(--muted); margin-bottom: 7px; }
+.legal strong { color: var(--text); font-weight: 600; }
+.legal a { color: var(--accent); }
+.legal-updated { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+.legal-foot { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--border); }
+
 .disclaimer { font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); padding: 16px 0 0; line-height: 1.6; margin-top: 20px; max-width: 78ch; }
 
 @media (max-width: 940px) {

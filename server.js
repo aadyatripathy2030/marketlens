@@ -822,6 +822,7 @@ async function handleWebhook(req, res) {
 // with its own title, description, canonical and structured data, and the
 // lessons are rendered into the HTML so they index without JavaScript.
 const SITE_NAME = 'ChartGauge';
+const LEGAL = require('./legal');
 const siteOrigin = (req) => (req.headers['x-forwarded-proto'] || 'http') + '://' + (req.headers.host || 'chartgauge.com');
 
 const VIEW_SEO = {
@@ -891,6 +892,10 @@ function seoFor(urlPath, req) {
       desc: `${sym} candlestick chart with SMA, RSI, MACD, Bollinger bands, ATR and VWAP, an indicator score, and ATR-based stop-loss and take-profit levels. Educational, not financial advice.`,
       canonical: `${origin}/stock/${sym}`,
     };
+  }
+  if (LEGAL.PAGES[parts[0]]) {
+    const pg = LEGAL.PAGES[parts[0]];
+    return { view: 'legal', legal: pg, title: pg.title, desc: pg.desc, canonical: `${origin}/${parts[0]}` };
   }
   const v = VIEW_SEO[parts[0] || ''];
   if (v) return { ...v, canonical: origin + (parts[0] ? '/' + parts[0] : '/') };
@@ -977,7 +982,7 @@ const GA_SNIPPET = GA_ID ? `<script async src="https://www.googletagmanager.com/
   + `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_ID}');</script>` : '';
 // Paths the single-page app owns. Anything matching is served the document
 // with that route's metadata rather than a 404.
-const APP_PATH = /^\/(analyze|markets|compare|screener|alerts|watchlist|learn|settings|pricing|chat)(\/|$)|^\/stock\//;
+const APP_PATH = /^\/(analyze|markets|compare|screener|alerts|watchlist|learn|settings|pricing|chat|terms|privacy|refunds|contact)(\/|$)|^\/stock\//;
 
 function serveDocument(req, res, urlPath) {
   const origin = siteOrigin(req);
@@ -991,7 +996,7 @@ function serveDocument(req, res, urlPath) {
       .replace('<!--GA-->', GA_SNIPPET);
     // One <h1> per rendered page: the active view keeps it, the rest step down.
     out = out.replace(/<h1 class="(hero-h|view-h)"/g, '<h2 class="$1"');
-    if (seo.lesson) { /* the rendered lesson supplies the h1 */ }
+    if (seo.lesson || seo.legal) { /* the rendered page supplies its own h1 */ }
     else if (seo.view === 'home') out = out.replace('<h2 class="hero-h"', '<h1 class="hero-h"');
     else {
       const marker = `id="view-${seo.view}">`;
@@ -1003,6 +1008,10 @@ function serveDocument(req, res, urlPath) {
     }
     // Lesson prose goes into the document itself so it indexes without JS.
     if (seo.lesson) out = out.replace('<div id="learnHost"></div>', `<div id="learnHost"></div>${lessonHtml(seo.lesson)}`);
+    if (seo.legal) {
+      out = out.replace('<div id="legalHost"></div>', `<div id="legalHost">${seo.legal.html}</div>`);
+      out = out.replace('<div class="gate" id="gate">', '<div class="gate hidden" id="gate">');
+    }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
     res.end(out);
   });
@@ -1051,6 +1060,7 @@ const server = http.createServer(async (req, res) => {
         { loc: origin + '/', pri: '1.0', freq: 'daily' },
         ...Object.keys(VIEW_SEO).filter(Boolean).map(k => ({ loc: `${origin}/${k}`, pri: '0.8', freq: 'weekly' })),
         ...LESSONS.map(l => ({ loc: `${origin}/learn/${l.id}`, pri: '0.7', freq: 'monthly' })),
+        ...Object.keys(LEGAL.PAGES).map(k => ({ loc: `${origin}/${k}`, pri: '0.4', freq: 'yearly' })),
         ...FEATURED.map(sym => ({ loc: `${origin}/stock/${sym}`, pri: '0.6', freq: 'daily' })),
       ];
       const body = urls.map(u => `  <url><loc>${esc(u.loc)}</loc><lastmod>${today}</lastmod><changefreq>${u.freq}</changefreq><priority>${u.pri}</priority></url>`).join('\n');
