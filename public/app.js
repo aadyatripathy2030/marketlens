@@ -68,6 +68,26 @@
   // A symbol asked for before agreeing, loaded once the gate is cleared.
   let pendingSymbol = null;
 
+  // Gating run() stopped the candlestick chart, but every other market-data
+  // loader still ran behind the overlay — the home snapshot pulled live index
+  // quotes, the watchlist pulled prices — so the numbers were on the page
+  // before anyone agreed to anything. Rather than guard fourteen call sites
+  // and hope the fifteenth remembers, this shadows fetch for the whole module:
+  // no market data is requested until the terms are accepted.
+  //
+  // Auth and billing stay open. The gate's own sign-in needs auth, checkAuth
+  // runs on every page, and the legal pages deliberately bypass the gate.
+  const PRE_AGREEMENT_OK = /^\/api\/(auth|billing)\b/;
+  const rawFetch = window.fetch.bind(window);
+  const fetch = (input, init) => {
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (url.startsWith('/api/') && !PRE_AGREEMENT_OK.test(url) && !hasAgreed()) {
+      showGate();
+      return Promise.reject(new Error('Agree to the terms before loading market data.'));
+    }
+    return rawFetch(input, init);
+  };
+
   // Plain-English technical-indicator grid.
   function renderTech(t) {
     if (!t) { $('techGrid').innerHTML = ''; return; }
@@ -1682,10 +1702,16 @@
       loadWatchlist(); hideGate(); releasePending();
     } catch (e) { gateErr(e.message); }
   }
+  // Everything the current view wanted was refused while the gate was up, so
+  // agreeing has to ask for it again — otherwise the page sits on the empty
+  // state it fell back to (a market snapshot showing a dash, say).
   function releasePending() {
-    if (!pendingSymbol) return;
-    const sym = pendingSymbol; pendingSymbol = null;
-    $('symbol').value = sym; run(sym);
+    if (pendingSymbol) {
+      const sym = pendingSymbol; pendingSymbol = null;
+      $('symbol').value = sym; run(sym);
+      return;
+    }
+    routeFromPath(true);
   }
   $('gateSignin').addEventListener('click', () => gateGo('login'));
   $('gateSignup').addEventListener('click', () => gateGo('signup'));
