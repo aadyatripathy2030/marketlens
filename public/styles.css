@@ -123,8 +123,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 /* Pricing */
 /* Explicit counts rather than auto-fit: at an awkward width auto-fit fits
    three and orphans the fourth card on a row of its own. */
-.pricing { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; max-width: 1120px; align-items: stretch; }
-@media (max-width: 1000px) { .pricing { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.pricing { display: grid; grid-template-columns: repeat(var(--cards, 4), minmax(0, 1fr)); gap: 14px; max-width: 1120px; align-items: stretch; }
+@media (max-width: 1000px) { .pricing { grid-template-columns: repeat(min(var(--cards, 4), 2), minmax(0, 1fr)); } }
 @media (max-width: 620px) {
   .pricing { grid-template-columns: minmax(0, 1fr); }
   /* Stacked, there is nothing to line up with, so the reserved rows that keep
@@ -514,3 +514,27 @@ body.mode-simple .layout { grid-template-columns: minmax(0, 1fr); }
   .price { font-size: 24px; }
   .head .verdict { min-width: 88px; }
 }
+
+/* Cookie consent. A bottom bar rather than a modal: the first visit already
+   has the liability gate over the content, and two overlays at once is a wall. */
+.consent { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 60;
+  display: flex; align-items: center; gap: 18px; max-width: 760px; margin: 0 auto;
+  background: var(--card-hi, var(--card)); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); padding: 14px 16px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .45); }
+.consent.hidden { display: none; }
+.consent-text { font-size: 12.5px; line-height: 1.5; color: var(--muted); margin: 0; }
+.consent-text a { color: var(--text); }
+.consent-btns { display: flex; gap: 8px; flex-shrink: 0; }
+.consent-btn { padding: 8px 16px; font-size: 13px; white-space: nowrap; }
+@media (max-width: 620px) {
+  .consent { flex-direction: column; align-items: stretch; gap: 12px; left: 10px; right: 10px; bottom: 10px; }
+  .consent-btns { justify-content: flex-end; }
+}
+
+/* A take-profit level that is Pro-only: still shown, visibly unavailable. */
+.tp-btn.locked { opacity: .38; }
+.tp-btn.locked:hover { opacity: .55; }
+/* The message shown where a Pro-only feature would have rendered. */
+.pro-gate { font-size: 13px; line-height: 1.55; color: var(--muted); margin: 0; padding: 18px 0; }
+.pro-gate .link-btn { font-size: 13px; }

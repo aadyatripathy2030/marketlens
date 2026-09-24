@@ -5,7 +5,7 @@
 // data to, and what a Pro subscription does and does not include. They are an
 // accurate account of the software, not legal advice.
 
-const CONTACT_EMAIL = (process.env.CONTACT_EMAIL || 'support@chartgauge.com').trim();
+const CONTACT_EMAIL = (process.env.CONTACT_EMAIL || 'chartgauge@gmail.com').trim();
 const SITE = 'ChartGauge';
 const esc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -51,7 +51,10 @@ const TERMS = h('Terms of Service', [
     ])),
 
   s('Pro subscriptions',
-    `Pro is a voluntary subscription that helps cover the market-data and model costs of running ${SITE}. <strong>It does not unlock additional features.</strong> Every feature is available to every visitor, with or without an account, whether or not anyone subscribes.`,
+    `Pro is a paid subscription that covers the market-data and model costs of running ${SITE}, and unlocks the features that cost money each time they run.`,
+    `<strong>Free, for everyone, with or without an account:</strong> the full chart and every indicator on it, for stocks and crypto; the stop-loss level and one take-profit level; the mechanical score and the measured base rate beside it; a limited number of AI-written reports each day, with the rule-based written read always available after that; a watchlist and a small number of price alerts; and every lesson.`,
+    `<strong>Pro adds:</strong> AI-written reports without the daily limit; Ask Claude; reading an uploaded chart image; the screener and side-by-side compare; additional take-profit levels; and a watchlist and alerts without limits.`,
+    `The daily limits and allowances above may be adjusted as running costs change. Any reduction applies from your next renewal.`,
     `Subscriptions are billed in advance on the period you choose and renew automatically until cancelled. Payments are processed by Stripe; ${SITE} never receives or stores your card details. Prices may change, and any change applies from your next renewal, not retroactively.`,
     `Cancellation and refunds are covered on the <a href="/refunds">Refunds and Cancellation</a> page.`),
 
@@ -91,7 +94,7 @@ const PRIVACY = h('Privacy Policy', [
       '<strong>Financial Modeling Prep</strong> and <strong>Finnhub</strong> — the ticker you look up, to fetch fundamentals and news.',
       '<strong>Anthropic</strong> — when a written summary or chat reply is generated: the ticker, the computed indicator values, and anything you type into the chat. If you upload a chart screenshot for reading, the image is sent too. Do not upload images containing personal or account information.',
       '<strong>Stripe</strong> — your email address and subscription details, if you subscribe.',
-      '<strong>Google Analytics</strong> — page views and general usage, to see which parts of the site get used.',
+      '<strong>Google Analytics</strong> — page views and general usage, to see which parts of the site get used. Only after you accept the cookie banner; if you decline, nothing is sent to Google.',
       '<strong>Render</strong> — the hosting provider, which processes requests and stores the database.',
     ]),
     `Your data is not sold, and is not shared with advertisers or data brokers.`),
@@ -99,11 +102,12 @@ const PRIVACY = h('Privacy Policy', [
   s('Cookies and local storage',
     ul([
       '<strong>Session cookie</strong> — set only when you sign in. HttpOnly and SameSite=Lax, so it is not readable by scripts and is not sent with cross-site requests. It is strictly necessary for staying signed in.',
-      '<strong>Local storage</strong> — your display preferences and whether you have accepted the terms notice. This never leaves your browser.',
-      '<strong>Google Analytics cookies</strong> — set on every visit for usage measurement. You can block these with any content blocker, or with Google\u2019s opt-out add-on, and the site will work normally without them.',
+      '<strong>Local storage</strong> — your display preferences, whether you have accepted the terms notice, and your analytics choice below. This never leaves your browser.',
+      '<strong>Google Analytics cookies</strong> — set <strong>only if you press Accept</strong> on the cookie banner. Until then Google Analytics is not loaded at all: no request is made to Google and no analytics cookie exists. If you decline, you are not asked again on that device, and the site works exactly the same.',
     ])),
 
   s('Your choices',
+    `You can change your analytics choice at any time by clearing this site's data in your browser, which makes the banner appear again on your next visit.`,
     `You can delete your account and everything attached to it by emailing <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> from the address on the account. Deletion removes the account record, sessions, watchlist, and alerts.`,
     `You can ask what is held about you, ask for it to be corrected, or ask for it to be exported, at the same address. Depending on where you live you may have these rights under the GDPR, the UK GDPR, or the CCPA; they are offered to everyone regardless.`,
     `Data is kept for as long as the account exists. Subscription records are kept by Stripe for as long as their own retention and tax obligations require.`),
@@ -118,11 +122,12 @@ const PRIVACY = h('Privacy Policy', [
 // -------------------------------------------------------------- refunds
 const REFUNDS = h('Refunds and Cancellation', [
   s('What you are paying for',
-    `A Pro subscription helps cover the market-data and model costs of running ${SITE}. <strong>It does not unlock any additional features</strong> — every feature is available to everyone, subscribed or not. It is closer to supporting the project than to buying access, and you should only subscribe on that basis.`),
+    `A Pro subscription covers the market-data and model costs of running ${SITE} and unlocks the features that cost money each time they run: AI-written reports without the daily limit, Ask Claude, chart-image reading, the screener and side-by-side compare, extra take-profit levels, and an unlimited watchlist and alerts.`,
+    `The chart itself, every indicator, the stop-loss and take-profit levels, the score and the measured base rate beside it remain free for everyone, subscribed or not. Pro is worth paying for only if you want the parts listed above — the tool is fully usable without it. See the <a href="/terms">Terms of Service</a> for the full split.`),
 
   s('Cancelling',
     `You can cancel at any time, with no notice period and no cancellation fee, from the <strong>Manage subscription</strong> button on the Plans page. That opens Stripe's billing portal, where cancellation takes effect immediately for future renewals.`,
-    `When you cancel, your subscription runs to the end of the period you have already paid for and then stops. Nothing about your access changes, because Pro never gated anything.`),
+    `When you cancel, your subscription runs to the end of the period you have already paid for and then stops. After that the account returns to the free tier: nothing you saved is deleted, but the Pro-only features stop and the free daily limits apply again.`),
 
   s('Refunds',
     `If you are unhappy for any reason, email <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> within <strong>14 days</strong> of a charge and it will be refunded in full, no questions asked.`,

@@ -21,6 +21,9 @@ const PUBLIC = path.join(__dirname, 'public');
 const STOCK_API_KEY = (process.env.STOCK_API_KEY || '').replace(/\s/g, '');
 const ANTHROPIC_API_KEY = (process.env.ANTHROPIC_API_KEY || '').replace(/\s/g, '');
 const AI_MODEL = (process.env.ANTHROPIC_MODEL || 'claude-opus-4-8').trim();
+// The free allowance runs on a cheaper model. Reading a table of computed
+// indicators back in plain English is not a task that needs the big one.
+const AI_MODEL_FREE = (process.env.ANTHROPIC_MODEL_FREE || 'claude-haiku-4-5').trim();
 const FMP_API_KEY = (process.env.FMP_API_KEY || '').replace(/\s/g, ''); // Financial Modeling Prep — fundamentals
 const FINNHUB_API_KEY = (process.env.FINNHUB_API_KEY || '').replace(/\s/g, ''); // Finnhub — company news
 const GA_ID = (process.env.GA_MEASUREMENT_ID || 'G-4GG1NXEE2E').trim();         // Google Analytics 4 (public Measurement ID; env can override)
@@ -239,7 +242,7 @@ function reportPrompt(p) {
   const t = p.tech || {}, r = p.rating || {}, sma = t.sma || {};
   const fmt = (x) => x == null ? 'n/a' : (typeof x === 'number' ? x.toFixed(2) : x);
   const system = 'You are a sharp, balanced equity analyst writing for curious beginners. You will be given a stock and a set of already-computed technical indicators plus a mechanical rating. Respond with ONLY a JSON object (no markdown, no prose outside it) of the form: {"summary": string (3-4 lively plain-English sentences on where the stock stands and what is driving the rating), "bull": [3 short bullet strings — the strongest reasons it could go up], "bear": [3 short bullet strings — the strongest risks], "conclusion": string (2 sentences tying it together)}. Ground every point in the numbers provided; do not invent fundamentals, news, or price targets. Be explicit in the conclusion that this is a mechanical technical read, often wrong, and NOT financial advice.';
-  const user = `SYMBOL: ${p.symbol} @ ${fmt(p.latest)} ${p.currency} (${p.changePct.toFixed(2)}% today)\n`
+  const user = `SYMBOL: ${p.symbol} @ ${fmt(p.latest)} ${p.currency} (${fmt(p.changePct)}% today)\n`
     + `RATING: ${r.label} — score ${r.score}/100, ${r.agreeing}/${r.groupCount} indicator groups agreeing, risk ${r.risk}\n`
     + `RSI14: ${fmt(t.rsi14)} | SMA20 ${fmt(sma[20])} / SMA50 ${fmt(sma[50])} / SMA200 ${fmt(sma[200])}\n`
     + `MACD hist: ${fmt(t.macd && t.macd.hist)} | VWAP: ${fmt(t.vwap)} | Bollinger %B: ${fmt(t.bollinger && t.bollinger.pctB)}\n`
@@ -250,9 +253,9 @@ function reportPrompt(p) {
   return { system, user };
 }
 
-async function callClaudeReport(p) {
+async function callClaudeReport(p, model) {
   const { system, user } = reportPrompt(p);
-  const body = JSON.stringify({ model: AI_MODEL, max_tokens: 1000, system, messages: [{ role: 'user', content: user }] });
+  const body = JSON.stringify({ model: model || AI_MODEL, max_tokens: 1000, system, messages: [{ role: 'user', content: user }] });
   const { json: j } = await httpsJson({ method: 'POST', hostname: 'api.anthropic.com', path: '/v1/messages',
     headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) } }, body);
   const text = j && j.content && j.content[0] && j.content[0].text;
@@ -326,8 +329,19 @@ async function handleAnalyzeStream(req, res) {
     send({ t: 'done', ...ruleBasedReport(p), source: 'rule', note: 'Set ANTHROPIC_API_KEY for an AI-written report.' });
     return res.end();
   }
+  const { pro, key } = await plan(req);
+  let streamModel = AI_MODEL;
+  if (!pro) {
+    if (await db.peekUsage(key, 'ai') >= AI_FREE_DAILY) {
+      send({ t: 'done', ...ruleBasedReport(p), source: 'rule', limited: true, note: aiLimitNote() });
+      return res.end();
+    }
+    streamModel = AI_MODEL_FREE;
+  }
+  // Counted once the report actually parses; a stream that dies is not charged.
+  const chargeStream = async () => { if (!pro) { try { await db.bumpUsage(key, 'ai', AI_FREE_DAILY); } catch (e) {} } };
   const { system, user } = reportPrompt(p);
-  const body = JSON.stringify({ model: AI_MODEL, max_tokens: 1000, stream: true, system, messages: [{ role: 'user', content: user }] });
+  const body = JSON.stringify({ model: streamModel, max_tokens: 1000, stream: true, system, messages: [{ role: 'user', content: user }] });
   let full = '', sent = 0, sse = '';
   try {
     await httpsStream({ method: 'POST', hostname: 'api.anthropic.com', path: '/v1/messages',
@@ -352,6 +366,7 @@ async function handleAnalyzeStream(req, res) {
       bull: Array.isArray(parsed.bull) ? parsed.bull.map(String).slice(0, 4) : [],
       bear: Array.isArray(parsed.bear) ? parsed.bear.map(String).slice(0, 4) : [],
       conclusion: String(parsed.conclusion || ''), source: 'ai' });
+    await chargeStream();
   } catch (e) {
     logError(e);
     const rb = ruleBasedReport(p);
@@ -372,15 +387,38 @@ async function handleAnalyzeStream(req, res) {
   res.end();
 }
 
+// "Claude was unreachable" used to be printed for every failure, including
+// TypeErrors thrown while building the prompt — which made a bug in this file
+// look like an outage at Anthropic. Log the real error, and only blame the
+// network when it actually was the network.
+function aiFallbackNote(e, where) {
+  console.error(`[ai:${where}]`, e && e.stack ? e.stack : e);
+  const bug = e instanceof TypeError || e instanceof ReferenceError || e instanceof SyntaxError;
+  return bug
+    ? 'The AI report could not be built; this is the rule-based report.'
+    : 'Claude was unreachable (' + (e && e.message ? e.message : 'unknown') + '); this is the rule-based report.';
+}
+
 async function handleAnalyze(req, res) {
   const p = await readBody(req);
   if (!p || !p.symbol) return json(res, 400, { error: 'Missing data.' });
   if (ANTHROPIC_API_KEY) {
+    const { pro, key } = await plan(req);
+    let model = AI_MODEL;
+    if (!pro) {
+      // Checked before the call and counted only after it succeeds, so a
+      // failed request does not spend one of the day's reports.
+      if (await db.peekUsage(key, 'ai') >= AI_FREE_DAILY) {
+        return json(res, 200, { ...ruleBasedReport(p), source: 'rule', limited: true, note: aiLimitNote() });
+      }
+      model = AI_MODEL_FREE;
+    }
     try {
-      const rep = await callClaudeReport(p);
+      const rep = await callClaudeReport(p, model);
       if (!rep.summary) throw new Error('empty AI report');
+      if (!pro) await db.bumpUsage(key, 'ai', AI_FREE_DAILY);
       return json(res, 200, { ...rep, source: 'ai' });
-    } catch (e) { return json(res, 200, { ...ruleBasedReport(p), source: 'rule', note: 'Claude was unreachable (' + e.message + '); this is the rule-based report.' }); }
+    } catch (e) { return json(res, 200, { ...ruleBasedReport(p), source: 'rule', note: aiFallbackNote(e, 'analyze') }); }
   }
   return json(res, 200, { ...ruleBasedReport(p), source: 'rule', note: 'Set ANTHROPIC_API_KEY for an AI-written report.' });
 }
@@ -403,6 +441,8 @@ async function callClaudeVision(base64, mediaType) {
   return text.trim();
 }
 async function handleAnalyzeImage(req, res) {
+  const { pro } = await plan(req);
+  if (!pro) return json(res, 402, PRO_ONLY('Reading a chart image'));
   const p = await readBody(req, 8e6); // allow up to ~8MB base64 payloads
   const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
   if (!p || !p.image || !allowed.includes(p.mediaType)) {
@@ -430,6 +470,35 @@ function setSessionCookie(req, res, token, clear) {
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 async function currentUser(req) { return db.getSessionUser(parseCookies(req).session); }
+
+// ---- plan gating ----
+// Pro covers the features that cost money every time they run: the written
+// reports, the chat, reading an uploaded chart, and the screener and compare
+// pages (which fan out into dozens of price-API calls). Everything that is
+// pure computation on data already fetched — the chart, every indicator, the
+// levels, the measured base rate, the lessons — stays free for everyone,
+// with or without an account.
+const AI_FREE_DAILY = Number(process.env.AI_FREE_DAILY || 3);
+const aiLimitNote = () => `That is today's ${AI_FREE_DAILY} written reports. This one is the rule-based read, which is always free and always available — Pro lifts the daily limit.`;
+const FREE_WATCH_MAX = Number(process.env.FREE_WATCH_MAX || 10);
+const FREE_ALERT_MAX = Number(process.env.FREE_ALERT_MAX || 3);
+
+function clientKey(req, user) {
+  if (user) return 'u:' + user.id;
+  const fwd = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return 'ip:' + (fwd || (req.socket && req.socket.remoteAddress) || 'unknown');
+}
+
+// Resolves the caller once: who they are, whether they are Pro, and the key
+// their free allowance is counted against.
+async function plan(req) {
+  let user = null;
+  try { user = await currentUser(req); } catch (e) { user = null; }
+  return { user, pro: !!(user && user.plan === 'pro'), key: clientKey(req, user) };
+}
+
+const PRO_ONLY = (what) => ({ error: 'pro_required', feature: what,
+  message: `${what} is part of Pro. Everything else on ChartGauge — the chart, the indicators, the levels and the measured base rate — stays free.` });
 
 const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || ''));
 async function handleSignup(req, res) {
@@ -462,7 +531,18 @@ async function handleLogout(req, res) {
 }
 async function handleMe(req, res) {
   const u = await currentUser(req);
-  return json(res, 200, { user: u ? { ...u, admin: isAdmin(u) } : null, store: db.storeMode(), billing: await billingInfo() });
+  const pro = !!(u && u.plan === 'pro');
+  let aiUsed = 0;
+  if (!pro && ANTHROPIC_API_KEY) { try { aiUsed = await db.peekUsage(clientKey(req, u), 'ai'); } catch (e) {} }
+  return json(res, 200, {
+    user: u ? { ...u, admin: isAdmin(u) } : null,
+    store: db.storeMode(),
+    billing: await billingInfo(),
+    // So the interface can show what is available without probing endpoints.
+    limits: { pro, aiPerDay: pro ? null : AI_FREE_DAILY, aiUsed,
+      watchMax: pro ? null : FREE_WATCH_MAX, alertMax: pro ? null : FREE_ALERT_MAX,
+      takeProfits: pro ? 3 : 1 },
+  });
 }
 async function handleAdmin(req, res) {
   const u = await currentUser(req);
@@ -485,7 +565,17 @@ async function handleWatchlist(req, res) {
   const b = await readBody(req);
   const symbol = String(b.symbol || '').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
   if (!symbol) return json(res, 400, { error: 'No symbol.' });
-  if (b.action === 'remove') await db.removeWatch(user.id, symbol); else await db.addWatch(user.id, symbol);
+  if (b.action === 'remove') { await db.removeWatch(user.id, symbol); }
+  else {
+    // Checked only when adding: someone who subscribed, built a long list and
+    // then cancelled keeps what they saved, they just cannot add more.
+    const cur = await db.listWatch(user.id);
+    if (user.plan !== 'pro' && !cur.includes(symbol) && cur.length >= FREE_WATCH_MAX) {
+      return json(res, 402, { error: 'pro_required', feature: 'watchlist',
+        message: `A free watchlist holds ${FREE_WATCH_MAX} symbols. Pro removes the limit.`, symbols: cur });
+    }
+    await db.addWatch(user.id, symbol);
+  }
   return json(res, 200, { symbols: await db.listWatch(user.id) });
 }
 
@@ -504,6 +594,8 @@ function extractTickers(text) {
   return [...found].slice(0, 4);
 }
 async function handleChat(req, res) {
+  const { pro } = await plan(req);
+  if (!pro) return json(res, 402, PRO_ONLY('Ask Claude'));
   const b = await readBody(req, 2e6);
   const msgs = (Array.isArray(b.messages) ? b.messages : [])
     .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
@@ -623,6 +715,8 @@ function buildCompareMetrics(r, k, inc, p) {
   };
 }
 async function handleCompare(req, res, raw) {
+  const { pro } = await plan(req);
+  if (!pro) return json(res, 402, PRO_ONLY('Side-by-side compare'));
   const symbols = String(raw || '').toUpperCase().split(',').map(s => s.replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16)).filter(Boolean).filter((s, i, a) => a.indexOf(s) === i).slice(0, 4);
   if (symbols.length < 2) return json(res, 400, { error: 'Add at least two tickers to compare.' });
   const rows = await Promise.all(symbols.map(async (sym) => {
@@ -704,6 +798,13 @@ async function handleAlerts(req, res) {
   const direction = b.direction === 'below' ? 'below' : 'above';
   const target = Number(b.target);
   if (!symbol || !Number.isFinite(target) || target <= 0) return json(res, 400, { error: 'Enter a ticker and a target price above 0.' });
+  if (user.plan !== 'pro') {
+    const cur = await db.listAlerts(user.id);
+    if (cur.filter(x => !x.triggered).length >= FREE_ALERT_MAX) {
+      return json(res, 402, { error: 'pro_required', feature: 'alerts',
+        message: `A free account runs ${FREE_ALERT_MAX} price alerts at a time. Delete one, or go Pro for unlimited.` });
+    }
+  }
   const a = await db.addAlert(user.id, symbol, direction, target);
   return json(res, 200, { alert: a });
 }
@@ -729,6 +830,8 @@ const SCREEN_UNIVERSE = [
 ];
 const CAP_RANK = { mega: 4, large: 3, mid: 2, small: 1 };
 async function handleScreen(req, res, qs) {
+  const { pro } = await plan(req);
+  if (!pro) return json(res, 402, PRO_ONLY('The screener'));
   const q = new URLSearchParams(qs || '');
   const sector = q.get('sector'), cap = q.get('cap');
   const pmin = Number(q.get('priceMin')), pmax = Number(q.get('priceMax'));
@@ -1013,8 +1116,11 @@ function lessonHtml(l) {
     + `</article>`;
 }
 
-const GA_SNIPPET = GA_ID ? `<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_ID}"></script>`
-  + `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_ID}');</script>` : '';
+// Analytics is no longer injected as an inline script. The measurement id is
+// published as a meta tag and app.js loads gtag.js only once the visitor has
+// accepted — so nothing is set before consent, and the CSP below needs no
+// 'unsafe-inline' for scripts.
+const GA_SNIPPET = GA_ID ? `<meta name="ga-id" content="${esc(GA_ID)}">` : '';
 // Paths the single-page app owns. Anything matching is served the document
 // with that route's metadata rather than a 404.
 const APP_PATH = /^\/(analyze|markets|compare|screener|alerts|watchlist|learn|settings|pricing|chat|terms|privacy|refunds|contact)(\/|$)|^\/stock\//;
@@ -1077,8 +1183,40 @@ function serveStatic(req, res) {
   });
 }
 
+// Set on every response, before routing. Values are deliberately strict: the
+// site loads no third-party code except analytics, so nothing here needs a
+// wildcard. frame-ancestors is what stops the billing page being framed.
+const CSP = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "form-action 'self'",
+  "img-src 'self' data: https://www.google-analytics.com https://www.googletagmanager.com",
+  // Styles stay 'unsafe-inline': the markup carries style attributes, and an
+  // injected stylesheet is a far smaller problem than an injected script.
+  "style-src 'self' 'unsafe-inline'",
+  "script-src 'self' https://www.googletagmanager.com https://www.google-analytics.com",
+  "connect-src 'self' https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com",
+  "font-src 'self' data:",
+].join('; ');
+
+function securityHeaders(req, res) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
+  res.setHeader('Content-Security-Policy', CSP);
+  // Only assert HSTS on a request that actually arrived over TLS, so a local
+  // http run does not pin the browser to https://localhost.
+  if ((req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   try {
+    securityHeaders(req, res);
     const url = req.url.split('?')[0];
     if (url.startsWith('/api/')) { usage.total++; usage[url] = (usage[url] || 0) + 1; }
     if (url === '/robots.txt') {

@@ -6,6 +6,44 @@
   const col = (n) => CSS.getPropertyValue(n).trim();
   const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+  // ---- Analytics consent ----
+  // Google Analytics is loaded here rather than injected into the document, so
+  // that nothing is requested from Google and no cookie is set until the
+  // visitor accepts. Declining is remembered and never asked again.
+  const CONSENT_KEY = 'chartgauge_consent';
+  const readConsent = () => { try { return localStorage.getItem(CONSENT_KEY); } catch (e) { return null; } };
+  const writeConsent = (v) => { try { localStorage.setItem(CONSENT_KEY, v); } catch (e) {} };
+
+  let analyticsLoaded = false;
+  function loadAnalytics() {
+    if (analyticsLoaded) return;
+    const meta = document.querySelector('meta[name="ga-id"]');
+    const id = meta && meta.content;
+    if (!id) return;
+    analyticsLoaded = true;
+    const tag = document.createElement('script');
+    tag.async = true;
+    tag.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(id);
+    document.head.appendChild(tag);
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = function () { window.dataLayer.push(arguments); };
+    window.gtag('js', new Date());
+    window.gtag('config', id);
+  }
+
+  function initConsent() {
+    const bar = $('consent');
+    if (!bar) return;
+    const choice = readConsent();
+    if (choice === 'granted') { loadAnalytics(); return; }
+    if (choice === 'denied') return;
+    bar.classList.remove('hidden');
+    const decide = (v) => { writeConsent(v); bar.classList.add('hidden'); if (v === 'granted') loadAnalytics(); };
+    $('consentYes').addEventListener('click', () => decide('granted'));
+    $('consentNo').addEventListener('click', () => decide('denied'));
+  }
+  initConsent();
+
   // First-visit gate: hide instantly for anyone who already agreed on this device.
   const ON_LEGAL_PAGE = /^\/(terms|privacy|refunds|contact)\/?$/.test(location.pathname);
   try {
@@ -103,13 +141,21 @@
       : cell('Swing level ahead', 'none', '',
           `Price is already outside its 60-bar range, so there is no prior level ahead of it to aim at`));
 
-    const tpBtns = [1, 2, 3, 4, 5].map(n =>
-      `<button type="button" class="tp-btn${n === tpCount ? ' active' : ''}" data-tp="${n}">${n}</button>`).join('');
+    // Locked levels stay visible and say why, rather than silently vanishing.
+    const cap = maxTp();
+    const shown = Math.min(tpCount, cap);
+    const tpBtns = [1, 2, 3, 4, 5].map(n => {
+      const locked = n > cap;
+      return `<button type="button" class="tp-btn${n === shown ? ' active' : ''}${locked ? ' locked' : ''}" data-tp="${n}"`
+        + `${locked ? ' title="More take-profit levels are part of Pro"' : ''}>${n}</button>`;
+    }).join('');
     $('levelsBody').innerHTML =
       `<div class="tp-row"><span class="tp-label">Take-profit levels</span><div class="tp-group">${tpBtns}</div></div>` +
       `<div class="levels-grid">${rows.join('')}</div>`;
     $('levelsBody').querySelectorAll('.tp-btn').forEach(b => b.addEventListener('click', () => {
-      tpCount = parseInt(b.dataset.tp, 10);
+      const n = parseInt(b.dataset.tp, 10);
+      if (n > maxTp()) { showView('pricing'); return; }
+      tpCount = n;
       try { localStorage.setItem(TP_KEY, String(tpCount)); } catch (e) {}
       renderLevels(d); drawChart();
     }));
@@ -257,10 +303,23 @@
   const TP_KEY = 'chartgauge_tp_count';
   let tpCount = 3;
   try { const n = parseInt(localStorage.getItem(TP_KEY), 10); if (n >= 1 && n <= 6) tpCount = n; } catch (e) {}
+  // Filled from /api/auth/me. Until it arrives, assume the free ceiling so the
+  // interface never briefly offers something it will then take away.
+  let limits = { pro: false, takeProfits: 1, aiPerDay: 3, aiUsed: 0, watchMax: 10, alertMax: 3 };
+  const maxTp = () => (limits.pro ? 5 : Math.max(1, limits.takeProfits || 1));
+  // A 402 from the server means the feature is Pro-only. One shape for the
+  // message everywhere, with a link that actually goes to the Plans page.
+  const isProGate = (j) => j && j.error === 'pro_required';
+  const proGateHtml = (j) => `<p class="pro-gate">${esc(j.message || 'This is part of Pro.')}`
+    + ` <button type="button" class="link-btn" data-goto-pricing>See plans</button></p>`;
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest && e.target.closest('[data-goto-pricing]');
+    if (b) { e.preventDefault(); showView('pricing'); }
+  });
   function targetsFor(L) {
     if (!L || !(L.riskPerShare > 0)) return [];
     const long = L.direction !== 'short';
-    return Array.from({ length: tpCount }, (_, i) => {
+    return Array.from({ length: Math.min(tpCount, maxTp()) }, (_, i) => {
       const r = i + 1;
       const price = long ? L.entry + r * L.riskPerShare : L.entry - r * L.riskPerShare;
       return { r, price, pct: Math.abs(price - L.entry) / L.entry * 100 };
@@ -1041,6 +1100,7 @@
     try {
       const r = await fetchTimeout('/api/analyze-image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: imgData.base64, mediaType: imgData.mediaType }) }, 60000);
       const j = await r.json();
+      if (isProGate(j)) { $('imgResult').innerHTML = proGateHtml(j); $('imgResult').classList.remove('hidden'); return; }
       $('imgResult').textContent = j.summary || j.error || 'No analysis available.';
     } catch (e) {
       $('imgResult').textContent = e && e.name === 'AbortError'
@@ -1068,7 +1128,7 @@
     }
   }
   async function checkAuth() {
-    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; billingPlans = j.billing || {}; billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; }
+    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; }
     renderAcct();
     $('watchBtn').classList.toggle('hidden', !currentUser);
     $('navAdmin').classList.toggle('hidden', !(currentUser && currentUser.admin));
@@ -1298,7 +1358,8 @@
         context: chatContext(),
       };
       const j = await (await fetchTimeout('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }, 60000)).json();
-      pending.content = j.reply || 'No response.'; pending.thinking = false;
+      pending.content = isProGate(j) ? (j.message + '\n\nOpen Plans from the menu to subscribe.') : (j.reply || 'No response.');
+      pending.thinking = false;
     } catch (e) {
       pending.content = e && e.name === 'AbortError'
         ? 'That took too long to come back — the server may have been asleep. Ask again.'
@@ -1333,6 +1394,7 @@
     $('compareResult').innerHTML = `<p class="compare-note">Loading…</p>`;
     let data;
     try { data = await (await fetch('/api/compare?symbols=' + encodeURIComponent(compareSymbols.join(',')))).json(); } catch { $('compareResult').innerHTML = `<p class="compare-note">Couldn’t load comparison.</p>`; return; }
+    if (isProGate(data)) { $('compareResult').innerHTML = proGateHtml(data); return; }
     const rows = (data.compare || []).filter(r => !r.error);
     if (rows.length < 2) { $('compareResult').innerHTML = `<p class="compare-note">Couldn’t load enough data — check the tickers.</p>`; return; }
     let html = `<div class="compare-scroll"><table class="compare-table"><thead><tr><th></th>` +
@@ -1364,6 +1426,7 @@
     if ($('scPriceMax').value) p.set('priceMax', $('scPriceMax').value);
     let d;
     try { d = await (await fetch('/api/screen?' + p.toString())).json(); } catch { $('screenResult').innerHTML = `<p class="compare-note">Couldn’t run the screen.</p>`; return; }
+    if (isProGate(d)) { $('screenResult').innerHTML = proGateHtml(d); return; }
     if (!d.available) { $('screenResult').innerHTML = `<p class="compare-note">${esc(d.message || 'Screener unavailable.')}</p>`; return; }
     if (!d.results.length) { $('screenResult').innerHTML = `<p class="compare-note">No matches — try loosening the filters.</p>`; return; }
     $('screenResult').innerHTML = `<div class="mkt-h">${d.results.length} matches</div><div class="quote-grid">` + d.results.map(screenCard).join('') + `</div><p class="compare-note">Screening a curated list of popular US stocks with live prices. Full-market screening needs a paid data plan.</p>`;
@@ -1418,7 +1481,18 @@
   function renderPricing() {
     const pro = !!(currentUser && currentUser.plan === 'pro');
     const li = (arr) => arr.map(([t, on]) => `<li class="${on ? '' : 'off'}">${esc(t)}</li>`).join('');
-    const freeList = [['Indicator scores, bull/bear case, written summary', 1], ['Charts, markets, fundamentals and news', 1], ['Ask Claude, chart-image reading', 1], ['Watchlist and price alerts', 1], ['Screener and side-by-side compare', 1]];
+    const aiN = limits.aiPerDay || 3;
+    const freeList = [
+      ['Full charts, every indicator, stocks and crypto', 1],
+      ['Stop-loss and one take-profit level', 1],
+      ['The score and the measured base rate', 1],
+      [`${aiN} written reports a day, then the rule-based read`, 1],
+      [`Watchlist up to ${limits.watchMax || 10}, ${limits.alertMax || 3} price alerts`, 1],
+      ['Every lesson', 1],
+      ['Ask Claude', 0],
+      ['Chart-image reading', 0],
+      ['Screener and side-by-side compare', 0],
+    ];
     const periods = [['weekly', 'Weekly'], ['monthly', 'Monthly'], ['yearly', 'Yearly']].filter(([k]) => billingPlans && billingPlans[k]);
     // Cheapest per month gets the tag, computed rather than hardcoded.
     const priced = periods.map(([k]) => billingPlans[k]).filter(p => p && p.amount != null);
@@ -1458,6 +1532,9 @@
     }
 
     $('pricingBody').innerHTML = freeCard + proCards;
+    // Two cards (a Pro subscriber, or billing not configured) should not sit in
+    // a four-column grid leaving two empty tracks.
+    $('pricingBody').style.setProperty('--cards', String($('pricingBody').children.length || 1));
     if ($('manageBtn')) $('manageBtn').addEventListener('click', openPortal);
     // Signed out, the same button opens the sign-in modal rather than checkout.
     $('pricingBody').querySelectorAll('.plan-btn').forEach(b => b.addEventListener('click',

@@ -338,7 +338,7 @@
   <!-- PRICING -->
   <section class="view hidden" id="view-pricing">
     <h1 class="view-h">Plans</h1>
-    <p class="learn-lead" id="pricingLead">Every feature is free, and Pro does not unlock anything extra. It exists so people who find this useful can help cover the data and model bills.</p>
+    <p class="learn-lead" id="pricingLead">The chart, every indicator, the stop-loss and take-profit levels and the measured base rate are free for everyone, account or not. Pro adds the parts that cost money to run each time: unlimited written reports, Ask Claude, chart-image reading, the screener and side-by-side compare, and more take-profit levels.</p>
     <div class="pricing" id="pricingBody"></div>
   </section>
 
@@ -402,6 +402,16 @@
     </form>
     <p class="auth-toggle"><span id="authToggleText">New to ChartGauge?</span> <button type="button" class="link-btn" id="authToggle">Create an account</button></p>
     <p class="auth-note">Never enter a real trading or bank password here. This is a demo; passwords are hashed, never stored in plain text.</p>
+  </div>
+</div>
+
+<!-- Cookie consent. Hidden until app.js decides the visitor has not chosen
+     yet; analytics does not load until Accept is pressed. -->
+<div class="consent hidden" id="consent" role="region" aria-label="Cookie choices">
+  <p class="consent-text">ChartGauge uses a cookie to keep you signed in, which is always on. It can also use Google Analytics to count visits — only if you say yes. See the <a href="/privacy">Privacy Policy</a>.</p>
+  <div class="consent-btns">
+    <button type="button" class="btn btn-ghost consent-btn" id="consentNo">Decline</button>
+    <button type="button" class="btn btn-primary consent-btn" id="consentYes">Accept</button>
   </div>
 </div>
 

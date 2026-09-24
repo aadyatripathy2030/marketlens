@@ -10,7 +10,7 @@ const SESSION_TTL = 30 * DAY;
 let pool = null;
 let mode = 'memory';
 let lastErr = null;
-const mem = { users: new Map(), byEmail: new Map(), sessions: new Map(), watch: new Map(), alerts: new Map() };
+const mem = { users: new Map(), byEmail: new Map(), sessions: new Map(), watch: new Map(), alerts: new Map(), usage: new Map() };
 
 // Render's INTERNAL Postgres host has no dot (e.g. dpg-xxxx-a) and speaks plain
 // TCP; hosted/external hosts (Neon, Render external) are dotted and need SSL.
@@ -39,6 +39,9 @@ async function init() {
         id TEXT PRIMARY KEY, uid TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         symbol TEXT NOT NULL, direction TEXT NOT NULL, target DOUBLE PRECISION NOT NULL,
         created BIGINT NOT NULL, triggered BIGINT NOT NULL DEFAULT 0)`);
+      await pool.query(`CREATE TABLE IF NOT EXISTS usage_daily (
+        k TEXT NOT NULL, kind TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (k, kind, day))`);
       mode = 'postgres';
     } catch (e) {
       lastErr = e.message;
@@ -183,7 +186,41 @@ async function findByStripeSub(sub) {
   return [...mem.users.values()].find(u => u.stripe_sub === sub) || null;
 }
 
+// ---- daily usage counters ----
+// Keyed by account id when signed in, by IP when not, so the free allowance
+// cannot be reset by signing out. The day is a UTC date string, which means
+// the allowance rolls over at midnight UTC rather than on a per-user timer.
+const usageDay = (at) => new Date(at || Date.now()).toISOString().slice(0, 10);
+
+async function bumpUsage(k, kind, limit) {
+  const day = usageDay();
+  if (mode === 'postgres') {
+    const r = await pool.query(
+      `INSERT INTO usage_daily (k, kind, day, n) VALUES ($1, $2, $3, 1)
+       ON CONFLICT (k, kind, day) DO UPDATE SET n = usage_daily.n + 1 RETURNING n`,
+      [k, kind, day]);
+    const n = r.rows[0].n;
+    return { n, remaining: Math.max(0, limit - n), over: n > limit };
+  }
+  const key = k + '|' + kind + '|' + day;
+  const n = (mem.usage.get(key) || 0) + 1;
+  mem.usage.set(key, n);
+  // Memory mode has no eviction elsewhere; drop yesterday's keys as we go.
+  if (mem.usage.size > 5000) for (const kk of mem.usage.keys()) if (!kk.endsWith('|' + day)) mem.usage.delete(kk);
+  return { n, remaining: Math.max(0, limit - n), over: n > limit };
+}
+
+async function peekUsage(k, kind) {
+  const day = usageDay();
+  if (mode === 'postgres') {
+    const r = await pool.query('SELECT n FROM usage_daily WHERE k=$1 AND kind=$2 AND day=$3', [k, kind, day]);
+    return r.rows[0] ? r.rows[0].n : 0;
+  }
+  return mem.usage.get(k + '|' + kind + '|' + day) || 0;
+}
+
 module.exports = {
+  bumpUsage, peekUsage,
   init, storeMode, hasUrl, lastError, verifyPw,
   createUser, getUserByEmail, getUserById,
   createSession, getSessionUser, deleteSession,
