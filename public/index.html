@@ -26,14 +26,16 @@
     </div>
     <label class="gate-check"><input type="checkbox" id="gateAgree" /> <span>I have read and agree to the notice above, the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
     <div class="gate-auth disabled" id="gateAuth">
+      <button type="button" class="btn btn-primary btn-block" id="gateGuest">Continue without an account</button>
+      <p class="gate-optional">No account needed. Signing in only saves a watchlist and price alerts.</p>
+      <div class="gate-or"><span>or sign in</span></div>
       <input type="email" id="gateEmail" class="input" placeholder="you@email.com" autocomplete="email" />
       <input type="password" id="gatePass" class="input" placeholder="Password (8+ characters)" autocomplete="current-password" />
       <div class="auth-err hidden" id="gateErr"></div>
       <div class="gate-btns">
-        <button type="button" class="btn btn-primary btn-block" id="gateSignin">Sign in</button>
+        <button type="button" class="btn btn-ghost btn-block" id="gateSignin">Sign in</button>
         <button type="button" class="btn btn-ghost btn-block" id="gateSignup">Create account</button>
       </div>
-      <button type="button" class="gate-guest" id="gateGuest">Continue without an account</button>
     </div>
     <p class="gate-note">Please don’t reuse a real banking or trading password here. This is a demo login.</p>
   </div>
@@ -148,12 +150,12 @@
                 <span class="tf-label">Each candle</span>
                 <div class="range" id="interval" role="tablist" aria-label="Candle interval — how much time each candle covers">
                   <button class="range-btn" data-iv="1min">1m</button>
-                  <button class="range-btn" data-iv="5min">5m</button>
+                  <button class="range-btn active" data-iv="5min">5m</button>
                   <button class="range-btn" data-iv="15min">15m</button>
                   <button class="range-btn" data-iv="30min">30m</button>
                   <button class="range-btn" data-iv="1h">1h</button>
                   <button class="range-btn" data-iv="4h">4h</button>
-                  <button class="range-btn active" data-iv="1day">D</button>
+                  <button class="range-btn" data-iv="1day">D</button>
                   <button class="range-btn" data-iv="1week">W</button>
                   <button class="range-btn" data-iv="1month">M</button>
                 </div>

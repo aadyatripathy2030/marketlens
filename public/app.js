@@ -259,13 +259,21 @@
   document.addEventListener('click', (e) => { if (!e.target.closest('.search-box')) hideSuggest(); });
 
   let lastData = null;
+  // Each strategy opens on the candle size it is actually about: day trading on
+  // 5-minute candles, long-term on daily ones. Switching strategy moves the
+  // candle size with it, since a 50/200-day trend read off 5-minute candles is
+  // not the thing the tab is offering.
+  const STRATEGY_INTERVAL = { daytrade: '5min', longterm: '1day' };
+  const INTRADAY = new Set(['1min', '5min', '15min', '30min', '1h', '4h']);
   let strategy = 'daytrade';
   let direction = 'long';
-  let interval = '1day';    // candle size (1min … 1month)
+  let interval = STRATEGY_INTERVAL[strategy];   // candle size (1min … 1month)
   let rangeDays = 126;      // active range button, in trading days (0 = All)
   let view = null;          // {start, end} indices into prices for zoom/pan
-  let viewCandles = null;   // when set, view shows exactly this many recent candles
   const DEFAULT_CANDLES = 90; // zoomed-in default when the interval changes
+  // Intraday opens zoomed to a readable number of candles; a 126-day range of
+  // 5-minute bars would otherwise arrive as a wall of them.
+  let viewCandles = INTRADAY.has(interval) ? DEFAULT_CANDLES : null;
   let chartType = 'candle'; // 'candle' | 'line'
   const show = { fast: true, slow: true, proj: true, levels: false }; // overlay visibility
 
@@ -379,8 +387,22 @@
     $('strat').querySelectorAll('.strat-btn').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
     strategy = b.dataset.mode;
+    const iv = STRATEGY_INTERVAL[strategy];
+    if (iv && iv !== interval) {
+      interval = iv;
+      viewCandles = INTRADAY.has(interval) ? DEFAULT_CANDLES : null;
+      syncIntervalButtons();
+      $('range').querySelectorAll('.range-btn').forEach(x => x.classList.remove('active'));
+    }
     if (lastData) run(lastData.symbol);
   }));
+  // The markup ships one interval marked active; this is what keeps that
+  // marker true after the state changes it.
+  function syncIntervalButtons() {
+    $('interval').querySelectorAll('.range-btn').forEach(x =>
+      x.classList.toggle('active', x.dataset.iv === interval));
+  }
+  syncIntervalButtons();
   // Chart range buttons (how far back to view)
   $('range').querySelectorAll('.range-btn').forEach(b => b.addEventListener('click', () => {
     $('range').querySelectorAll('.range-btn').forEach(x => x.classList.remove('active'));
