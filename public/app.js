@@ -1423,19 +1423,19 @@
     const best = priced.length ? Math.min(...priced.map(perMonth)) : null;
     if (!currentUser) proAction = `<button class="btn btn-ai btn-block" id="signinUpgrade">Sign in to upgrade</button>`;
     else if (pro) proAction = `<div class="plan-current">You’re on Pro. Thank you.</div><button class="btn btn-ghost btn-block" id="manageBtn">Manage subscription</button>`;
-    else if (periods.length) proAction = periods.map(([k, label]) => {
+    else if (periods.length) proAction = `<div class="plan-periods">` + periods.map(([k, label]) => {
       const p = billingPlans[k];
-      if (!p || p.amount == null) return `<button class="btn btn-ai btn-block plan-btn" data-plan="${k}">${label}</button>`;
+      if (!p || p.amount == null) return `<button class="btn btn-ai plan-btn" data-plan="${k}"><span class="pb-period">${label}</span></button>`;
       const pm = perMonth(p);
       const isBest = best != null && pm <= best + 0.5;
       const sameAsHeadline = (p.interval === 'month' && (p.intervalCount || 1) === 1);
-      return `<button class="btn btn-ai btn-block plan-btn" data-plan="${k}">`
-        + `<span class="pb-top"><span class="pb-period">${label}</span>`
-        + `<span class="pb-amount">${esc(money(p.amount, p.currency))}</span></span>`
-        + `<span class="pb-sub">${sameAsHeadline ? 'per month' : esc(money(Math.round(pm), p.currency)) + ' per month'}`
-        + `${isBest && periods.length > 1 ? '<span class="pb-best">best value</span>' : ''}</span>`
+      return `<button class="btn btn-ai plan-btn" data-plan="${k}">`
+        + `<span class="pb-period">${label}</span>`
+        + `<span class="pb-amount">${esc(money(p.amount, p.currency))}</span>`
+        + `<span class="pb-sub">${sameAsHeadline ? 'per month' : esc(money(Math.round(pm), p.currency)) + ' per month'}</span>`
+        + `${isBest && periods.length > 1 ? '<span class="pb-best">best value</span>' : ''}`
         + `</button>`;
-    }).join('');
+    }).join('') + `</div>`;
     else proAction = `<div class="plan-current">Billing isn’t set up yet.</div>`;
     // Headline price is the cheapest per month, so the card leads with the
     // smallest honest number rather than whichever period happens to be first.
