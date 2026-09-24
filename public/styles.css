@@ -121,8 +121,16 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .alert-del:hover { color: var(--bad); }
 
 /* Pricing */
-.pricing { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 16px; max-width: 1040px; align-items: start; }
-@media (max-width: 820px) { .pricing { grid-template-columns: minmax(0, 1fr); } }
+/* Explicit counts rather than auto-fit: at an awkward width auto-fit fits
+   three and orphans the fourth card on a row of its own. */
+.pricing { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; max-width: 1120px; align-items: stretch; }
+@media (max-width: 1000px) { .pricing { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 620px) {
+  .pricing { grid-template-columns: minmax(0, 1fr); }
+  /* Stacked, there is nothing to line up with, so the reserved rows that keep
+     the prices level across a row of cards just leave a hole. */
+  .period-sub:empty, .period-tag:empty { min-height: 0; margin: 0; }
+}
 .plan-card { background: var(--card); border-radius: var(--radius); padding: 26px; }
 .plan-card.pro { border-color: var(--border-strong); }
 .plan-name { font-size: 13.5px; font-weight: 600; color: var(--muted); }
@@ -132,15 +140,14 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .plan-list li { font-size: 13.5px; padding-left: 22px; position: relative; line-height: 1.4; }
 .plan-list li::before { content: '✓'; position: absolute; left: 0; color: var(--good); font-weight: 700; }
 .plan-list li.off { color: var(--muted); } .plan-list li.off::before { content: '—'; color: var(--muted); }
-/* One box per billing period, side by side, so the three can be compared at a
-   glance instead of read as a stack. Below 560px they fall back to a column. */
-.plan-periods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
-@media (max-width: 560px) { .plan-periods { grid-template-columns: minmax(0, 1fr); } }
-.plan-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 16px 16px 14px; height: 100%; }
-.pb-period { font-size: 13px; font-weight: 650; opacity: .74; }
-.pb-amount { font-family: var(--font-num); font-size: 24px; font-weight: 550; font-variant-numeric: tabular-nums; line-height: 1.15; margin-top: 4px; }
-.pb-sub { font-size: 12px; font-weight: 500; opacity: .72; }
-.pb-best { align-self: flex-start; margin-top: 9px; font-size: 10.5px; font-weight: 700; letter-spacing: .3px; color: var(--good); background: var(--good-soft); border-radius: 999px; padding: 2px 8px; opacity: 1; }
+/* A period card carries only a price, so it pins its button to the bottom and
+   keeps a fixed-height tag row — otherwise the one card with a "best value"
+   tag would stand taller than its neighbours for no reason. */
+.plan-card.period { display: flex; flex-direction: column; }
+.period-sub { font-size: 12.5px; color: var(--muted); min-height: 18px; }
+.period-tag { min-height: 24px; margin-top: 10px; margin-bottom: 12px; }
+.plan-card.period .btn-block { margin-top: auto; }
+.pb-best { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .3px; color: var(--good); background: var(--good-soft); border-radius: 999px; padding: 2px 8px; }
 
 .plan-current { display: inline-block; font-size: 12px; font-weight: 700; color: var(--muted); padding: 10px 0; }
 .acct .plan.pro { color: var(--text); background: var(--card-hi); border-color: var(--border-strong); }

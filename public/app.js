@@ -1411,44 +1411,57 @@
     const months = (PERIOD_MONTHS[p.interval] || 1) * (p.intervalCount || 1);
     return months ? p.amount / months : null;
   }
+  // Each billing period is its own card, sitting beside Free in one row, so
+  // the four are read as four choices rather than as options nested inside a
+  // fifth thing. Someone already on Pro sees a single Pro card instead.
+  const INTERVAL_WORD = { week: 'per week', month: 'per month', year: 'per year' };
   function renderPricing() {
     const pro = !!(currentUser && currentUser.plan === 'pro');
     const li = (arr) => arr.map(([t, on]) => `<li class="${on ? '' : 'off'}">${esc(t)}</li>`).join('');
     const freeList = [['Indicator scores, bull/bear case, written summary', 1], ['Charts, markets, fundamentals and news', 1], ['Ask Claude, chart-image reading', 1], ['Watchlist and price alerts', 1], ['Screener and side-by-side compare', 1]];
-    const proList = [['The same features as Free — nothing is held back', 1], ['Helps cover the price data and model bills', 1], ['Cancel from the billing portal whenever', 1]];
-    let proAction;
     const periods = [['weekly', 'Weekly'], ['monthly', 'Monthly'], ['yearly', 'Yearly']].filter(([k]) => billingPlans && billingPlans[k]);
     // Cheapest per month gets the tag, computed rather than hardcoded.
     const priced = periods.map(([k]) => billingPlans[k]).filter(p => p && p.amount != null);
     const best = priced.length ? Math.min(...priced.map(perMonth)) : null;
-    if (!currentUser) proAction = `<button class="btn btn-ai btn-block" id="signinUpgrade">Sign in to upgrade</button>`;
-    else if (pro) proAction = `<div class="plan-current">You’re on Pro. Thank you.</div><button class="btn btn-ghost btn-block" id="manageBtn">Manage subscription</button>`;
-    else if (periods.length) proAction = `<div class="plan-periods">` + periods.map(([k, label]) => {
-      const p = billingPlans[k];
-      if (!p || p.amount == null) return `<button class="btn btn-ai plan-btn" data-plan="${k}"><span class="pb-period">${label}</span></button>`;
-      const pm = perMonth(p);
-      const isBest = best != null && pm <= best + 0.5;
-      const sameAsHeadline = (p.interval === 'month' && (p.intervalCount || 1) === 1);
-      return `<button class="btn btn-ai plan-btn" data-plan="${k}">`
-        + `<span class="pb-period">${label}</span>`
-        + `<span class="pb-amount">${esc(money(p.amount, p.currency))}</span>`
-        + `<span class="pb-sub">${sameAsHeadline ? 'per month' : esc(money(Math.round(pm), p.currency)) + ' per month'}</span>`
-        + `${isBest && periods.length > 1 ? '<span class="pb-best">best value</span>' : ''}`
-        + `</button>`;
-    }).join('') + `</div>`;
-    else proAction = `<div class="plan-current">Billing isn’t set up yet.</div>`;
-    // Headline price is the cheapest per month, so the card leads with the
-    // smallest honest number rather than whichever period happens to be first.
-    const cheapest = priced.length ? priced.reduce((a, b) => perMonth(a) <= perMonth(b) ? a : b) : null;
-    const proHeadline = cheapest
-      ? `<div class="plan-price">${esc(money(Math.round(perMonth(cheapest)), cheapest.currency))}<small>per month</small></div>`
-      : `<div class="plan-price">Pro <small>billed via Stripe</small></div>`;
-    $('pricingBody').innerHTML = `
-      <div class="plan-card"><div class="plan-name">Free</div><div class="plan-price">$0</div><ul class="plan-list">${li(freeList)}</ul>${pro ? '' : '<div class="plan-current">Your current plan</div>'}</div>
-      <div class="plan-card pro"><div class="plan-name">Pro</div>${proHeadline}<ul class="plan-list">${li(proList)}</ul>${proAction}</div>`;
-    if ($('signinUpgrade')) $('signinUpgrade').addEventListener('click', () => openAuth('login'));
+
+    const freeCard = `<div class="plan-card"><div class="plan-name">Free</div><div class="plan-price">$0</div>`
+      + `<ul class="plan-list">${li(freeList)}</ul>`
+      + `${pro ? '' : '<div class="plan-current">Your current plan</div>'}</div>`;
+
+    let proCards;
+    if (pro) {
+      proCards = `<div class="plan-card pro period"><div class="plan-name">Pro</div>`
+        + `<div class="plan-price">Active</div>`
+        + `<div class="period-sub">Thank you for supporting ChartGauge.</div>`
+        + `<button class="btn btn-ghost btn-block" id="manageBtn">Manage subscription</button></div>`;
+    } else if (periods.length) {
+      proCards = periods.map(([k, label]) => {
+        const p = billingPlans[k];
+        const amount = (p && p.amount != null) ? money(p.amount, p.currency) : 'Pro';
+        const word = (p && p.amount != null) ? (INTERVAL_WORD[p.interval] || '') : 'billed via Stripe';
+        const pm = (p && p.amount != null) ? perMonth(p) : null;
+        // A monthly plan would repeat itself, so it gets no per-month line.
+        const sub = (pm != null && !(p.interval === 'month' && (p.intervalCount || 1) === 1))
+          ? `${esc(money(Math.round(pm), p.currency))} per month` : '';
+        const isBest = pm != null && best != null && pm <= best + 0.5 && priced.length > 1;
+        return `<div class="plan-card pro period"><div class="plan-name">Pro · ${esc(label)}</div>`
+          + `<div class="plan-price">${esc(amount)}<small>${esc(word)}</small></div>`
+          + `<div class="period-sub">${sub}</div>`
+          + `<div class="period-tag">${isBest ? '<span class="pb-best">best value</span>' : ''}</div>`
+          + `<button class="btn btn-ai btn-block plan-btn" data-plan="${k}">`
+          + `${currentUser ? 'Subscribe' : 'Sign in to subscribe'}</button></div>`;
+      }).join('');
+    } else {
+      proCards = `<div class="plan-card pro period"><div class="plan-name">Pro</div>`
+        + `<div class="plan-price">Pro <small>billed via Stripe</small></div>`
+        + `<div class="period-sub">Billing isn\u2019t set up yet.</div></div>`;
+    }
+
+    $('pricingBody').innerHTML = freeCard + proCards;
     if ($('manageBtn')) $('manageBtn').addEventListener('click', openPortal);
-    $('pricingBody').querySelectorAll('.plan-btn').forEach(b => b.addEventListener('click', () => startCheckout(b.dataset.plan, b)));
+    // Signed out, the same button opens the sign-in modal rather than checkout.
+    $('pricingBody').querySelectorAll('.plan-btn').forEach(b => b.addEventListener('click',
+      () => currentUser ? startCheckout(b.dataset.plan, b) : openAuth('login')));
   }
   async function startCheckout(plan, b) {
     if (b) { b.disabled = true; b.textContent = 'Redirecting…'; }
