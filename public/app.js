@@ -1074,6 +1074,10 @@
     $('navAdmin').classList.toggle('hidden', !(currentUser && currentUser.admin));
     if (currentUser) { try { localStorage.setItem('marketlens_agreed', '1'); } catch (e) {} hideGate(); loadWatchlist(); }
     else { watchSymbols = []; renderWatchStrip(); }
+    // The initial route renders before this resolves, so a direct load of
+    // /pricing would otherwise show no price and "Sign in to upgrade" to
+    // someone who is already signed in. Re-render once the answer arrives.
+    if (!$('view-pricing').classList.contains('hidden')) renderPricing();
   }
   function openAuth(mode) {
     authMode = mode;
@@ -1394,6 +1398,19 @@
   });
 
   // ---- Pricing / Stripe billing ----
+  // Every period is shown with what it costs per month, so a yearly price can
+  // be compared with a weekly one without doing arithmetic in your head.
+  const money = (cents, cur) => {
+    try {
+      return new Intl.NumberFormat(undefined, { style: 'currency', currency: (cur || 'usd').toUpperCase(),
+        minimumFractionDigits: cents % 100 === 0 ? 0 : 2 }).format(cents / 100);
+    } catch (e) { return '$' + (cents / 100).toFixed(2); }
+  };
+  const PERIOD_MONTHS = { week: 12 / 52, month: 1, year: 12 };
+  function perMonth(p) {
+    const months = (PERIOD_MONTHS[p.interval] || 1) * (p.intervalCount || 1);
+    return months ? p.amount / months : null;
+  }
   function renderPricing() {
     const pro = !!(currentUser && currentUser.plan === 'pro');
     const li = (arr) => arr.map(([t, on]) => `<li class="${on ? '' : 'off'}">${esc(t)}</li>`).join('');
@@ -1401,13 +1418,34 @@
     const proList = [['The same features as Free — nothing is held back', 1], ['Helps cover the price data and model bills', 1], ['Cancel from the billing portal whenever', 1]];
     let proAction;
     const periods = [['weekly', 'Weekly'], ['monthly', 'Monthly'], ['yearly', 'Yearly']].filter(([k]) => billingPlans && billingPlans[k]);
+    // Cheapest per month gets the tag, computed rather than hardcoded.
+    const priced = periods.map(([k]) => billingPlans[k]).filter(p => p && p.amount != null);
+    const best = priced.length ? Math.min(...priced.map(perMonth)) : null;
     if (!currentUser) proAction = `<button class="btn btn-ai btn-block" id="signinUpgrade">Sign in to upgrade</button>`;
     else if (pro) proAction = `<div class="plan-current">You’re on Pro. Thank you.</div><button class="btn btn-ghost btn-block" id="manageBtn">Manage subscription</button>`;
-    else if (periods.length) proAction = periods.map(([k, label]) => `<button class="btn btn-ai btn-block plan-btn" data-plan="${k}" style="margin-bottom:8px">${label}</button>`).join('');
+    else if (periods.length) proAction = periods.map(([k, label]) => {
+      const p = billingPlans[k];
+      if (!p || p.amount == null) return `<button class="btn btn-ai btn-block plan-btn" data-plan="${k}">${label}</button>`;
+      const pm = perMonth(p);
+      const isBest = best != null && pm <= best + 0.5;
+      const sameAsHeadline = (p.interval === 'month' && (p.intervalCount || 1) === 1);
+      return `<button class="btn btn-ai btn-block plan-btn" data-plan="${k}">`
+        + `<span class="pb-top"><span class="pb-period">${label}</span>`
+        + `<span class="pb-amount">${esc(money(p.amount, p.currency))}</span></span>`
+        + `<span class="pb-sub">${sameAsHeadline ? 'per month' : esc(money(Math.round(pm), p.currency)) + ' per month'}`
+        + `${isBest && periods.length > 1 ? '<span class="pb-best">best value</span>' : ''}</span>`
+        + `</button>`;
+    }).join('');
     else proAction = `<div class="plan-current">Billing isn’t set up yet.</div>`;
+    // Headline price is the cheapest per month, so the card leads with the
+    // smallest honest number rather than whichever period happens to be first.
+    const cheapest = priced.length ? priced.reduce((a, b) => perMonth(a) <= perMonth(b) ? a : b) : null;
+    const proHeadline = cheapest
+      ? `<div class="plan-price">${esc(money(Math.round(perMonth(cheapest)), cheapest.currency))}<small>per month</small></div>`
+      : `<div class="plan-price">Pro <small>billed via Stripe</small></div>`;
     $('pricingBody').innerHTML = `
       <div class="plan-card"><div class="plan-name">Free</div><div class="plan-price">$0</div><ul class="plan-list">${li(freeList)}</ul>${pro ? '' : '<div class="plan-current">Your current plan</div>'}</div>
-      <div class="plan-card pro"><div class="plan-name">Pro</div><div class="plan-price">Pro <small>billed via Stripe</small></div><ul class="plan-list">${li(proList)}</ul>${proAction}</div>`;
+      <div class="plan-card pro"><div class="plan-name">Pro</div>${proHeadline}<ul class="plan-list">${li(proList)}</ul>${proAction}</div>`;
     if ($('signinUpgrade')) $('signinUpgrade').addEventListener('click', () => openAuth('login'));
     if ($('manageBtn')) $('manageBtn').addEventListener('click', openPortal);
     $('pricingBody').querySelectorAll('.plan-btn').forEach(b => b.addEventListener('click', () => startCheckout(b.dataset.plan, b)));

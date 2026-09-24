@@ -462,7 +462,7 @@ async function handleLogout(req, res) {
 }
 async function handleMe(req, res) {
   const u = await currentUser(req);
-  return json(res, 200, { user: u ? { ...u, admin: isAdmin(u) } : null, store: db.storeMode(), billing: { weekly: !!STRIPE_PRICES.weekly, monthly: !!STRIPE_PRICES.monthly, yearly: !!STRIPE_PRICES.yearly } });
+  return json(res, 200, { user: u ? { ...u, admin: isAdmin(u) } : null, store: db.storeMode(), billing: await billingInfo() });
 }
 async function handleAdmin(req, res) {
   const u = await currentUser(req);
@@ -744,6 +744,41 @@ async function handleScreen(req, res, qs) {
 }
 
 // ---- Stripe billing (raw API + manual webhook verification, no SDK) ----
+// Read side of the Stripe API, so the Plans page can show real amounts
+// instead of "billed via Stripe". Cached: prices change rarely and this runs
+// on every session check.
+function stripeGet(apiPath) {
+  return new Promise((resolve, reject) => {
+    const r = https.request({ method: 'GET', hostname: 'api.stripe.com', path: '/v1/' + apiPath,
+      headers: { 'Authorization': 'Bearer ' + STRIPE_SECRET_KEY } }, resp => {
+      let d = ''; resp.on('data', c => d += c);
+      resp.on('end', () => { try { const j = JSON.parse(d); if (resp.statusCode >= 400) reject(new Error(j.error ? j.error.message : 'Stripe error')); else resolve(j); } catch (e) { reject(new Error('bad Stripe response')); } });
+    });
+    r.on('error', reject);
+    r.setTimeout(8000, () => r.destroy(new Error('stripe timeout')));
+    r.end();
+  });
+}
+
+// {weekly,monthly,yearly} -> amount, currency and interval, or just a boolean
+// when the price cannot be read (no key, or Stripe unreachable).
+async function billingInfo() {
+  const out = {};
+  for (const [period, id] of Object.entries(STRIPE_PRICES)) {
+    if (!id) { out[period] = false; continue; }
+    if (!STRIPE_SECRET_KEY) { out[period] = true; continue; }
+    try {
+      const p = await cached('price:' + id, 600000, () => stripeGet('prices/' + encodeURIComponent(id)));
+      out[period] = (p && p.unit_amount != null)
+        ? { amount: p.unit_amount, currency: p.currency,
+            interval: p.recurring ? p.recurring.interval : period,
+            intervalCount: p.recurring ? (p.recurring.interval_count || 1) : 1 }
+        : true;
+    } catch (e) { out[period] = true; }   // still purchasable, just unpriced here
+  }
+  return out;
+}
+
 function stripePost(apiPath, form) {
   const body = Object.entries(form).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
   return new Promise((resolve, reject) => {
