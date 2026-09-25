@@ -953,7 +953,14 @@ const RANKED_UNIVERSE = (process.env.RANKED_SYMBOLS ||
 // with however much has been gathered so far.
 // No fixed gap any more — the pass waits for spare credits instead, so its
 // pace follows how busy the site is rather than a guess made in advance.
-const RANKED_REFRESH_MS = Number(process.env.RANKED_REFRESH_MS || 1800000);
+//
+// Six hours, not thirty minutes. These ratings are computed from daily bars,
+// so they cannot change until the next daily close: at thirty minutes the pass
+// recomputed an identical answer forty-seven times a day, and twenty symbols
+// times forty-eight passes is 960 credits against a daily quota of 800. The
+// home panel exhausted the whole day's allowance on its own, which is what
+// took the charts down.
+const RANKED_REFRESH_MS = Number(process.env.RANKED_REFRESH_MS || 21600000);
 const rankedStore = { rows: [], asOf: 0, running: false, lastStart: 0 };
 
 async function rateOne(sym) {
