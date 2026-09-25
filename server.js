@@ -863,6 +863,59 @@ async function fetchQuotesUncached(symbols) {
     });
   } catch { return symbols.map(demoQuote); }
 }
+// ---- Ranked panel (home) ----
+// Runs the same overallRating() the analyze page shows, across a small set of
+// symbols, and reports the strongest and weakest. The labels are the ones this
+// app already puts on every chart, so nothing new is being asserted here — but
+// see the note the panel carries: that score was measured over 36,524 past
+// setups and did not predict direction.
+const RANKED_UNIVERSE = (process.env.RANKED_SYMBOLS || 'AAPL,MSFT,NVDA,TSLA,AMD,META')
+  .toUpperCase().split(',').map(x => x.trim()).filter(Boolean).slice(0, 8);
+
+async function buildRanked() {
+  const out = [];
+  for (const sym of RANKED_UNIVERSE) {
+    try {
+      // Sequential, not Promise.all: eight credits a minute is the budget, and
+      // a parallel burst spends the lot at once and gets the batch rejected.
+      const data = await fetchLive(sym, '1day', 260);
+      const prices = (data.prices || []).slice(-260);
+      if (prices.length < 60) continue;
+      const candles = prices.map(x => ({ open: x.open, high: x.high, low: x.low, close: x.close, volume: x.volume || 0 }));
+      const rating = I.overallRating(I.techReport(candles));
+      const closes = candles.map(c => c.close);
+      const last = closes[closes.length - 1], prev = closes[closes.length - 2] || last;
+      out.push({
+        symbol: sym, price: last,
+        changePct: prev ? ((last - prev) / prev) * 100 : 0,
+        score: rating.score, label: rating.label, tone: rating.tone,
+        agreeing: rating.agreeing, groupCount: rating.groupCount, risk: rating.risk,
+      });
+    } catch (e) { /* one symbol failing must not empty the panel */ }
+  }
+  return out;
+}
+
+async function handleRanked(req, res) {
+  if (!STOCK_API_KEY) return json(res, 200, { available: false, message: 'Live ratings need a market-data key.' });
+  try {
+    // Fifteen minutes: these are daily-bar ratings, which do not change
+    // meaningfully minute to minute, and the credit budget is small.
+    const rows = await cached('ranked:' + RANKED_UNIVERSE.join(','), 900000, buildRanked);
+    if (!rows.length) return json(res, 200, { available: false, message: 'Ratings are unavailable right now.' });
+    const byScore = rows.slice().sort((a, b) => b.score - a.score);
+    return json(res, 200, {
+      available: true,
+      strong: byScore.slice(0, 3),
+      weak: byScore.slice(-3).reverse(),
+      asOf: Date.now(),
+    });
+  } catch (e) {
+    logError(e);
+    return json(res, 200, { available: false, message: 'Ratings are unavailable right now.' });
+  }
+}
+
 // ---- Movers scan ----
 // Describes what is happening right now; it does not predict what happens next.
 // Every field below is an observation — the size of the move, how unusual the
@@ -1454,7 +1507,7 @@ const server = http.createServer(async (req, res) => {
     // Everything that returns market data, in one list. Auth, billing, robots
     // and the sitemap are deliberately absent: sign-in has to work before you
     // are signed in, and crawlers must still reach the documents.
-    if (/^\/api\/(stock|quotes|fundamentals|analyze|analyze-stream|analyze-image|chat|compare|screen|watchlist|alerts|movers)\b/.test(url)) {
+    if (/^\/api\/(stock|quotes|fundamentals|analyze|analyze-stream|analyze-image|chat|compare|screen|watchlist|alerts|movers|ranked)\b/.test(url)) {
       if (await requireAccount(req, res)) return;
     }
     if (url === '/api/admin' && req.method === 'GET') return await handleAdmin(req, res);
@@ -1472,6 +1525,7 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/watchlist') return await handleWatchlist(req, res);
     if (url === '/api/quotes' && req.method === 'GET') return await handleQuotes(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));
     if (url === '/api/movers' && req.method === 'GET') return await handleMovers(req, res);
+    if (url === '/api/ranked' && req.method === 'GET') return await handleRanked(req, res);
     if (url === '/api/chat' && req.method === 'POST') return await handleChat(req, res);
     if (url === '/api/fundamentals' && req.method === 'GET') return await handleFundamentals(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbol'));
     if (url === '/api/compare' && req.method === 'GET') return await handleCompare(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));

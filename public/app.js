@@ -1313,7 +1313,7 @@
     if (name === 'markets') loadMarkets();
     if (name === 'movers') loadMovers();
     if (name === 'watchlist') renderWatchView();
-    if (name === 'home') loadHomeSnapshot();
+    if (name === 'home') { loadHomeSnapshot(); loadRanked(); }
     if (name === 'chat') { renderChat(); renderChatSuggest(); $('chatInput').focus(); }
     if (name === 'learn') renderLearnGrid();
     if (name === 'compare') { renderCompareChips(); if (compareSymbols.length >= 2 && !$('compareResult').innerHTML) loadCompare(); }
@@ -1386,6 +1386,49 @@
     bindQuoteCards($('indicesGrid')); bindQuoteCards($('trendingGrid'));
     if (idx.length) marketsLoaded = true;
   }
+  // ---- Ranked panel on the home screen ----
+  // The labels are this app\u2019s own score, the same one shown on every chart.
+  // The note under it is not decoration: the score was measured over 36,524
+  // past setups and did not predict direction, and a panel that headlines
+  // "Strong Buy" without that sitting next to it would be the site arguing
+  // against itself.
+  function rankedCard(r) {
+    const up = (r.changePct || 0) >= 0;
+    // Coloured by the rating, not by which column it landed in: a Hold that
+    // happens to be the weakest of six is still a Hold, and printing its score
+    // in red would overstate what the score actually says.
+    const tint = r.tone === 'bullish' ? 'good' : r.tone === 'bearish' ? 'bad' : '';
+    return `<div class="rk" data-s="${esc(r.symbol)}">`
+      + `<div class="rk-top"><span class="rk-sym">${esc(r.symbol)}</span>`
+      + `<span class="rk-score ${tint}">${r.score}</span></div>`
+      + `<div class="rk-label ${esc(r.tone || 'neutral')}">${esc(r.label || '')}</div>`
+      + `<div class="rk-meta"><span class="${up ? 'up' : 'down'}">${up ? '+' : ''}${(r.changePct || 0).toFixed(2)}%</span>`
+      + ` <span>\u00b7 ${r.agreeing}/${r.groupCount} groups agree</span></div>`
+      + `</div>`;
+  }
+
+  async function loadRanked() {
+    const body = $('rankedBody'), note = $('rankedNote');
+    if (!body) return;
+    if (body.dataset.loaded) return;
+    body.innerHTML = `<p class="compare-note">Loading ratings\u2026</p>`;
+    let d;
+    try { d = await (await fetch('/api/ranked')).json(); }
+    catch { body.innerHTML = ''; note.textContent = ''; return; }
+    if (!d.available) { body.innerHTML = `<p class="compare-note">${esc(d.message || 'Unavailable.')}</p>`; return; }
+    body.dataset.loaded = '1';
+    body.innerHTML =
+      `<div class="ranked-col"><div class="ranked-h good">Scoring highest</div>`
+      + d.strong.map(rankedCard).join('') + `</div>`
+      + `<div class="ranked-col"><div class="ranked-h bad">Scoring lowest</div>`
+      + d.weak.map(rankedCard).join('') + `</div>`;
+    note.innerHTML = `These are ChartGauge\u2019s own indicator scores, not advice. `
+      + `Measured across 36,524 past setups, this score did not predict which way price went next \u2014 `
+      + `open any symbol to see the base rate for its own history. Nothing here is a recommendation to buy or sell.`;
+    body.querySelectorAll('.rk').forEach(el =>
+      el.addEventListener('click', () => goAnalyze(el.dataset.s)));
+  }
+
   async function loadHomeSnapshot() {
     if ($('homeSnapshot').dataset.loaded) return;
     const idx = await getQuotes(INDICES.map(i => i[0]));
