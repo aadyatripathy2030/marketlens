@@ -1642,7 +1642,10 @@
     html += `<div class="admin-sec"><div class="mkt-h">Services</div>` + Object.entries(d.services || {}).map(([k, v]) => `<span class="svc-pill ${v ? 'svc-on' : 'svc-off'}">${esc(k)}: ${v ? 'on' : 'off'}</span>`).join('') + `<span class="svc-pill ${d.store === 'postgres' ? 'svc-on' : 'svc-off'}">store: ${esc(d.store || '')}</span></div>`;
     const usageEntries = Object.entries(d.usage || {}).filter(([k]) => k !== 'total').sort((a, b) => b[1] - a[1]).slice(0, 12);
     if (usageEntries.length) html += `<div class="admin-sec"><div class="mkt-h">Top endpoints</div><div class="compare-scroll"><table class="admin-table"><thead><tr><th>Endpoint</th><th>Calls</th></tr></thead><tbody>` + usageEntries.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join('') + `</tbody></table></div></div>`;
-    html += `<div class="admin-sec"><div class="mkt-h">Users (${(d.users || []).length})</div><div class="compare-scroll"><table class="admin-table"><thead><tr><th>Email</th><th>Plan</th><th>Joined</th></tr></thead><tbody>` + (d.users || []).map(u => `<tr><td>${esc(u.email)}</td><td>${esc(u.plan)}</td><td>${new Date(u.created).toISOString().slice(0, 10)}</td></tr>`).join('') + `</tbody></table></div></div>`;
+    html += `<div class="admin-sec"><div class="mkt-h">Users (${(d.users || []).length})</div><div class="compare-scroll"><table class="admin-table"><thead><tr><th>Email</th><th>Plan</th><th>Joined</th></tr></thead><tbody>` + (d.users || []).map(u => {
+      const plan = u.plan === 'pro' ? 'pro (paying)' : u.comp ? 'pro (comp)' : 'free';
+      return `<tr><td>${esc(u.email)}${u.admin ? ' <span class="svc-pill svc-on">admin</span>' : ''}</td><td>${esc(plan)}</td><td>${new Date(u.created).toISOString().slice(0, 10)}</td></tr>`;
+    }).join('') + `</tbody></table></div></div>`;
     html += `<div class="admin-sec"><div class="mkt-h">Recent errors (${(d.errors || []).length})</div>` + ((d.errors || []).length ? d.errors.map(e => `<div class="err-line">${new Date(e.t).toISOString().slice(11, 19)} — ${esc(e.msg)}</div>`).join('') : `<p class="compare-note">No errors logged.</p>`) + `</div>`;
     $('adminBody').innerHTML = html;
   }

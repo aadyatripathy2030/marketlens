@@ -37,8 +37,15 @@ const STRIPE_PRICES = {
 };
 const PLAN_LABELS = { weekly: 'week', monthly: 'month', yearly: 'year' };
 const BILLING_ON = !!(STRIPE_SECRET_KEY && (STRIPE_PRICES.weekly || STRIPE_PRICES.monthly || STRIPE_PRICES.yearly));
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'atriuminstitutereal@gmail.com').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'atriuminstitutereal@gmail.com,aadyatripathy3@gmail.com').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
 const isAdmin = (u) => !!(u && ADMIN_EMAILS.includes(String(u.email || '').toLowerCase()));
+// Accounts that get Pro without paying — the operator's own, and anyone else
+// listed. Held here rather than written into the users table so it survives a
+// database reset and cannot be lost by a Stripe webhook flipping the row back.
+const COMP_PRO_EMAILS = (process.env.PRO_EMAILS || 'aadyatripathy3@gmail.com').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+// One answer to "is this account Pro", used everywhere a plan is checked, so a
+// complimentary account cannot be Pro in one place and free in another.
+const isPro = (u) => !!(u && (u.plan === 'pro' || isAdmin(u) || COMP_PRO_EMAILS.includes(String(u.email || '').toLowerCase())));
 const usage = { total: 0 };            // per-endpoint request counters (reset on restart)
 const errorLog = [];                   // recent server errors (ring buffer)
 function logError(e) { errorLog.push({ t: Date.now(), msg: String((e && e.message) || e).slice(0, 200) }); if (errorLog.length > 60) errorLog.shift(); }
@@ -494,7 +501,7 @@ function clientKey(req, user) {
 async function plan(req) {
   let user = null;
   try { user = await currentUser(req); } catch (e) { user = null; }
-  return { user, pro: !!(user && user.plan === 'pro'), key: clientKey(req, user) };
+  return { user, pro: isPro(user), key: clientKey(req, user) };
 }
 
 // Market data needs an account. Enforced here rather than only in the browser,
@@ -533,7 +540,7 @@ async function handleLogin(req, res) {
   if (!user || !db.verifyPw(b.password || '', user.pw)) return json(res, 401, { error: 'Wrong email or password.' });
   const token = await db.createSession(user.id);
   setSessionCookie(req, res, token);
-  return json(res, 200, { user: { id: user.id, email: user.email, plan: user.plan } });
+  return json(res, 200, { user: { id: user.id, email: user.email, plan: isPro(user) ? 'pro' : user.plan } });
 }
 async function handleLogout(req, res) {
   await db.deleteSession(parseCookies(req).session);
@@ -542,11 +549,13 @@ async function handleLogout(req, res) {
 }
 async function handleMe(req, res) {
   const u = await currentUser(req);
-  const pro = !!(u && u.plan === 'pro');
+  const pro = isPro(u);
   let aiUsed = 0;
   if (!pro && ANTHROPIC_API_KEY) { try { aiUsed = await db.peekUsage(clientKey(req, u), 'ai'); } catch (e) {} }
   return json(res, 200, {
-    user: u ? { ...u, admin: isAdmin(u) } : null,
+    // Reports the plan the account actually gets, so a complimentary Pro does
+    // not show a "Free" badge while every Pro feature works.
+    user: u ? { ...u, plan: isPro(u) ? 'pro' : u.plan, admin: isAdmin(u) } : null,
     store: db.storeMode(),
     billing: await billingInfo(),
     // So the interface can show what is available without probing endpoints.
@@ -558,7 +567,12 @@ async function handleMe(req, res) {
 async function handleAdmin(req, res) {
   const u = await currentUser(req);
   if (!isAdmin(u)) return json(res, 403, { error: 'Admin access only.' });
-  const users = await db.listUsers(200);
+  // plan stays the database truth — what this account is actually paying for —
+  // with complimentary Pro flagged separately, so comped accounts are never
+  // counted as customers when reading this table.
+  const users = (await db.listUsers(200)).map(x => ({
+    ...x, comp: isPro(x) && x.plan !== 'pro', admin: isAdmin(x),
+  }));
   return json(res, 200, {
     counts: await db.counts(),
     users,
@@ -581,7 +595,7 @@ async function handleWatchlist(req, res) {
     // Checked only when adding: someone who subscribed, built a long list and
     // then cancelled keeps what they saved, they just cannot add more.
     const cur = await db.listWatch(user.id);
-    if (user.plan !== 'pro' && !cur.includes(symbol) && cur.length >= FREE_WATCH_MAX) {
+    if (!isPro(user) && !cur.includes(symbol) && cur.length >= FREE_WATCH_MAX) {
       return json(res, 402, { error: 'pro_required', feature: 'watchlist',
         message: `A free watchlist holds ${FREE_WATCH_MAX} symbols. Pro removes the limit.`, symbols: cur });
     }
@@ -809,7 +823,7 @@ async function handleAlerts(req, res) {
   const direction = b.direction === 'below' ? 'below' : 'above';
   const target = Number(b.target);
   if (!symbol || !Number.isFinite(target) || target <= 0) return json(res, 400, { error: 'Enter a ticker and a target price above 0.' });
-  if (user.plan !== 'pro') {
+  if (!isPro(user)) {
     const cur = await db.listAlerts(user.id);
     if (cur.filter(x => !x.triggered).length >= FREE_ALERT_MAX) {
       return json(res, 402, { error: 'pro_required', feature: 'alerts',
@@ -918,7 +932,7 @@ async function handleCheckout(req, res) {
   const user = await currentUser(req);
   if (!user) return json(res, 401, { error: 'Please sign in first.' });
   if (!BILLING_ON) return json(res, 200, { error: 'Billing isn’t configured yet.' });
-  if (user.plan === 'pro') return json(res, 200, { error: 'You’re already on Pro.' });
+  if (isPro(user)) return json(res, 200, { error: 'You’re already on Pro.' });
   const b = await readBody(req);
   const plan = ['weekly', 'monthly', 'yearly'].includes(b.plan) ? b.plan : 'monthly';
   const price = STRIPE_PRICES[plan] || STRIPE_PRICES.monthly || STRIPE_PRICES.weekly || STRIPE_PRICES.yearly;
@@ -1134,7 +1148,10 @@ function lessonHtml(l) {
 const GA_SNIPPET = GA_ID ? `<meta name="ga-id" content="${esc(GA_ID)}">` : '';
 // Paths the single-page app owns. Anything matching is served the document
 // with that route's metadata rather than a 404.
-const APP_PATH = /^\/(analyze|markets|compare|screener|alerts|watchlist|learn|settings|pricing|chat|terms|privacy|refunds|contact)(\/|$)|^\/stock\//;
+// 'admin' is routable so the operator can open /admin directly, but it is
+// absent from VIEW_SEO, so it never reaches the sitemap, and robots.txt
+// disallows it. The page itself is guarded server-side regardless.
+const APP_PATH = /^\/(analyze|markets|compare|screener|alerts|watchlist|learn|settings|pricing|chat|terms|privacy|refunds|contact|admin)(\/|$)|^\/stock\//;
 
 function serveDocument(req, res, urlPath) {
   const origin = siteOrigin(req);
@@ -1235,7 +1252,7 @@ const server = http.createServer(async (req, res) => {
     if (url.startsWith('/api/')) { usage.total++; usage[url] = (usage[url] || 0) + 1; }
     if (url === '/robots.txt') {
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-      return res.end(`User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${siteOrigin(req)}/sitemap.xml\n`);
+      return res.end(`User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\n\nSitemap: ${siteOrigin(req)}/sitemap.xml\n`);
     }
     if (url === '/sitemap.xml') {
       const origin = siteOrigin(req);
