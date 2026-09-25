@@ -2,7 +2,7 @@
 // Educational only — not financial advice.
 window.LESSONS = [
   {
-    id: 'basics', title: 'Stock Market Basics', level: 'Beginner', minutes: 5,
+    id: 'basics', applies: 'both', title: 'Stock Market Basics', level: 'Beginner', minutes: 5,
     intro: 'What a stock is, why prices move, and how the market actually works.',
     sections: [
       { h: 'What is a stock?', p: 'A stock (or share) is a small piece of ownership in a company. If a company has 1 billion shares and you own 100, you own a tiny slice of its future profits and assets.' },
@@ -14,10 +14,12 @@ window.LESSONS = [
       { q: 'What does owning a share represent?', options: ['A loan to the company', 'Part-ownership of the company', 'A guaranteed dividend'], correct: 1, why: 'A share is partial ownership — you own a fraction of the company, not a loan or a guarantee.' },
       { q: 'A stock’s price at any moment is mainly determined by…', options: ['The government', 'What buyers and sellers agree to trade at', 'The company’s CEO'], correct: 1, why: 'Price is set by supply and demand in the market — the latest price two parties agreed on.' },
       { q: 'A "bear market" generally means…', options: ['Prices rising strongly', 'A sustained decline in prices', 'A holiday for the exchange'], correct: 1, why: 'Bear = falling/pessimistic (often a 20%+ drop). Bull = rising/optimistic.' },
+      { q: 'Why does a company issue shares in the first place?', options: ['To raise money without borrowing it', 'To guarantee investors a profit', 'Because the exchange requires it'], correct: 0, why: 'Selling part-ownership raises cash the company never has to repay — unlike a loan. There is no guarantee attached.' },
+      { q: 'If a stock falls 50%, how much must it rise to get back to even?', options: ['50%', '75%', '100%'], correct: 2, why: 'From 50 back to 100 is a 100% gain. Losses need bigger gains to undo, which is why avoiding large drawdowns matters more than chasing large wins.' },
     ],
   },
   {
-    id: 'technical', title: 'Technical Analysis', level: 'Intermediate', minutes: 6,
+    id: 'technical', applies: 'both', title: 'Technical Analysis', level: 'Intermediate', minutes: 6,
     intro: 'Reading price charts — trends, moving averages, RSI, and MACD.',
     sections: [
       { h: 'The idea', p: 'Technical analysis studies price and volume patterns to gauge momentum and trend, on the theory that price already reflects what’s known. It’s about probabilities, not certainty.' },
@@ -29,10 +31,12 @@ window.LESSONS = [
       { q: 'An RSI of 78 usually suggests a stock is…', options: ['Oversold', 'Overbought', 'Fairly valued'], correct: 1, why: 'Above ~70 = overbought (stretched to the upside, higher pullback risk). Below ~30 = oversold.' },
       { q: 'A "golden cross" is when…', options: ['The 50-day average crosses above the 200-day', 'Earnings beat estimates', 'RSI hits 50'], correct: 0, why: 'A golden cross (short average above long) is a classic uptrend signal; a death cross is the opposite.' },
       { q: 'Technical analysis is best described as…', options: ['A guaranteed prediction of price', 'A study of probabilities from price/volume', 'A measure of company profit'], correct: 1, why: 'It’s about odds and momentum from price action — never a guarantee.' },
+      { q: 'Two indicators disagree — MACD is bullish, RSI says overbought. What does that tell you?', options: ['The bullish one wins', 'Nothing is certain; indicators often conflict', 'The chart is broken'], correct: 1, why: 'Indicators measure different things and routinely disagree. Conflict is normal and is information in itself — it usually means no strong edge either way.' },
+      { q: 'What is the main weakness of every indicator on this page?', options: ['They are hard to calculate', 'They are all derived from past price', 'They only work on large companies'], correct: 1, why: 'Every one of them is a transformation of prices that already happened. None of them sees the future, which is why they are so often wrong.' },
     ],
   },
   {
-    id: 'fundamental', title: 'Fundamental Analysis', level: 'Intermediate', minutes: 6,
+    id: 'fundamental', applies: 'long', title: 'Fundamental Analysis', level: 'Intermediate', minutes: 6,
     intro: 'Judging a business by its actual results — revenue, earnings, margins, and growth.',
     sections: [
       { h: 'The idea', p: 'Fundamental analysis values a company by its business: how much it earns, how fast it grows, how profitable and financially healthy it is — rather than its chart.' },
@@ -44,10 +48,12 @@ window.LESSONS = [
       { q: 'EPS stands for…', options: ['Equity per stock', 'Earnings per share', 'Expected price signal'], correct: 1, why: 'Earnings per share = net income divided by shares outstanding.' },
       { q: 'A rising gross margin generally indicates…', options: ['Weaker pricing power', 'Improving efficiency/pricing power', 'More debt'], correct: 1, why: 'Higher margins usually mean the company keeps more of each sale — a sign of efficiency or pricing power.' },
       { q: 'Fundamental analysis focuses on…', options: ['Chart patterns', 'The underlying business results', 'Social media buzz'], correct: 1, why: 'It’s about the business itself — revenue, earnings, margins, balance sheet.' },
+      { q: 'A company grows revenue 40% a year but has never made a profit. This is…', options: ['Impossible', 'Common for young companies, and risky', 'A guaranteed fraud'], correct: 1, why: 'Plenty of fast-growing firms lose money for years while they invest. It can work out or not — the risk is that profitability never arrives.' },
+      { q: 'Why compare a company\'s margins with its competitors rather than in isolation?', options: ['Margins are meaningless alone', 'What counts as a good margin varies hugely by industry', 'Regulators require it'], correct: 1, why: 'A 4% net margin is normal for a supermarket and alarming for a software firm. Margins only mean something against industry peers.' },
     ],
   },
   {
-    id: 'valuation', title: 'Valuation', level: 'Intermediate', minutes: 6,
+    id: 'valuation', applies: 'long', title: 'Valuation', level: 'Intermediate', minutes: 6,
     intro: 'Is a stock cheap or expensive? P/E, PEG, and discounted cash flow.',
     sections: [
       { h: 'Price vs value', p: 'A great company can be a poor investment if you overpay. Valuation asks whether today’s price is reasonable relative to what the business earns and how fast it grows.' },
@@ -59,10 +65,12 @@ window.LESSONS = [
       { q: 'A P/E of 40 usually implies the market expects…', options: ['Low growth', 'High future growth', 'Bankruptcy'], correct: 1, why: 'A high P/E means investors are paying up for expected growth. If growth disappoints, the price often falls.' },
       { q: 'A PEG ratio near 1.0 suggests…', options: ['Price roughly matches growth', 'The stock is worthless', 'Guaranteed gains'], correct: 0, why: 'PEG ≈ 1 means the P/E is roughly justified by the growth rate — a rough "fair" zone.' },
       { q: 'A DCF valuation is…', options: ['Exact and certain', 'Very sensitive to its assumptions', 'Unaffected by growth rates'], correct: 1, why: 'DCF depends heavily on inputs like growth and discount rate — treat its output as a range, not a fact.' },
+      { q: 'Two companies both trade at a P/E of 30. Is one automatically as expensive as the other?', options: ['Yes, P/E is absolute', 'No — growth, risk and debt all change what a fair P/E is', 'Only if they are in the same country'], correct: 1, why: 'A P/E is a ratio, not a verdict. A fast-growing, debt-free company can deserve a far higher multiple than a slow, indebted one.' },
+      { q: 'A stock looks cheap on every valuation measure. The most useful next question is…', options: ['How fast can I buy it?', 'Why is it cheap?', 'What is its ticker?'], correct: 1, why: 'Cheap usually means the market expects something bad. Sometimes it is wrong — a value trap is what happens when it is right.' },
     ],
   },
   {
-    id: 'statements', title: 'Reading Financial Statements', level: 'Intermediate', minutes: 6,
+    id: 'statements', applies: 'long', title: 'Reading Financial Statements', level: 'Intermediate', minutes: 6,
     intro: 'The three statements every investor should recognize.',
     sections: [
       { h: 'Income statement', p: 'Shows performance over a period: revenue at the top, then costs, ending in net income (the "bottom line"). It answers: did the company make money?' },
@@ -74,10 +82,12 @@ window.LESSONS = [
       { q: 'The "bottom line" (net income) appears on the…', options: ['Balance sheet', 'Income statement', 'Cash flow statement'], correct: 1, why: 'Net income is the final line of the income statement — revenue minus all costs.' },
       { q: 'A balance sheet shows…', options: ['Performance over a year', 'A snapshot of assets vs liabilities', 'Only cash movements'], correct: 1, why: 'It’s a point-in-time snapshot: assets, liabilities, and the equity in between.' },
       { q: 'Free cash flow is valued because…', options: ['It’s easy to manipulate', 'It’s hard to fake and funds dividends/buybacks', 'It ignores capital spending'], correct: 1, why: 'FCF = operating cash minus capex — real cash the business generates, hard to massage.' },
+      { q: 'A company reports strong profits but negative operating cash flow. What is worth checking?', options: ['Nothing, profit is what matters', 'Whether the profit is real cash or accounting entries', 'The CEO\'s salary'], correct: 1, why: 'Profit can be booked before cash arrives. Persistent gaps between earnings and operating cash flow are one of the oldest warning signs there is.' },
+      { q: 'Which statement shows what a company owns and owes at a single moment?', options: ['Income statement', 'Balance sheet', 'Cash flow statement'], correct: 1, why: 'The balance sheet is a snapshot of one date. The other two cover a period of time.' },
     ],
   },
   {
-    id: 'risk', title: 'Risk Management', level: 'Beginner', minutes: 5,
+    id: 'risk', applies: 'both', title: 'Risk Management', level: 'Beginner', minutes: 5,
     intro: 'Protecting your capital — diversification, position sizing, and volatility.',
     sections: [
       { h: 'Diversification', p: 'Don’t put everything in one stock or sector. Spreading across many holdings means one blow-up won’t sink you. It’s the closest thing to a free lunch in investing.' },
@@ -89,10 +99,12 @@ window.LESSONS = [
       { q: 'Diversification mainly reduces…', options: ['The risk from any single holding', 'Trading fees', 'Taxes'], correct: 0, why: 'Spreading across holdings means one failure has limited impact on the whole portfolio.' },
       { q: 'Higher volatility means…', options: ['Smaller price swings', 'Larger price swings / more risk', 'Guaranteed losses'], correct: 1, why: 'Volatility = the size of price swings. More volatility means more risk, up and down.' },
       { q: 'Money you’ll need next month is best…', options: ['In volatile growth stocks', 'Kept out of volatile assets', 'Put in options'], correct: 1, why: 'Short-term money shouldn’t face big swings — you might have to sell at a bad time.' },
+      { q: 'You risk 1% of your account per trade and lose eight in a row. Roughly how much is gone?', options: ['About 8%', 'About 30%', 'Everything'], correct: 0, why: 'Around 7.7%, and the account survives easily. The same eight losses at 10% risk each would take nearly 57% — position size, not win rate, is what ends accounts.' },
+      { q: 'What does diversification actually reduce?', options: ['The risk that one holding ruins you', 'The risk that markets fall', 'Your tax bill'], correct: 0, why: 'Spreading holdings removes company-specific risk. It does not protect you when the whole market falls — that risk stays.' },
     ],
   },
   {
-    id: 'longterm', title: 'Long-Term Investing', level: 'Beginner', minutes: 5,
+    id: 'longterm', applies: 'long', title: 'Long-Term Investing', level: 'Beginner', minutes: 5,
     intro: 'Why time in the market usually beats timing the market.',
     sections: [
       { h: 'Compounding', p: 'Returns earn returns. A sum growing ~8%/year roughly doubles every 9 years. The longer you stay invested, the more this snowball works for you.' },
@@ -104,10 +116,12 @@ window.LESSONS = [
       { q: 'Compounding means…', options: ['Returns earning further returns', 'Paying more fees', 'Selling at the top'], correct: 0, why: 'Gains generate their own gains over time — the core engine of long-term wealth.' },
       { q: 'Dollar-cost averaging is…', options: ['Investing a fixed amount on a schedule', 'Buying only at all-time highs', 'A type of option'], correct: 0, why: 'Investing steadily over time buys more when cheap, fewer when expensive, reducing timing risk.' },
       { q: 'Trying to time short-term moves is…', options: ['Easy and reliable', 'Very hard; missing top days hurts', 'Guaranteed to beat the market'], correct: 1, why: 'Timing is notoriously hard, and missing the best days disproportionately lowers returns.' },
+      { q: 'Missing the market\'s ten best days over a long period tends to…', options: ['Barely matter', 'Cut long-run returns substantially', 'Improve returns by avoiding volatility'], correct: 1, why: 'The strongest days cluster near the worst ones, so sitting out the bad periods usually means missing the rebound too. Time in the market beats timing it.' },
+      { q: 'Why does compounding favour starting early more than investing more?', options: ['Early money has more years to double', 'Brokers reward loyalty', 'Older investors pay higher fees'], correct: 0, why: 'Each doubling builds on the last, so the earliest contributions pass through the most doublings. Years matter more than amounts.' },
     ],
   },
   {
-    id: 'dividend', title: 'Dividend Investing', level: 'Beginner', minutes: 5,
+    id: 'dividend', applies: 'long', title: 'Dividend Investing', level: 'Beginner', minutes: 5,
     intro: 'Earning cash income from stocks that pay you to hold them.',
     sections: [
       { h: 'What’s a dividend?', p: 'A dividend is a cash payment a company makes to shareholders, usually quarterly, from its profits. Not all companies pay them — many growth companies reinvest instead.' },
@@ -119,10 +133,12 @@ window.LESSONS = [
       { q: 'Dividend yield equals…', options: ['Annual dividend ÷ price', 'Price ÷ earnings', 'Dividend × shares'], correct: 0, why: 'Yield = annual dividend per share divided by the share price.' },
       { q: 'A dividend yield of 15% might be…', options: ['Always great', 'A warning sign of a possible cut', 'Impossible'], correct: 1, why: 'Unusually high yields often signal a falling price or an unsustainable payout the market expects to be cut.' },
       { q: 'A payout ratio over 100% means…', options: ['Paying more than it earns', 'Very safe dividend', 'No dividend at all'], correct: 0, why: 'Paying out more than earnings is usually unsustainable and risks a cut.' },
+      { q: 'A stock yields 14% while peers yield 3%. The most likely explanation is…', options: ['Unusually generous management', 'The price has fallen because the dividend is at risk', 'A calculation error'], correct: 1, why: 'Yield rises when price falls. An outlier yield usually means the market expects the dividend to be cut — a yield trap.' },
+      { q: 'What is a dividend payout ratio telling you?', options: ['How much profit is paid out rather than reinvested', 'How often dividends are paid', 'The tax rate on dividends'], correct: 0, why: 'It is the share of earnings paid as dividends. Very high ratios leave no cushion if profits dip.' },
     ],
   },
   {
-    id: 'growth', title: 'Growth Investing', level: 'Intermediate', minutes: 5,
+    id: 'growth', applies: 'long', title: 'Growth Investing', level: 'Intermediate', minutes: 5,
     intro: 'Buying fast-growing companies for future potential.',
     sections: [
       { h: 'The style', p: 'Growth investing targets companies expanding revenue and earnings quickly — often in tech or innovation — betting that rapid growth justifies a high price today.' },
@@ -134,10 +150,12 @@ window.LESSONS = [
       { q: 'Growth stocks are especially sensitive to…', options: ['Dividend dates', 'Interest rates', 'Stock splits'], correct: 1, why: 'Their value is mostly future profit, which is discounted more heavily when rates rise.' },
       { q: 'Growth investing generally involves…', options: ['Low volatility, steady income', 'Higher risk and higher potential reward', 'Guaranteed dividends'], correct: 1, why: 'You pay up for fast growth — big upside, but sharp drops if growth disappoints.' },
       { q: 'A key thing to check in a growth stock is…', options: ['Only the ticker', 'Durable, accelerating growth and a moat', 'The CEO’s Twitter'], correct: 1, why: 'Sustainable growth and a competitive edge matter more than hype.' },
+      { q: 'Why are growth stocks usually hit hardest when interest rates rise?', options: ['They borrow more', 'Their value sits in distant future profits, which are worth less when rates rise', 'Regulators target them'], correct: 1, why: 'A growth stock\'s worth is mostly profits years away. Higher rates discount those future profits more heavily, so the price falls further.' },
+      { q: 'A growth company\'s revenue growth slows from 45% to 30%. The stock drops sharply. Why?', options: ['30% is a bad number', 'Price reflected expectations, and expectations changed', 'Someone manipulated it'], correct: 1, why: 'Prices embed an expected path. Decelerating growth is still growth, but it is worse than what was priced in.' },
     ],
   },
   {
-    id: 'value', title: 'Value Investing', level: 'Intermediate', minutes: 5,
+    id: 'value', applies: 'long', title: 'Value Investing', level: 'Intermediate', minutes: 5,
     intro: 'Buying solid companies for less than they’re worth.',
     sections: [
       { h: 'The style', p: 'Value investing, associated with Warren Buffett and Benjamin Graham, seeks stocks trading below their intrinsic worth — buying a dollar for 70 cents and waiting for the gap to close.' },
@@ -149,10 +167,12 @@ window.LESSONS = [
       { q: 'A "margin of safety" means…', options: ['Buying well below your estimate of fair value', 'Using leverage', 'Buying at all-time highs'], correct: 0, why: 'It’s the cushion you build in by paying less than intrinsic value, protecting against mistakes.' },
       { q: 'A "value trap" is…', options: ['A cheap stock that keeps falling on a failing business', 'A guaranteed winner', 'A type of dividend'], correct: 0, why: 'Some cheap stocks are cheap for good reason — the business is deteriorating.' },
       { q: 'Value investing usually requires…', options: ['Day-trading speed', 'Patience', 'Ignoring the business'], correct: 1, why: 'The market can take years to close the gap — patience is essential.' },
+      { q: 'What is a value trap?', options: ['A stock that is cheap and stays cheap because the business is deteriorating', 'A broker fee', 'A chart pattern'], correct: 0, why: 'The statistics look cheap because the business is genuinely worsening. Cheapness alone is not a thesis.' },
+      { q: 'Value investing often underperforms for years at a time. What does that imply?', options: ['The approach is broken', 'It needs patience and a horizon most people do not have', 'It only works on small companies'], correct: 1, why: 'Long stretches of underperformance are part of the method. It demands a holding period many investors cannot actually sustain.' },
     ],
   },
   {
-    id: 'options', title: 'Options (Advanced)', level: 'Advanced', minutes: 6,
+    id: 'options', applies: 'both', title: 'Options (Advanced)', level: 'Advanced', minutes: 6,
     intro: 'Contracts that can hedge or speculate — powerful and risky.',
     sections: [
       { h: 'Calls & puts', p: 'A call option is the right to BUY a stock at a set "strike" price by a date; a put is the right to SELL. Buyers pay a premium for that right. They’re often used to speculate or to hedge.' },
@@ -164,6 +184,144 @@ window.LESSONS = [
       { q: 'A call option gives the holder the right to…', options: ['Sell a stock at the strike', 'Buy a stock at the strike', 'Collect a dividend'], correct: 1, why: 'A call = right to buy at the strike price; a put = right to sell.' },
       { q: '"Theta decay" refers to…', options: ['Options gaining value over time', 'Options losing value as expiration nears', 'A dividend cut'], correct: 1, why: 'All else equal, options lose time value as expiration approaches — bad for buyers.' },
       { q: 'Compared with buying stock, options are…', options: ['Always safer', 'More leveraged and can expire worthless', 'Guaranteed income'], correct: 1, why: 'Leverage magnifies gains and losses, and a bought option can lose 100% of its premium.' },
+      { q: 'You buy a call option and the stock stays exactly flat until expiry. What happens?', options: ['You break even', 'You lose the premium to time decay', 'You keep the option'], correct: 1, why: 'Options lose value as expiry approaches. Being right about direction is not enough — you have to be right in time.' },
+      { q: 'Selling a naked call exposes you to…', options: ['A capped loss', 'Theoretically unlimited loss', 'No risk if you own the stock'], correct: 1, why: 'There is no ceiling on how high a stock can go, so an uncovered short call has no defined maximum loss. This is why brokers restrict it.' },
+    ],
+  },
+  {
+    id: 'orders', applies: 'both', title: 'Order Types and Execution', level: 'Beginner', minutes: 5,
+    intro: 'Market, limit and stop orders — what each one guarantees, and what it does not.',
+    sections: [
+      { h: 'Market orders', p: 'A market order fills immediately at whatever price is available. It guarantees execution but not price. In a fast or thin market the fill can be far from the last quote you saw.' },
+      { h: 'Limit orders', p: 'A limit order sets the worst price you will accept. It guarantees price but not execution — if the market never reaches your limit, nothing happens. This is the opposite trade-off to a market order.' },
+      { h: 'Stop orders', p: 'A stop order sits dormant until price touches a trigger, then becomes a market order. It is how a stop-loss works. Because it converts to a market order, the fill can be worse than the trigger, especially on a gap.' },
+      { h: 'The bid–ask spread', p: 'At any moment there is a highest price buyers will pay (the bid) and a lowest sellers will accept (the ask). You buy at the ask and sell at the bid, so you start every trade slightly behind. The gap between them is the spread.' },
+    ],
+    quiz: [
+      { q: 'A market order guarantees…', options: ['The price you saw', 'That the order fills', 'Both price and fill'], correct: 1, why: 'It guarantees execution, not price. A limit order is the reverse.' },
+      { q: 'Your stop-loss sits at $50 and the stock gaps overnight from $52 to $41. Where do you most likely fill?', options: ['$50', 'Near $41', 'The trade is cancelled'], correct: 1, why: 'A stop becomes a market order when triggered. If price gaps straight through it, you fill at the next available price — a stop is not a floor.' },
+      { q: 'You buy at the ask and sell at the bid. This means…', options: ['Every trade starts slightly negative', 'You always profit', 'Spreads are refunded'], correct: 0, why: 'You pay the spread on entry. A trade must move in your favour by at least the spread before it breaks even.' },
+      { q: 'A limit order to buy at $20 when the stock is $23 will…', options: ['Fill immediately at $23', 'Wait until price falls to $20 or better', 'Be rejected'], correct: 1, why: 'A buy limit is the maximum you will pay. It rests until the market comes to it, and may never fill.' },
+      { q: 'Spreads are usually widest…', options: ['In heavily traded large companies', 'In thin, low-volume stocks and outside regular hours', 'At the market open only'], correct: 1, why: 'Fewer participants means a bigger gap between bid and ask. Thin names and extended hours are where spreads cost the most.' },
+    ],
+  },
+  {
+    id: 'levels', applies: 'both', title: 'Support and Resistance', level: 'Beginner', minutes: 5,
+    intro: 'Why price reacts at certain levels, and why those levels are zones rather than lines.',
+    sections: [
+      { h: 'What a level is', p: 'Support is a price area where buying has previously been strong enough to stop a fall. Resistance is where selling has stopped a rise. They exist because participants remember those prices and act around them.' },
+      { h: 'Zones, not lines', p: 'A level is an area, not an exact number. Price often pierces it briefly before reversing. Treating a level as a precise line is the fastest way to be stopped out by noise.' },
+      { h: 'Roles switch', p: 'Broken resistance often becomes support, and broken support often becomes resistance. The level does not change; what changed is which side of it participants are now positioned on.' },
+      { h: 'The honest limitation', p: 'Levels are visible in hindsight on every chart. Deciding in advance which one will hold is much harder, and most do not. They are useful for framing risk — where you would be wrong — more than for predicting direction.' },
+    ],
+    quiz: [
+      { q: 'Support is best described as…', options: ['A guaranteed floor', 'An area where buying has previously halted a decline', 'The lowest price of the year'], correct: 1, why: 'It is a zone where demand showed up before. Nothing guarantees it holds again.' },
+      { q: 'A stock breaks decisively above long-standing resistance. That level often becomes…', options: ['Support', 'Irrelevant', 'A dividend trigger'], correct: 0, why: 'Roles commonly flip — former resistance frequently acts as support on a retest.' },
+      { q: 'Why treat levels as zones rather than exact prices?', options: ['Charts are inaccurate', 'Price routinely overshoots slightly before reversing', 'Exchanges round prices'], correct: 1, why: 'Brief piercings are normal. An exact line invites being stopped out by ordinary noise.' },
+      { q: 'What are support and resistance most reliably useful for?', options: ['Predicting the next move', 'Framing where your idea would be wrong', 'Calculating fair value'], correct: 1, why: 'They define invalidation far better than they predict direction. That is the honest use.' },
+      { q: 'Every chart shows levels that held perfectly — in hindsight. The catch is…', options: ['The data is wrong', 'Choosing which level will hold beforehand is much harder', 'They only work on indices'], correct: 1, why: 'Hindsight selects the levels that worked and hides the ones that failed. Forward, most break.' },
+    ],
+  },
+  {
+    id: 'candles', applies: 'day', title: 'Candlestick Patterns', level: 'Intermediate', minutes: 6,
+    intro: 'How to read a single candle, the common patterns, and how much they are actually worth.',
+    sections: [
+      { h: 'Reading one candle', p: 'Each candle shows four numbers for its period: open, high, low and close. The body spans open to close; the wicks reach the high and low. A long upper wick means buyers pushed up and were driven back — sellers won that period.' },
+      { h: 'Common patterns', p: 'A doji has almost no body — opens and closes near the same price, showing indecision. A hammer has a small body and long lower wick after a decline. Engulfing patterns occur when one candle body completely covers the previous one.' },
+      { h: 'Context is most of it', p: 'The same candle means different things in different places. A hammer after a long downtrend at support is worth noticing; an identical hammer in the middle of a range is noise. The pattern without its context tells you almost nothing.' },
+      { h: 'What the evidence says', p: 'Candlestick patterns are widely taught and weakly supported. Studies that test them systematically generally find small or no edge once costs are included. Treat them as a way to describe what happened, not as a signal to act on.' },
+    ],
+    quiz: [
+      { q: 'A candle with a long upper wick and small body tells you…', options: ['Buyers pushed price up and were pushed back down', 'The stock paid a dividend', 'Volume was zero'], correct: 0, why: 'The wick marks territory price reached and could not hold. Sellers controlled the close.' },
+      { q: 'A doji represents…', options: ['A strong trend', 'Indecision — open and close are nearly equal', 'A guaranteed reversal'], correct: 1, why: 'Neither side finished in control. It signals hesitation, not direction.' },
+      { q: 'The same hammer appears mid-range and at major support. Are they equally meaningful?', options: ['Yes, the shape is what matters', 'No — context does most of the work', 'Only the mid-range one matters'], correct: 1, why: 'Location relative to trend and levels changes what a pattern implies. Shape alone is close to meaningless.' },
+      { q: 'What do systematic studies of candlestick patterns generally find?', options: ['Large, reliable edges', 'Small or no edge once costs are counted', 'They work only on Mondays'], correct: 1, why: 'They are far better at describing what happened than at predicting what comes next.' },
+      { q: 'A bullish engulfing candle means…', options: ['This candle’s body fully covers the previous one, closing higher', 'Price rose 10%', 'Volume doubled'], correct: 0, why: 'It is defined by the bodies, not by any particular percentage or volume.' },
+    ],
+  },
+  {
+    id: 'volume', applies: 'day', title: 'Volume and Liquidity', level: 'Intermediate', minutes: 5,
+    intro: 'Why how much trades matters as much as what price does — and what thin markets cost you.',
+    sections: [
+      { h: 'Volume as participation', p: 'Volume counts shares traded in a period. It measures how many people were involved, not which way they leaned — every share bought is a share sold. A large move on heavy volume simply had more participants than one on light volume.' },
+      { h: 'Relative volume', p: 'Raw volume is hard to compare across stocks. Relative volume — today against that symbol’s own average — is far more informative. Two times normal means something unusual is happening; a quarter of normal means nobody is there.' },
+      { h: 'Liquidity and slippage', p: 'Liquidity is how much you can trade without moving the price. In thin names, your own order pushes the market against you. That gap between the price you expected and the one you got is slippage, and it is a real cost that never shows on a chart.' },
+      { h: 'Why this matters most intraday', p: 'Liquidity varies through the day — heaviest near the open and close, thinnest around midday. A strategy that works on paper at midday prices can be unprofitable once realistic spreads and slippage are included.' },
+    ],
+    quiz: [
+      { q: 'High volume on an up day tells you…', options: ['More buyers than sellers', 'Many participants were involved', 'The stock is undervalued'], correct: 1, why: 'Every trade has both a buyer and a seller. Volume measures participation, not imbalance.' },
+      { q: 'Relative volume of 0.3× means…', options: ['Unusually busy', 'Much quieter than normal for that symbol', 'The stock fell 30%'], correct: 1, why: 'It is today’s volume against that symbol’s own average. Well below 1 means few participants.' },
+      { q: 'Slippage is…', options: ['A broker fee', 'The difference between the price you expected and the price you got', 'A charting error'], correct: 1, why: 'It is a genuine cost of trading, and it grows in thin markets and fast moves.' },
+      { q: 'When is intraday liquidity usually thinnest?', options: ['At the open', 'Around midday', 'At the close'], correct: 1, why: 'Participation typically dips in the middle of the session, widening spreads.' },
+      { q: 'Why does liquidity matter more to a day trader than to a long-term investor?', options: ['Day traders trade far more often, so costs repeat', 'Long-term investors pay no spreads', 'Liquidity only exists intraday'], correct: 0, why: 'A cost paid once a decade barely registers. The same cost paid many times a day compounds against you.' },
+    ],
+  },
+  {
+    id: 'dayreality', applies: 'day', title: 'The Odds in Day Trading', level: 'Beginner', minutes: 6,
+    intro: 'What the research actually finds about short-term trading outcomes, and why.',
+    sections: [
+      { h: 'What the studies find', p: 'Academic work on retail day trading is unusually consistent: across markets and decades, the large majority of active short-term traders lose money over time, and only a very small minority beat a simple buy-and-hold benchmark after costs. This is not one contrarian study — it is the repeated finding.' },
+      { h: 'Why costs dominate', p: 'At short horizons the expected move is small and the costs are not. Spread, slippage and fees are charged on every trade. A strategy trading many times a day must overcome that cost on every single trade before it earns anything.' },
+      { h: 'Why past success misleads', p: 'With enough traders, some will have long winning streaks from chance alone. Those are the ones who post results, sell courses and appear in feeds. The far larger group who lost quietly are invisible, which makes the activity look more winnable than it is.' },
+      { h: 'What follows from this', p: 'None of this means charts are useless or that you should not learn to read one. It means treating short-term trading as a skill with a strongly negative base rate: size positions so that being wrong is survivable, expect to lose often, and be honest about results rather than remembering the wins.' },
+    ],
+    quiz: [
+      { q: 'What do studies of retail day trading consistently find?', options: ['Most active short-term traders lose money over time', 'Roughly half beat the market', 'Results are evenly split'], correct: 0, why: 'The finding repeats across markets and decades — a small minority profit after costs.' },
+      { q: 'Why do costs hurt short-term trading so much more?', options: ['Brokers charge day traders more', 'The expected move per trade is small while the cost per trade is not', 'Taxes are higher intraday'], correct: 1, why: 'A small edge is easily erased by spread and slippage charged on every trade.' },
+      { q: 'A trader shows a year of winning results. What is the honest interpretation?', options: ['Proof of skill', 'Possibly skill, possibly chance — one year cannot separate them', 'Proof of fraud'], correct: 1, why: 'Among many traders, long streaks occur by chance. A single track record rarely distinguishes skill from luck.' },
+      { q: 'Survivorship bias in trading content means…', options: ['Winners are visible and losers are not', 'Old strategies stop working', 'Brokers delete accounts'], correct: 0, why: 'You see the people it worked for. The much larger group it did not work for does not post.' },
+      { q: 'Given a negative base rate, the most rational response is…', options: ['Trade bigger to catch up', 'Size positions so being wrong is survivable, and measure results honestly', 'Avoid all charts'], correct: 1, why: 'You cannot control the base rate, only your exposure to it and your honesty about outcomes.' },
+    ],
+  },
+  {
+    id: 'psychology', applies: 'both', title: 'Trading Psychology', level: 'Beginner', minutes: 5,
+    intro: 'The predictable ways people misjudge their own decisions with money on the line.',
+    sections: [
+      { h: 'Loss aversion', p: 'Losses feel roughly twice as bad as equivalent gains feel good. The practical result is that people sell winners early to lock in a good feeling and hold losers indefinitely to avoid a bad one — exactly backwards from what the position sizes call for.' },
+      { h: 'Confirmation bias', p: 'Once you hold a position you start reading news differently. Supporting evidence feels solid, contradicting evidence feels like noise. The strongest defence is deciding in advance what would prove you wrong, and writing it down before you enter.' },
+      { h: 'Recency and hindsight', p: 'Recent events feel more likely to repeat than they are, and past events feel more predictable than they were. After a crash, every warning sign looks obvious — that clarity was not available beforehand.' },
+      { h: 'Revenge trading', p: 'The urge to win money back immediately after a loss is the most expensive impulse in trading. It raises position size exactly when judgement is worst. Pre-set limits are the only defence that works reliably, because they are set before the feeling arrives.' },
+    ],
+    quiz: [
+      { q: 'Loss aversion typically causes investors to…', options: ['Sell winners too early and hold losers too long', 'Sell losers quickly', 'Trade less often'], correct: 0, why: 'Realising a loss feels much worse than realising a gain, so losers get held in hope.' },
+      { q: 'The most practical defence against confirmation bias is…', options: ['Reading more news', 'Writing down in advance what would prove you wrong', 'Trading larger'], correct: 1, why: 'A pre-committed invalidation point is judged before you are invested in the outcome.' },
+      { q: 'Hindsight bias means…', options: ['Past events feel more predictable than they actually were', 'Charts repeat', 'Old data is unreliable'], correct: 0, why: 'Knowing the outcome makes the path to it look obvious. It was not obvious in advance.' },
+      { q: 'Why is revenge trading so costly?', options: ['It increases position size exactly when judgement is worst', 'Brokers penalise it', 'It is against exchange rules'], correct: 0, why: 'The impulse to recover a loss immediately pushes size up at the worst possible moment.' },
+      { q: 'Pre-set rules work mainly because…', options: ['They are optimised', 'They are decided before the emotion arrives', 'Brokers enforce them'], correct: 1, why: 'The decision is made by a calmer version of you than the one who will be under pressure.' },
+    ],
+  },
+  {
+    id: 'costs', applies: 'both', title: 'Costs, Spreads and Taxes', level: 'Beginner', minutes: 5,
+    intro: 'The charges that quietly decide outcomes — and why frequency multiplies all of them.',
+    sections: [
+      { h: 'Commission is not the only fee', p: 'Zero-commission brokers still earn from your order flow, and you still pay the spread on every trade. "Free" refers to the visible fee, not the total cost of transacting.' },
+      { h: 'Frequency multiplies everything', p: 'A round trip costing a fifth of a percent is trivial once a year and ruinous several times a day. The same cost structure can be irrelevant to one strategy and fatal to another purely because of how often it is paid.' },
+      { h: 'Tax treatment differs by holding period', p: 'In many jurisdictions, including the United States, gains on positions held longer than a year are taxed at a lower rate than short-term gains. Frequent trading therefore tends to be taxed less favourably as well as costing more to execute. Rules vary by country and situation — check yours.' },
+      { h: 'Fees inside funds', p: 'Funds charge an ongoing expense ratio. The difference between 0.05% and 1% a year sounds trivial and is not: compounded across decades it can consume a meaningful share of the final balance.' },
+    ],
+    quiz: [
+      { q: 'With a zero-commission broker, what do you still pay on every trade?', options: ['Nothing', 'The bid–ask spread', 'A monthly fee'], correct: 1, why: 'The spread is a cost regardless of advertised commissions, and brokers also earn from routing orders.' },
+      { q: 'Why does trading frequency matter so much to costs?', options: ['Costs rise per trade as you trade more', 'The same per-trade cost is paid far more often', 'Brokers raise spreads for active traders'], correct: 1, why: 'The cost per trade may be unchanged; paying it hundreds of times instead of once is what does the damage.' },
+      { q: 'In many jurisdictions, gains on positions held over a year are…', options: ['Taxed more heavily', 'Often taxed at a lower rate than short-term gains', 'Never taxed'], correct: 1, why: 'Long-term rates are commonly lower, though the rules vary by country — check your own situation.' },
+      { q: 'A fund charging 1% a year versus one charging 0.05% will, over decades…', options: ['Make almost no difference', 'Compound into a meaningful gap', 'Only matter for large balances'], correct: 1, why: 'The fee is charged on the whole balance every year, so it compounds against you alongside your returns.' },
+      { q: 'The honest way to judge a strategy is…', options: ['Gross returns', 'Returns after spread, slippage, fees and tax', 'Win rate alone'], correct: 1, why: 'Anything that looks profitable before costs may not survive them. Net is the only number that matters.' },
+    ],
+  },
+  {
+    id: 'indexfunds', applies: 'long', title: 'Index Funds and Diversification', level: 'Beginner', minutes: 5,
+    intro: 'Why owning everything cheaply beats most attempts to pick winners.',
+    sections: [
+      { h: 'What an index fund is', p: 'An index fund holds every company in an index in proportion, rather than selecting among them. Because there is no research to pay for, fees are very low, and turnover — and therefore trading cost — is minimal.' },
+      { h: 'Why it is hard to beat', p: 'Professional managers collectively are the market, so before costs their average return is the market return. After fees, the average actively managed fund therefore trails the index. Some beat it; identifying them in advance is the part nobody has solved reliably.' },
+      { h: 'Diversification, honestly', p: 'Holding many companies removes the risk that any single one ruins you. It does not remove market risk — in a broad fall, nearly everything falls together. Diversification protects against being wrong about a company, not about the market.' },
+      { h: 'Concentration is the trade-off', p: 'A concentrated portfolio is the only way to greatly beat the index, and also the way most people greatly trail it. Wider ownership narrows the range of outcomes in both directions — that is the entire deal.' },
+    ],
+    quiz: [
+      { q: 'An index fund works by…', options: ['Selecting the best companies', 'Holding the whole index in proportion', 'Timing entries and exits'], correct: 1, why: 'There is no selection, which is why costs stay so low.' },
+      { q: 'Why does the average active fund trail its index after costs?', options: ['Managers are unskilled', 'Collectively they are the market, so fees come out of an average return', 'Indexes exclude losers'], correct: 1, why: 'Before costs the group earns roughly the market return; fees are then subtracted from it.' },
+      { q: 'Diversification protects you mainly against…', options: ['Market-wide declines', 'One holding going badly wrong', 'Inflation'], correct: 1, why: 'It removes company-specific risk. When the whole market falls, diversified portfolios fall too.' },
+      { q: 'What is the trade-off of a concentrated portfolio?', options: ['Higher fees', 'A much wider range of outcomes, good and bad', 'It is not permitted'], correct: 1, why: 'Concentration is how people greatly beat the index and also how they greatly trail it.' },
+      { q: 'Why does a low expense ratio matter more over long horizons?', options: ['Fees rise with time', 'It is charged on the whole balance every year and compounds', 'Long-term funds charge more'], correct: 1, why: 'A small annual drag applied to a growing balance becomes a large cumulative gap.' },
     ],
   },
 ];

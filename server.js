@@ -1305,7 +1305,7 @@ function lessonSeo(id) {
   return {
     view: 'learn', lesson: l,
     title: `${l.title} — ${l.level} investing lesson — ${SITE_NAME}`,
-    desc: `${l.intro} A free ${l.minutes}-minute ${String(l.level).toLowerCase()} lesson with a ${l.quiz.length}-question quiz.`,
+    desc: `${l.intro} A free ${l.minutes}-minute ${String(l.level).toLowerCase()} lesson with a ${l.quiz.length}-question quiz. ${APPLIES_WORD[l.applies] || ''}.`,
   };
 }
 
@@ -1414,6 +1414,9 @@ function seoHead(seo, origin) {
 
 // Lesson prose, rendered into the document so it indexes without JavaScript and
 // is present regardless of what the client-side app does with it afterwards.
+// Mirrors APPLIES_LABEL in app.js so the server-rendered lesson says the same
+// thing as the one the app draws over it.
+const APPLIES_WORD = { day: 'For day trading', long: 'For long-term investing', both: 'For day trading and long-term investing' };
 function lessonHtml(l) {
   if (!l) return '';
   const secs = (l.sections || []).map(x => `<section><h2>${esc(x.h)}</h2><p>${esc(x.p)}</p></section>`).join('');
@@ -1421,7 +1424,7 @@ function lessonHtml(l) {
   return `<article class="ssr-lesson" id="ssrLesson">`
     + `<h1>${esc(l.title)}</h1>`
     + `<p>${esc(l.intro)}</p>`
-    + `<p>${esc(l.level)} · ${esc(l.minutes)} minute read · ${(l.quiz || []).length} question quiz</p>`
+    + `<p>${esc(APPLIES_WORD[l.applies] || '')} · ${esc(l.level)} · ${esc(l.minutes)} minute read · ${(l.quiz || []).length} question quiz</p>`
     + secs
     + (quiz ? `<h2>Check yourself</h2><ol>${quiz}</ol>` : '')
     + `<p><a href="/learn">All lessons</a> · <a href="/">Analyze a stock</a></p>`

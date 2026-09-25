@@ -581,3 +581,19 @@ body.mode-simple .layout { grid-template-columns: minmax(0, 1fr); }
 .rk-meta { font-size: 11.5px; color: var(--muted); margin-top: 5px; }
 .rk-meta .up { color: var(--good); } .rk-meta .down { color: var(--bad); }
 .ranked-note { font-size: 12px; line-height: 1.6; color: var(--muted); margin-top: 14px; max-width: 720px; }
+
+/* Learn: which style of investing a lesson is for. */
+.learn-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+.learn-tab { font-family: var(--font); font-size: 13px; font-weight: 600; color: var(--muted);
+  background: var(--card); border: 1px solid var(--border); border-radius: 999px;
+  padding: 7px 14px; cursor: pointer; transition: color .15s, background .15s, border-color .15s; }
+.learn-tab:hover { color: var(--text); border-color: var(--border-strong); }
+.learn-tab.active { color: var(--text); background: var(--card-hi); border-color: var(--border-strong); }
+.learn-tab-n { font-family: var(--font-num); font-size: 11.5px; opacity: .6; margin-left: 3px; }
+.learn-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.applies { flex: none; font-size: 10.5px; font-weight: 700; letter-spacing: .3px;
+  border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.applies-day { color: var(--accent); background: rgba(76, 158, 255, .12); }
+.applies-long { color: var(--good); background: var(--good-soft); }
+.applies-both { color: var(--muted); background: var(--bg2); }
+.learn-meta .applies { margin-right: 6px; }

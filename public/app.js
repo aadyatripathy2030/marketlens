@@ -1776,9 +1776,32 @@
 
   // ---- Learn center ----
   const LESSONS = window.LESSONS || [];
+  // Which style of investing a lesson is for. A filter asks "what applies to
+  // me", so picking Day trading includes the lessons marked for both — the
+  // point is relevance, not exclusivity.
+  const APPLIES_LABEL = { day: 'Day trading', long: 'Long-term', both: 'Both' };
+  let learnFilter = 'all';
+  try { const f = localStorage.getItem('chartgauge_learn_filter'); if (f) learnFilter = f; } catch (e) {}
+  const lessonMatches = (l) => learnFilter === 'all' || l.applies === 'both' || l.applies === learnFilter;
+
   function renderLearnGrid() {
-    $('learnHost').innerHTML = `<div class="learn-grid">` + LESSONS.map(l =>
-      `<a class="learn-card" href="/learn/${encodeURIComponent(l.id)}" data-id="${l.id}"><div class="learn-title">${esc(l.title)}</div><div class="learn-meta">${esc(l.level)} · ${l.minutes} min · ${l.quiz.length} Q</div><p class="learn-desc">${esc(l.intro)}</p></a>`).join('') + `</div>`;
+    const shown = LESSONS.filter(lessonMatches);
+    const tabs = [['all', 'All lessons'], ['day', 'Day trading'], ['long', 'Long-term']].map(([k, label]) => {
+      const n = LESSONS.filter(l => k === 'all' || l.applies === 'both' || l.applies === k).length;
+      return `<button type="button" class="learn-tab${k === learnFilter ? ' active' : ''}" data-f="${k}">${esc(label)} <span class="learn-tab-n">${n}</span></button>`;
+    }).join('');
+    $('learnHost').innerHTML = `<div class="learn-tabs">${tabs}</div>`
+      + `<div class="learn-grid">` + shown.map(l =>
+      `<a class="learn-card" href="/learn/${encodeURIComponent(l.id)}" data-id="${l.id}">`
+      + `<div class="learn-card-top"><div class="learn-title">${esc(l.title)}</div>`
+      + `<span class="applies applies-${esc(l.applies)}">${esc(APPLIES_LABEL[l.applies] || '')}</span></div>`
+      + `<div class="learn-meta">${esc(l.level)} · ${l.minutes} min · ${l.quiz.length} Q</div>`
+      + `<p class="learn-desc">${esc(l.intro)}</p></a>`).join('') + `</div>`;
+    $('learnHost').querySelectorAll('.learn-tab').forEach(b => b.addEventListener('click', () => {
+      learnFilter = b.dataset.f;
+      try { localStorage.setItem('chartgauge_learn_filter', learnFilter); } catch (e) {}
+      renderLearnGrid();
+    }));
     $('learnHost').querySelectorAll('.learn-card').forEach(c => c.addEventListener('click', (e) => {
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.button > 0) return;   // let the browser open it
       e.preventDefault();
@@ -1790,7 +1813,9 @@
     const l = LESSONS.find(x => x.id === id); if (!l) return renderLearnGrid();
     window.scrollTo(0, 0);
     let html = `<div class="learn-detail"><button type="button" class="link-btn learn-back" id="learnBack">← All lessons</button>`;
-    html += `<h2 class="learn-h">${esc(l.title)}</h2><div class="learn-meta">${esc(l.level)} · ${l.minutes} min read · ${l.quiz.length} question quiz</div>`;
+    html += `<h2 class="learn-h">${esc(l.title)}</h2>`
+      + `<div class="learn-meta"><span class="applies applies-${esc(l.applies)}">${esc(APPLIES_LABEL[l.applies] || '')}</span>`
+      + ` ${esc(l.level)} · ${l.minutes} min read · ${l.quiz.length} question quiz</div>`;
     html += l.sections.map(s => `<div class="learn-section"><h3>${esc(s.h)}</h3><p>${esc(s.p)}</p></div>`).join('');
     html += `<div class="card quiz" id="quiz"></div>`;
     html += `<button type="button" class="btn btn-ai learn-ask" id="learnAsk">Ask Claude about this lesson</button></div>`;
