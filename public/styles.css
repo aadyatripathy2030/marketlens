@@ -597,3 +597,9 @@ body.mode-simple .layout { grid-template-columns: minmax(0, 1fr); }
 .applies-long { color: var(--good); background: var(--good-soft); }
 .applies-both { color: var(--muted); background: var(--bg2); }
 .learn-meta .applies { margin-right: 6px; }
+
+/* End-of-quiz step onward. */
+.quiz-result { font-size: 14px; font-weight: 650; }
+.quiz-next-wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.quiz-next-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }

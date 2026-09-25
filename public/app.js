@@ -1838,8 +1838,38 @@
       const why = host.querySelector(`[data-why="${qi}"]`);
       why.textContent = (oi === q.correct ? '✓ Correct. ' : '✗ Not quite. ') + q.why; why.classList.remove('hidden');
       score.done++; if (oi === q.correct) score.right++;
-      if (score.done === l.quiz.length) { const s = $('quizScore'); s.textContent = `You scored ${score.right} / ${l.quiz.length}.`; s.classList.remove('hidden'); }
+      if (score.done === l.quiz.length) finishQuiz(l, score);
     }));
+  }
+
+  // Shown once every question is answered. "Next" follows the filter the
+  // reader is browsing under, so someone working through the day-trading track
+  // is handed the next day-trading lesson rather than the next one in the file.
+  function finishQuiz(l, score) {
+    const s = $('quizScore');
+    const list = LESSONS.filter(lessonMatches);
+    const at = list.findIndex(x => x.id === l.id);
+    // A lesson opened by direct link may sit outside the current filter; fall
+    // back to the full library so there is always a sensible next step.
+    const seq = at === -1 ? LESSONS : list;
+    const pos = at === -1 ? LESSONS.findIndex(x => x.id === l.id) : at;
+    const next = pos > -1 ? seq[pos + 1] : null;
+    s.innerHTML = `<div class="quiz-result">You scored ${score.right} / ${l.quiz.length}.</div>`
+      + (next
+        ? `<div class="quiz-next-wrap"><div class="quiz-next-label">Next: ${esc(next.title)}`
+          + `<span class="applies applies-${esc(next.applies)}">${esc(APPLIES_LABEL[next.applies] || '')}</span></div>`
+          + `<button type="button" class="btn btn-primary" id="quizNext">Move on to the next topic</button></div>`
+        : `<div class="quiz-next-wrap"><div class="quiz-next-label">That is the last lesson in this track.</div>`
+          + `<button type="button" class="btn btn-ghost" id="quizAll">Back to all lessons</button></div>`);
+    s.classList.remove('hidden');
+    if ($('quizNext')) $('quizNext').addEventListener('click', () => {
+      try { history.pushState({ view: 'learn' }, '', '/learn/' + next.id); } catch (e) {}
+      openLesson(next.id);
+    });
+    if ($('quizAll')) $('quizAll').addEventListener('click', () => {
+      try { history.pushState({ view: 'learn' }, '', '/learn'); } catch (e) {}
+      renderLearnGrid();
+    });
   }
 
   // ---- First-visit gate (terms agreement + sign in) ----
