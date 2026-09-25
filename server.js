@@ -42,7 +42,7 @@ const isAdmin = (u) => !!(u && ADMIN_EMAILS.includes(String(u.email || '').toLow
 // Accounts that get Pro without paying — the operator's own, and anyone else
 // listed. Held here rather than written into the users table so it survives a
 // database reset and cannot be lost by a Stripe webhook flipping the row back.
-const COMP_PRO_EMAILS = (process.env.PRO_EMAILS || 'aadyatripathy3@gmail.com').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
+const COMP_PRO_EMAILS = (process.env.PRO_EMAILS || 'aadyatripathy3@gmail.com,cjcthegolfer2@icloud.com').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
 // One answer to "is this account Pro", used everywhere a plan is checked, so a
 // complimentary account cannot be Pro in one place and free in another.
 const isPro = (u) => !!(u && (u.plan === 'pro' || isAdmin(u) || COMP_PRO_EMAILS.includes(String(u.email || '').toLowerCase())));
