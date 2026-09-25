@@ -812,6 +812,76 @@ async function fetchQuotesUncached(symbols) {
     });
   } catch { return symbols.map(demoQuote); }
 }
+// ---- Movers scan ----
+// Describes what is happening right now; it does not predict what happens next.
+// Every field below is an observation — the size of the move, how unusual the
+// volume is, where price sits in the day's range. The ranking is by how
+// unusual the activity is, which is a statement about the present tense only.
+//
+// One batched /quote call covers the whole universe, cached for 20s, so the
+// scan costs the same whether one person opens it or a thousand do.
+const MOVERS_UNIVERSE = ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AMD','NFLX','COIN','PLTR','AVGO','INTC','MU','SMCI','UBER','BA','DIS','JPM','XOM','SOFI','RIVN','CRM','ORCL'];
+
+async function fetchScanUncached(symbols) {
+  const path = `/quote?symbol=${encodeURIComponent(symbols.join(','))}&apikey=${STOCK_API_KEY}`;
+  const { json: j } = await httpsJson({ method: 'GET', hostname: 'api.twelvedata.com', path });
+  return symbols.map(s => {
+    const q = symbols.length === 1 ? j : (j && j[s]);
+    if (!q || q.status === 'error' || q.close == null) return null;
+    const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
+    return {
+      symbol: s,
+      price: num(q.close), open: num(q.open), high: num(q.high), low: num(q.low),
+      prevClose: num(q.previous_close),
+      changePct: num(q.percent_change),
+      volume: num(q.volume), avgVolume: num(q.average_volume),
+      marketOpen: q.is_market_open === true || q.is_market_open === 'true',
+    };
+  }).filter(Boolean);
+}
+
+function scanRows(raw) {
+  return raw.map(q => {
+    // Relative volume: today's volume against this symbol's own normal. The
+    // single most informative "is anything actually happening" number, and it
+    // is a fact rather than a forecast.
+    const relVol = (q.avgVolume && q.volume != null) ? q.volume / q.avgVolume : null;
+    const span = (q.high != null && q.low != null) ? q.high - q.low : null;
+    // Where in today's range price sits: 1 = at the high, 0 = at the low.
+    const rangePos = (span && span > 0) ? (q.price - q.low) / span : null;
+    // Today's range as a share of price — how much it is actually moving.
+    const rangePct = (span != null && q.price) ? (span / q.price) * 100 : null;
+    const absMove = q.changePct == null ? 0 : Math.abs(q.changePct);
+    // Activity, not opportunity. Unusual volume counts most, then the size of
+    // the move, then how wide the day has been.
+    const activity = (relVol ? Math.min(relVol, 5) * 20 : 0)
+      + Math.min(absMove, 10) * 4
+      + (rangePct ? Math.min(rangePct, 8) * 2.5 : 0);
+    return { ...q, relVol, rangePos, rangePct, activity: Math.round(activity) };
+  }).sort((a, b) => b.activity - a.activity);
+}
+
+async function handleMovers(req, res) {
+  if (!STOCK_API_KEY) {
+    return json(res, 200, { available: false, rows: [], source: 'demo',
+      message: 'Live scanning needs a market-data key. Set STOCK_API_KEY to enable it.' });
+  }
+  try {
+    const raw = await cached('movers:' + MOVERS_UNIVERSE.join(','), 20000,
+      () => fetchScanUncached(MOVERS_UNIVERSE));
+    const rows = scanRows(raw).slice(0, 12);
+    return json(res, 200, {
+      available: true, rows, source: 'live',
+      marketOpen: rows.some(r => r.marketOpen),
+      asOf: Date.now(),
+    });
+  } catch (e) {
+    logError(e);
+    return json(res, 200, { available: false, rows: [], source: 'live',
+      message: 'Could not reach the market-data provider just now.' });
+  }
+}
+
 async function handleQuotes(req, res, raw) {
   const symbols = String(raw || '').toUpperCase().split(',').map(s => s.replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16)).filter(Boolean).slice(0, 24);
   if (!symbols.length) return json(res, 400, { error: 'No symbols.' });
@@ -1028,6 +1098,8 @@ const VIEW_SEO = {
     desc: 'Eleven short lessons covering market basics, technical and fundamental analysis, valuation, financial statements, risk management, dividends, growth, value and options — each with a quiz.' },
   'settings': { view: 'settings', title: 'Settings — simple or advanced view — ChartGauge',
     desc: 'Choose how much of the analysis to show: the chart and exit levels only, or every indicator and written summary.' },
+  'movers': { view: 'movers', title: 'What is moving right now — ChartGauge',
+    desc: 'A live scan of the most active US stocks ranked by unusual volume, the size of the move and where price sits in the day range. A description of what is happening, not a prediction of what happens next.' },
   'pricing': { view: 'pricing', title: 'Plans and billing — ChartGauge',
     desc: 'What a free ChartGauge account includes, what Pro adds, and what each billing period costs per month. Charts, indicators, stop-loss and take-profit levels and the measured base rate are free on any account.' },
   'chat': { view: 'chat', title: 'Ask Claude about a stock or the market — ChartGauge',
@@ -1173,7 +1245,7 @@ const GA_SNIPPET = GA_ID ? `<meta name="ga-id" content="${esc(GA_ID)}">` : '';
 // 'admin' is routable so the operator can open /admin directly, but it is
 // absent from VIEW_SEO, so it never reaches the sitemap, and robots.txt
 // disallows it. The page itself is guarded server-side regardless.
-const APP_PATH = /^\/(analyze|markets|compare|screener|alerts|watchlist|learn|settings|pricing|chat|terms|privacy|refunds|contact|admin)(\/|$)|^\/stock\//;
+const APP_PATH = /^\/(analyze|markets|movers|compare|screener|alerts|watchlist|learn|settings|pricing|chat|terms|privacy|refunds|contact|admin)(\/|$)|^\/stock\//;
 
 function serveDocument(req, res, urlPath) {
   const origin = siteOrigin(req);
@@ -1296,7 +1368,7 @@ const server = http.createServer(async (req, res) => {
     // Everything that returns market data, in one list. Auth, billing, robots
     // and the sitemap are deliberately absent: sign-in has to work before you
     // are signed in, and crawlers must still reach the documents.
-    if (/^\/api\/(stock|quotes|fundamentals|analyze|analyze-stream|analyze-image|chat|compare|screen|watchlist|alerts)\b/.test(url)) {
+    if (/^\/api\/(stock|quotes|fundamentals|analyze|analyze-stream|analyze-image|chat|compare|screen|watchlist|alerts|movers)\b/.test(url)) {
       if (await requireAccount(req, res)) return;
     }
     if (url === '/api/admin' && req.method === 'GET') return await handleAdmin(req, res);
@@ -1313,6 +1385,7 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/auth/me' && req.method === 'GET') return await handleMe(req, res);
     if (url === '/api/watchlist') return await handleWatchlist(req, res);
     if (url === '/api/quotes' && req.method === 'GET') return await handleQuotes(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));
+    if (url === '/api/movers' && req.method === 'GET') return await handleMovers(req, res);
     if (url === '/api/chat' && req.method === 'POST') return await handleChat(req, res);
     if (url === '/api/fundamentals' && req.method === 'GET') return await handleFundamentals(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbol'));
     if (url === '/api/compare' && req.method === 'GET') return await handleCompare(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));

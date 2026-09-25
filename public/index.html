@@ -48,6 +48,7 @@
     <a class="nav-link" data-view="compare">Compare</a>
     <a class="nav-link" data-view="screener">Screener</a>
     <a class="nav-link" data-view="markets">Markets</a>
+    <a class="nav-link" data-view="movers">Movers</a>
     <a class="nav-link" data-view="watchlist">Watchlist</a>
     <a class="nav-link" data-view="alerts">Alerts <span class="nav-badge hidden" id="alertBadge"></span></a>
     <a class="nav-link" data-view="learn">Learn</a>
@@ -341,6 +342,18 @@
     <h1 class="view-h">Plans and billing</h1>
     <p class="learn-lead" id="pricingLead">The chart, every indicator, the stop-loss and take-profit levels and the measured base rate are free for everyone, account or not. Pro adds the parts that cost money to run each time: unlimited written reports, Ask Claude, chart-image reading, the screener and side-by-side compare, and more take-profit levels.</p>
     <div class="pricing" id="pricingBody"></div>
+  </section>
+
+  <!-- MOVERS -->
+  <section class="view hidden" id="view-movers">
+    <h1 class="view-h">What&rsquo;s moving right now</h1>
+    <p class="learn-lead">The most active US stocks, ranked by how unusual the activity is: volume against the symbol&rsquo;s own normal, the size of today&rsquo;s move, and how wide the day has been. Every number here describes what <em>has</em> happened. None of it forecasts the next five minutes.</p>
+    <div class="movers-bar">
+      <button type="button" class="btn btn-ghost" id="moversRefresh">Refresh</button>
+      <span class="movers-status" id="moversStatus"></span>
+    </div>
+    <div id="moversBody"></div>
+    <p class="movers-note">Unusual volume tells you people are trading it, not which way it goes next. ChartGauge&rsquo;s own score was measured against 36,524 past setups and did not predict direction — every symbol below links to its chart, where the measured base rate for that setup is shown honestly. Nothing here is a recommendation to buy or sell.</p>
   </section>
 
   <!-- ADMIN -->

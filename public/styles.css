@@ -544,3 +544,20 @@ body.mode-simple .layout { grid-template-columns: minmax(0, 1fr); }
    the label's own toggle when clicked. */
 .gate-check a { color: var(--text); text-decoration: underline; }
 .gate-check a:hover { color: var(--accent); }
+
+/* Movers scan. Rows are observations, so they read as facts with the number
+   first and the plain-English reading beside it, not as calls to action. */
+.movers-bar { display: flex; align-items: center; gap: 14px; margin: 4px 0 18px; }
+.movers-status { font-size: 12.5px; color: var(--muted); }
+.movers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 12px; }
+.mover { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 15px 16px; cursor: pointer; transition: border-color .15s, background .15s; }
+.mover:hover { border-color: var(--border-strong); background: var(--card-hi); }
+.mover-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.mover-sym { font-size: 15.5px; font-weight: 650; }
+.mover-pct { font-family: var(--font-num); font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mover-pct.up { color: var(--good); } .mover-pct.down { color: var(--bad); }
+.mover-facts { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+.mover-facts b { color: var(--text); font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.movers-note { font-size: 12.5px; line-height: 1.6; color: var(--muted); margin-top: 22px;
+  border-top: 1px solid var(--border); padding-top: 16px; max-width: 760px; }

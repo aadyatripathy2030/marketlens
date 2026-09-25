@@ -1285,7 +1285,7 @@
   checkAuth();
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
-  const VIEWS = ['home', 'analyze', 'chat', 'compare', 'screener', 'markets', 'watchlist', 'alerts', 'learn', 'settings', 'pricing', 'admin', 'legal'];
+  const VIEWS = ['home', 'analyze', 'chat', 'compare', 'screener', 'markets', 'movers', 'watchlist', 'alerts', 'learn', 'settings', 'pricing', 'admin', 'legal'];
   const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact'];
   // Each view has a real URL now, so navigation updates the address bar and
   // the back button works. pushUrl is skipped when we are *reacting* to a URL
@@ -1311,6 +1311,7 @@
     document.querySelectorAll('.nav-link').forEach(l => l.classList.toggle('active', l.dataset.view === name));
     window.scrollTo(0, 0);
     if (name === 'markets') loadMarkets();
+    if (name === 'movers') loadMovers();
     if (name === 'watchlist') renderWatchView();
     if (name === 'home') loadHomeSnapshot();
     if (name === 'chat') { renderChat(); renderChatSuggest(); $('chatInput').focus(); }
@@ -1680,6 +1681,49 @@
     html += `<div class="admin-sec"><div class="mkt-h">Recent errors (${(d.errors || []).length})</div>` + ((d.errors || []).length ? d.errors.map(e => `<div class="err-line">${new Date(e.t).toISOString().slice(11, 19)} — ${esc(e.msg)}</div>`).join('') : `<p class="compare-note">No errors logged.</p>`) + `</div>`;
     $('adminBody').innerHTML = html;
   }
+
+  // ---- Movers ----
+  // Deliberately reports observations, not a ranking of what to buy. Each row
+  // says what is unusual about the symbol right now and links to its chart,
+  // where the measured base rate for that setup is shown.
+  const relVolWord = (r) => r == null ? '—'
+    : r >= 3 ? 'far above normal' : r >= 1.8 ? 'well above normal'
+    : r >= 1.2 ? 'above normal' : r >= 0.8 ? 'about normal' : 'below normal';
+  const rangeWord = (p) => p == null ? '—'
+    : p >= 0.9 ? 'at the day\u2019s high' : p >= 0.66 ? 'upper part of the day\u2019s range'
+    : p >= 0.34 ? 'middle of the day\u2019s range' : p > 0.1 ? 'lower part of the day\u2019s range'
+    : 'at the day\u2019s low';
+
+  function moverRow(r) {
+    const up = (r.changePct || 0) >= 0;
+    const pct = r.changePct == null ? '—' : `${up ? '+' : ''}${r.changePct.toFixed(2)}%`;
+    const rv = r.relVol == null ? '—' : `${r.relVol.toFixed(1)}\u00d7`;
+    return `<div class="mover" data-s="${esc(r.symbol)}">`
+      + `<div class="mover-head"><span class="mover-sym">${esc(r.symbol)}</span>`
+      + `<span class="mover-pct ${up ? 'up' : 'down'}">${pct}</span></div>`
+      + `<div class="mover-facts">`
+      + `<span><b>${rv}</b> volume — ${esc(relVolWord(r.relVol))}</span>`
+      + `<span>${esc(rangeWord(r.rangePos))}</span>`
+      + `<span>day range ${r.rangePct == null ? '—' : r.rangePct.toFixed(1) + '%'}</span>`
+      + `</div></div>`;
+  }
+
+  async function loadMovers() {
+    const body = $('moversBody'), status = $('moversStatus');
+    body.innerHTML = `<p class="compare-note">Scanning…</p>`;
+    let d;
+    try { d = await (await fetch('/api/movers')).json(); }
+    catch { body.innerHTML = `<p class="compare-note">Couldn\u2019t run the scan.</p>`; return; }
+    if (isProGate(d)) { body.innerHTML = proGateHtml(d); return; }
+    if (!d.available) { body.innerHTML = `<p class="compare-note">${esc(d.message || 'Scan unavailable.')}</p>`; return; }
+    if (!d.rows.length) { body.innerHTML = `<p class="compare-note">Nothing to show.</p>`; return; }
+    status.textContent = (d.marketOpen ? 'Market open' : 'Market closed — showing the last session')
+      + ' · updated ' + new Date(d.asOf).toLocaleTimeString();
+    body.innerHTML = `<div class="movers-grid">` + d.rows.map(moverRow).join('') + `</div>`;
+    body.querySelectorAll('.mover').forEach(el =>
+      el.addEventListener('click', () => goAnalyze(el.dataset.s)));
+  }
+  if ($('moversRefresh')) $('moversRefresh').addEventListener('click', loadMovers);
 
   // ---- Learn center ----
   const LESSONS = window.LESSONS || [];
