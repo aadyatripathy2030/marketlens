@@ -951,7 +951,11 @@ async function handleRanked(req, res) {
   // A dyno that slept through its timer restarts the pass on the next visit.
   if (!rankedStore.running && Date.now() - rankedStore.lastStart > RANKED_REFRESH_MS) refreshRanked();
   const rows = rankedStore.rows;
-  if (rows.length < 4) {
+  // Six is the floor, not four: with fewer, the top three and bottom three
+  // slices overlap and the same symbol appears in both columns — which it did
+  // on the first load after a deploy, while the background pass was still
+  // early. Better to say it is still gathering.
+  if (rows.length < 6) {
     return json(res, 200, { available: false, building: true,
       message: 'Ratings are still being gathered — check back in a minute.' });
   }
