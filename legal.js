@@ -13,6 +13,19 @@ const esc = (v) => String(v == null ? '' : v)
 
 const UPDATED = 'September 2026';
 
+// Kept in step with FREE_UNTIL in server.js — the terms have to describe the
+// access people actually have, not the split that starts later.
+const FREE_UNTIL_MS = Date.parse(process.env.FREE_UNTIL || '2026-10-18T00:00:00Z');
+// The last free day, and the day charging begins — both in UTC, both shown, so
+// the terms cannot be read as ending a day earlier than the site advertises.
+const fmtUTC = (ms) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+const FREE_UNTIL_TEXT = Number.isFinite(FREE_UNTIL_MS) ? fmtUTC(FREE_UNTIL_MS - 1) : '';
+const CHARGE_FROM_TEXT = Number.isFinite(FREE_UNTIL_MS) ? fmtUTC(FREE_UNTIL_MS) : '';
+const inLaunch = () => Number.isFinite(FREE_UNTIL_MS) && Date.now() < FREE_UNTIL_MS;
+const launchPara = () => inLaunch()
+  ? `<strong>Launch period:</strong> through the end of ${FREE_UNTIL_TEXT} (UTC) every feature below, including those listed as Pro, is available to every account at no charge. No subscription is needed to use anything during this period, and the daily limits described below are not applied. From ${CHARGE_FROM_TEXT} the split described here takes effect. If you subscribe before that date you are supporting the project early and will not receive anything a free account does not already have until the split begins.`
+  : '';
+
 const h = (title, blocks) => `<article class="legal">
   <h1>${esc(title)}</h1>
   <p class="legal-updated">Last updated ${esc(UPDATED)}</p>
@@ -24,7 +37,7 @@ const s = (heading, ...paras) => `<h2>${esc(heading)}</h2>` + paras.map(p => `<p
 const ul = (items) => `<ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>`;
 
 // ---------------------------------------------------------------- terms
-const TERMS = h('Terms of Service', [
+const buildTerms = () => h('Terms of Service', [
   s('What ChartGauge is',
     `${SITE} is a charting tool. It pulls price history for a stock or crypto pair, computes standard technical indicators, marks stop-loss and take-profit levels derived from volatility and recent swing levels, and writes a plain-English description of what those indicators read. It is built to help you learn to read a chart.`,
     `By using ${SITE} you agree to these terms. If you do not agree, do not use the service.`),
@@ -51,6 +64,7 @@ const TERMS = h('Terms of Service', [
     ])),
 
   s('Pro subscriptions',
+    launchPara(),
     `Pro is a paid subscription that covers the market-data and model costs of running ${SITE}, and unlocks the features that cost money each time they run.`,
     `<strong>Free with any account:</strong> the full chart and every indicator on it, for stocks and crypto; the stop-loss level and one take-profit level; the mechanical score and the measured base rate beside it; a limited number of AI-written reports each day, with the rule-based written read always available after that; a watchlist and a small number of price alerts; and every lesson. A free account — an email address and a password — is required to load charts and market data; the lessons and these policy pages are readable without one.`,
     `<strong>Pro adds:</strong> AI-written reports without the daily limit; Ask Claude; reading an uploaded chart image; the screener and side-by-side compare; additional take-profit levels; and a watchlist and alerts without limits.`,
@@ -67,7 +81,7 @@ const TERMS = h('Terms of Service', [
 ].join(''));
 
 // -------------------------------------------------------------- privacy
-const PRIVACY = h('Privacy Policy', [
+const buildPrivacy = () => h('Privacy Policy', [
   s('The short version',
     `${SITE} stores the minimum needed to run an account: your email address, a hashed password, and the watchlist and price alerts you create. It never sees your card details. It has no access to any brokerage or bank account, and could not place a trade on your behalf even if you asked it to.`),
 
@@ -120,8 +134,9 @@ const PRIVACY = h('Privacy Policy', [
 ].join(''));
 
 // -------------------------------------------------------------- refunds
-const REFUNDS = h('Refunds and Cancellation', [
+const buildRefunds = () => h('Refunds and Cancellation', [
   s('What you are paying for',
+    launchPara(),
     `A Pro subscription covers the market-data and model costs of running ${SITE} and unlocks the features that cost money each time they run: AI-written reports without the daily limit, Ask Claude, chart-image reading, the screener and side-by-side compare, extra take-profit levels, and an unlimited watchlist and alerts.`,
     `The chart itself, every indicator, the stop-loss and take-profit levels, the score and the measured base rate beside it remain free for everyone, subscribed or not. Pro is worth paying for only if you want the parts listed above — the tool is fully usable without it. See the <a href="/terms">Terms of Service</a> for the full split.`),
 
@@ -142,7 +157,7 @@ const REFUNDS = h('Refunds and Cancellation', [
 ].join(''));
 
 // -------------------------------------------------------------- contact
-const CONTACT = h('Contact', [
+const buildContact = () => h('Contact', [
   s('Get in touch',
     `Email <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> for anything: billing questions, refunds, account deletion, bug reports, or if something on the site is simply wrong.`,
     `${SITE} is a small independent project, not a company with a support desk. Expect a reply within a couple of business days.`),
@@ -157,11 +172,24 @@ const CONTACT = h('Contact', [
     `No question about what to buy, sell, or hold can be answered, and no view on any specific security will be given. ${SITE} is a charting tool, not an adviser — see the <a href="/terms">Terms of Service</a>.`),
 ].join(''));
 
-const PAGES = {
-  terms:   { title: `Terms of Service — ${SITE}`, desc: `The terms covering use of ${SITE}, including that nothing it produces is financial advice and that a Pro subscription unlocks no additional features.`, html: TERMS, heading: 'Terms of Service' },
-  privacy: { title: `Privacy Policy — ${SITE}`, desc: `What ${SITE} stores about you, who it sends data to, what it never collects, and how to have your account deleted.`, html: PRIVACY, heading: 'Privacy Policy' },
-  refunds: { title: `Refunds and Cancellation — ${SITE}`, desc: `Cancel any time from Stripe's billing portal, and a full refund within 14 days of a charge, no questions asked.`, html: REFUNDS, heading: 'Refunds and Cancellation' },
-  contact: { title: `Contact — ${SITE}`, desc: `How to reach ${SITE} about billing, refunds, account deletion, or a bug.`, html: CONTACT, heading: 'Contact' },
-};
+// Rebuilt whenever the launch period flips, so a process that was running
+// before the cutoff stops advertising it the moment it passes rather than at
+// the next deploy. Same content otherwise, so this is one rebuild, not one
+// per request.
+let cache = null, cacheLaunch = null;
+function buildPages() {
+  return {
+    terms:   { title: `Terms of Service \u2014 ${SITE}`, desc: `The terms covering use of ${SITE}, including that nothing it produces is financial advice and what a Pro subscription does and does not include.`, html: buildTerms(), heading: 'Terms of Service' },
+    privacy: { title: `Privacy Policy \u2014 ${SITE}`, desc: `What ${SITE} stores about you, who it sends data to, what it never collects, and how to have your account deleted.`, html: buildPrivacy(), heading: 'Privacy Policy' },
+    refunds: { title: `Refunds and Cancellation \u2014 ${SITE}`, desc: `Cancel any time from Stripe's billing portal, and a full refund within 14 days of a charge, no questions asked.`, html: buildRefunds(), heading: 'Refunds and Cancellation' },
+    contact: { title: `Contact \u2014 ${SITE}`, desc: `How to reach ${SITE} about billing, refunds, account deletion, or a bug.`, html: buildContact(), heading: 'Contact' },
+  };
+}
+function getPages() {
+  const now = inLaunch();
+  if (!cache || cacheLaunch !== now) { cache = buildPages(); cacheLaunch = now; }
+  return cache;
+}
 
-module.exports = { PAGES, CONTACT_EMAIL };
+module.exports = { CONTACT_EMAIL };
+Object.defineProperty(module.exports, 'PAGES', { get: getPages, enumerable: true });

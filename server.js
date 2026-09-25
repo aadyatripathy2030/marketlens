@@ -46,6 +46,21 @@ const COMP_PRO_EMAILS = (process.env.PRO_EMAILS || 'aadyatripathy3@gmail.com').t
 // One answer to "is this account Pro", used everywhere a plan is checked, so a
 // complimentary account cannot be Pro in one place and free in another.
 const isPro = (u) => !!(u && (u.plan === 'pro' || isAdmin(u) || COMP_PRO_EMAILS.includes(String(u.email || '').toLowerCase())));
+
+// Launch period: every Pro feature is open to every account until this moment,
+// after which the normal split applies with no deploy needed. Set FREE_UNTIL
+// to an ISO timestamp to move it, or to a past date to end it early.
+// End of 17 October UTC, so 17 October is itself a free day everywhere rather
+// than ending at UTC midnight — which is the afternoon of the 16th in the US
+// and would cut people off a day before the date they were told.
+const FREE_UNTIL = Date.parse(process.env.FREE_UNTIL || '2026-10-18T00:00:00Z');
+const inLaunchPeriod = () => Number.isFinite(FREE_UNTIL) && Date.now() < FREE_UNTIL;
+
+// Entitlement and access are deliberately different questions. isPro is what
+// the account is actually entitled to and guards checkout — during the launch
+// period everyone has access, and if that also counted as being Pro, nobody
+// could subscribe. hasPro is what the feature gates ask.
+const hasPro = (u) => inLaunchPeriod() || isPro(u);
 const usage = { total: 0 };            // per-endpoint request counters (reset on restart)
 const errorLog = [];                   // recent server errors (ring buffer)
 function logError(e) { errorLog.push({ t: Date.now(), msg: String((e && e.message) || e).slice(0, 200) }); if (errorLog.length > 60) errorLog.shift(); }
@@ -501,7 +516,7 @@ function clientKey(req, user) {
 async function plan(req) {
   let user = null;
   try { user = await currentUser(req); } catch (e) { user = null; }
-  return { user, pro: isPro(user), key: clientKey(req, user) };
+  return { user, pro: hasPro(user), key: clientKey(req, user) };
 }
 
 // Market data needs an account. Enforced here rather than only in the browser,
@@ -549,19 +564,25 @@ async function handleLogout(req, res) {
 }
 async function handleMe(req, res) {
   const u = await currentUser(req);
-  const pro = isPro(u);
+  // Limits follow access (so the launch period shows as unlimited); the plan
+  // badge follows entitlement, so nobody is told they are on Pro when the
+  // promotion is the only reason everything is open.
+  const access = hasPro(u);
   let aiUsed = 0;
-  if (!pro && ANTHROPIC_API_KEY) { try { aiUsed = await db.peekUsage(clientKey(req, u), 'ai'); } catch (e) {} }
+  if (!access && ANTHROPIC_API_KEY) { try { aiUsed = await db.peekUsage(clientKey(req, u), 'ai'); } catch (e) {} }
   return json(res, 200, {
-    // Reports the plan the account actually gets, so a complimentary Pro does
-    // not show a "Free" badge while every Pro feature works.
     user: u ? { ...u, plan: isPro(u) ? 'pro' : u.plan, admin: isAdmin(u) } : null,
     store: db.storeMode(),
     billing: await billingInfo(),
+    // lastFree is the final free day itself, which is the date to show; `until`
+    // is the instant access changes.
+    launch: { free: inLaunchPeriod(),
+      until: Number.isFinite(FREE_UNTIL) ? FREE_UNTIL : null,
+      lastFree: Number.isFinite(FREE_UNTIL) ? FREE_UNTIL - 1 : null },
     // So the interface can show what is available without probing endpoints.
-    limits: { pro, aiPerDay: pro ? null : AI_FREE_DAILY, aiUsed,
-      watchMax: pro ? null : FREE_WATCH_MAX, alertMax: pro ? null : FREE_ALERT_MAX,
-      takeProfits: pro ? 3 : 1 },
+    limits: { pro: access, aiPerDay: access ? null : AI_FREE_DAILY, aiUsed,
+      watchMax: access ? null : FREE_WATCH_MAX, alertMax: access ? null : FREE_ALERT_MAX,
+      takeProfits: access ? 3 : 1 },
   });
 }
 async function handleAdmin(req, res) {
@@ -595,7 +616,7 @@ async function handleWatchlist(req, res) {
     // Checked only when adding: someone who subscribed, built a long list and
     // then cancelled keeps what they saved, they just cannot add more.
     const cur = await db.listWatch(user.id);
-    if (!isPro(user) && !cur.includes(symbol) && cur.length >= FREE_WATCH_MAX) {
+    if (!hasPro(user) && !cur.includes(symbol) && cur.length >= FREE_WATCH_MAX) {
       return json(res, 402, { error: 'pro_required', feature: 'watchlist',
         message: `A free watchlist holds ${FREE_WATCH_MAX} symbols. Pro removes the limit.`, symbols: cur });
     }
@@ -823,7 +844,7 @@ async function handleAlerts(req, res) {
   const direction = b.direction === 'below' ? 'below' : 'above';
   const target = Number(b.target);
   if (!symbol || !Number.isFinite(target) || target <= 0) return json(res, 400, { error: 'Enter a ticker and a target price above 0.' });
-  if (!isPro(user)) {
+  if (!hasPro(user)) {
     const cur = await db.listAlerts(user.id);
     if (cur.filter(x => !x.triggered).length >= FREE_ALERT_MAX) {
       return json(res, 402, { error: 'pro_required', feature: 'alerts',

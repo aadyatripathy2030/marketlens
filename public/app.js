@@ -360,6 +360,12 @@
   // Filled from /api/auth/me. Until it arrives, assume the free ceiling so the
   // interface never briefly offers something it will then take away.
   let limits = { pro: false, takeProfits: 1, aiPerDay: 3, aiUsed: 0, watchMax: 10, alertMax: 3 };
+  let launch = { free: false, until: null };
+  // Formatted in UTC from the last free day, so the date shown is the date
+  // promised rather than shifting a day backwards in western timezones.
+  const launchDate = () => launch.lastFree
+    ? new Date(launch.lastFree).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+    : '';
   const maxTp = () => (limits.pro ? 5 : Math.max(1, limits.takeProfits || 1));
   // A 402 from the server means the feature is Pro-only. One shape for the
   // message everywhere, with a link that actually goes to the Plans page.
@@ -1198,7 +1204,7 @@
     }
   }
   async function checkAuth() {
-    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; }
+    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; launch = j.launch || launch; billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; }
     renderAcct();
     $('watchBtn').classList.toggle('hidden', !currentUser);
     $('navAdmin').classList.toggle('hidden', !(currentUser && currentUser.admin));
@@ -1552,21 +1558,37 @@
   // the four are read as four choices rather than as options nested inside a
   // fifth thing. Someone already on Pro sees a single Pro card instead.
   const INTERVAL_WORD = { week: 'per week', month: 'per month', year: 'per year' };
+  // The day charging begins, for "from <date>" phrasing.
+  const launchDateAfter = () => launch.until
+    ? new Date(launch.until).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' })
+    : '';
+  // What the daily allowance becomes once the launch period ends. The server
+  // reports null while everything is open, so this cannot be read from limits.
+  const AI_FALLBACK_N = 3;
+  const PRICING_LEAD_AFTER = 'The chart, every indicator, the stop-loss and take-profit levels and the measured base rate are free for everyone with an account. Pro adds the parts that cost money to run each time: unlimited written reports, Ask Claude, chart-image reading, the screener and side-by-side compare, and more take-profit levels.';
   function renderPricing() {
     const pro = !!(currentUser && currentUser.plan === 'pro');
     const li = (arr) => arr.map(([t, on]) => `<li class="${on ? '' : 'off'}">${esc(t)}</li>`).join('');
-    const aiN = limits.aiPerDay || 3;
+    const aiN = limits.aiPerDay || AI_FALLBACK_N;
     const freeList = [
       ['Full charts, every indicator, stocks and crypto', 1],
       ['Free account — email and password', 1],
-      ['Stop-loss and one take-profit level', 1],
+      [launch.free ? `Stop-loss and take-profit levels — one from ${launchDateAfter()}` : 'Stop-loss and one take-profit level', 1],
       ['The score and the measured base rate', 1],
-      [`${aiN} written reports a day, then the rule-based read`, 1],
-      [`Watchlist up to ${limits.watchMax || 10}, ${limits.alertMax || 3} price alerts`, 1],
+      // During the launch period these rows described the limits that start
+      // later, which read as if they were already in force.
+      [launch.free
+        ? `Written reports, no daily limit — ${AI_FALLBACK_N} a day from ${launchDateAfter()}`
+        : `${aiN} written reports a day, then the rule-based read`, 1],
+      [launch.free
+        ? `Watchlist and price alerts, no limit — capped from ${launchDateAfter()}`
+        : `Watchlist up to ${limits.watchMax || 10}, ${limits.alertMax || 3} price alerts`, 1],
       ['Every lesson', 1],
-      ['Ask Claude', 0],
-      ['Chart-image reading', 0],
-      ['Screener and side-by-side compare', 0],
+      // Open right now, but saying so without saying they change would be the
+      // kind of small dishonesty people notice on the day it changes.
+      ['Ask Claude' + (launch.free ? ` — Pro from ${launchDateAfter()}` : ''), launch.free ? 1 : 0],
+      ['Chart-image reading' + (launch.free ? ` — Pro from ${launchDateAfter()}` : ''), launch.free ? 1 : 0],
+      ['Screener and side-by-side compare' + (launch.free ? ` — Pro from ${launchDateAfter()}` : ''), launch.free ? 1 : 0],
     ];
     const periods = [['weekly', 'Weekly'], ['monthly', 'Monthly'], ['yearly', 'Yearly']].filter(([k]) => billingPlans && billingPlans[k]);
     // Cheapest per month gets the tag, computed rather than hardcoded.
@@ -1606,6 +1628,15 @@
         + `<div class="period-sub">Billing isn\u2019t set up yet.</div></div>`;
     }
 
+    // During the launch period the page has to be explicit: everything below
+    // is open to everyone right now, and exactly what changes, and when.
+    $('pricingLead').innerHTML = launch.free
+      ? `<strong>Everything is free for everyone through ${esc(launchDate())}.</strong> `
+        + `Every feature listed below is open on a free account until then — no subscription, no daily limits. `
+        + `From ${esc(launchDateAfter())}, unlimited written reports, Ask Claude, chart-image reading, the screener, `
+        + `side-by-side compare and extra take-profit levels become part of Pro. The chart, every indicator, the `
+        + `stop-loss and take-profit levels and the measured base rate stay free after that date too.`
+      : PRICING_LEAD_AFTER;
     $('pricingBody').innerHTML = freeCard + proCards;
     // Two cards (a Pro subscriber, or billing not configured) should not sit in
     // a four-column grid leaving two empty tracks.
