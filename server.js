@@ -149,7 +149,11 @@ async function fetchLiveUncached(symbol, interval, sizeOverride) {
   const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${size}&apikey=${STOCK_API_KEY}`;
   const { json: j } = await httpsJson({ method: 'GET', hostname: 'api.twelvedata.com',
     path: url.replace('https://api.twelvedata.com', '') });
-  if (!j || j.status === 'error' || !Array.isArray(j.values)) throw new Error(j && j.message ? j.message : 'No data for that symbol');
+  if (!j || j.status === 'error' || !Array.isArray(j.values)) {
+    const err = new Error(j && j.message ? j.message : 'No data for that symbol');
+    err.upstreamCode = j && j.code;   // kept so the caller can tell why
+    throw err;
+  }
   // Twelve Data returns newest-first; reverse to oldest-first.
   const rows = j.values.slice().reverse();
   return {
@@ -178,6 +182,40 @@ function buildDemo(symbol, interval) {
   return { name: symbol, currency: 'USD', prices };
 }
 
+// A typo used to become a stock: any upstream failure fell through to
+// buildDemo, which generates a plausible chart for any string at all, so
+// "ASDFG" returned candles, indicators and a rating. Telling the reasons apart
+// is what stops that.
+function classifyDataError(e) {
+  const msg = String((e && e.message) || '');
+  const code = e && e.upstreamCode;
+  if (code === 404 || /not found|does not exist|invalid symbol|no data/i.test(msg)) return 'not_found';
+  if (code === 429 || /rate limit|too many|credit|minute/i.test(msg)) return 'rate_limited';
+  if (code === 401 || code === 403 || /api ?key|unauthor/i.test(msg)) return 'auth';
+  return 'unavailable';
+}
+
+// Symbols the provider has already rejected, remembered for ten minutes. The
+// free plan allows eight credits a minute, so letting someone mash keys in the
+// search box would otherwise spend the whole budget on symbols that do not
+// exist.
+const unknownSymbols = new Map();
+const UNKNOWN_TTL = 600000;
+function markUnknown(sym) {
+  unknownSymbols.set(sym, Date.now() + UNKNOWN_TTL);
+  if (unknownSymbols.size > 500) {
+    const now = Date.now();
+    for (const [k, t] of unknownSymbols) if (t < now) unknownSymbols.delete(k);
+  }
+}
+function knownUnknown(sym) {
+  const t = unknownSymbols.get(sym);
+  if (!t) return false;
+  if (Date.now() > t) { unknownSymbols.delete(sym); return false; }
+  return true;
+}
+const noSuchTicker = (sym) => ({ error: `No such ticker: ${sym}. Check the symbol — try AAPL, TSLA, or BTC/USD for crypto.`, kind: 'not_found' });
+
 async function handleStock(req, res, symbol, strategy, direction, interval) {
   symbol = String(symbol || '').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
   if (!symbol) return json(res, 400, { error: 'Enter a ticker symbol.' });
@@ -186,8 +224,20 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   interval = INTERVALS.includes(interval) ? interval : '1day';
   let source = 'demo', note = '', data;
   if (STOCK_API_KEY) {
+    if (knownUnknown(symbol)) return json(res, 404, noSuchTicker(symbol));
     try { data = await fetchLive(symbol, interval); source = 'live'; }
-    catch (e) { data = buildDemo(symbol, interval); note = 'Live data unavailable (' + e.message + ') — showing demo data.'; }
+    catch (e) {
+      const kind = classifyDataError(e);
+      // A ticker that does not exist is answered as such. Anything else is a
+      // problem at our end or the provider's, and says so — neither invents a
+      // chart, because a generated chart for a real ticker is worse than an
+      // error and a generated chart for a typo is how this bug was reported.
+      if (kind === 'not_found') { markUnknown(symbol); return json(res, 404, noSuchTicker(symbol)); }
+      logError(e);
+      if (kind === 'auth') return json(res, 503, { error: 'Market data is not configured correctly. This is our problem, not yours.', kind });
+      if (kind === 'rate_limited') return json(res, 503, { error: 'Market data is rate-limited right now. Try again in a minute.', kind });
+      return json(res, 503, { error: 'Market data is unavailable right now. Try again shortly.', kind });
+    }
   } else {
     data = buildDemo(symbol, interval);
     note = 'Demo data — set STOCK_API_KEY (twelvedata.com, free) for real prices.';
