@@ -384,7 +384,7 @@ function overallRating(rep) {
   // this score showed no relationship with forward returns — "Strong Buy"
   // preceded below-average returns at both horizons tested. It does reliably
   // describe how aligned the indicators are, so that is what it now says.
-  const label = score >= 72 ? 'Strongly bullish' : score >= 58 ? 'Bullish' : score >= 42 ? 'Mixed' : score >= 28 ? 'Bearish' : 'Strongly bearish';
+  const label = score >= 72 ? 'Very bullish' : score >= 58 ? 'Bullish' : score >= 42 ? 'Mixed' : score >= 28 ? 'Bearish' : 'Very bearish';
   const tone = score >= 58 ? 'bullish' : score <= 41 ? 'bearish' : 'neutral';
 
   // Agreement is now a countable fact — how many of the independent groups
