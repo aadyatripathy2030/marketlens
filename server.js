@@ -129,6 +129,12 @@ function cached(key, ttlMs, producer) {
   inFlight.set(key, p);
   return p;
 }
+// When the value behind a key was actually fetched. Without this a handler can
+// only report when it built the response, which for cached data is a different
+// thing — and reporting "just updated" for a fifteen-minute-old reading is the
+// kind of small lie this project keeps having to remove.
+function cachedAt(key) { const hit = dataCache.get(key); return hit ? hit.at : 0; }
+
 const sweep = setInterval(() => {
   const now = Date.now();
   for (const [k, v] of dataCache) if (now - v.at > 600000) dataCache.delete(k);
@@ -1161,10 +1167,14 @@ async function handleMovers(req, res) {
       message: 'Live scanning needs a market-data key. Set STOCK_API_KEY to enable it.' });
   }
   try {
-    // Three minutes, not one: this panel costs a credit per symbol and the
-    // budget is per minute, so a short cache spends most of it here.
-    const raw = await cached('movers:' + MOVERS_UNIVERSE.join(','), 180000,
-      () => fetchScanUncached(MOVERS_UNIVERSE));
+    // Fifteen minutes. The scan costs a credit per symbol and is shared by
+    // everyone, so the bill is set by how many distinct cache windows get a
+    // visitor, not by how many visitors there are. At three minutes that was
+    // up to 480 billable windows a day; at fifteen it is 96. The page links
+    // through to five-minute candles, so quarter-hour prices are not the
+    // limiting factor in how fresh it feels.
+    const scanKey = 'movers:' + MOVERS_UNIVERSE.join(',');
+    const raw = await cached(scanKey, 900000, () => fetchScanUncached(MOVERS_UNIVERSE));
     const rows = scanRows(raw).slice(0, 12);
     // An empty parse is a failure, not an empty market. Saying "available" with
     // no rows renders as "nothing to show", which reads like a quiet session
@@ -1176,7 +1186,7 @@ async function handleMovers(req, res) {
     return json(res, 200, {
       available: true, rows, source: 'live',
       marketOpen: rows.some(r => r.marketOpen),
-      asOf: Date.now(),
+      asOf: cachedAt(scanKey) || Date.now(),   // when the prices were fetched
     });
   } catch (e) {
     logError(e);

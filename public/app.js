@@ -1757,6 +1757,7 @@
       + `</div></div>`;
   }
 
+  let lastMoversAsOf = 0;
   async function loadMovers() {
     const body = $('moversBody'), status = $('moversStatus');
     body.innerHTML = `<p class="compare-note">Scanning…</p>`;
@@ -1766,8 +1767,15 @@
     if (isProGate(d)) { body.innerHTML = proGateHtml(d); return; }
     if (!d.available) { body.innerHTML = `<p class="compare-note">${esc(d.message || 'Scan unavailable.')}</p>`; return; }
     if (!d.rows.length) { body.innerHTML = `<p class="compare-note">Nothing to show.</p>`; return; }
+    // The scan is shared and cached, so Refresh often returns the same reading.
+    // Saying how old it is, and that a repeat press changed nothing, is better
+    // than a button that appears to do nothing at all.
+    const age = Math.round((Date.now() - d.asOf) / 60000);
+    const same = lastMoversAsOf === d.asOf;
+    lastMoversAsOf = d.asOf;
     status.textContent = (d.marketOpen ? 'Market open' : 'Market closed — showing the last session')
-      + ' · updated ' + new Date(d.asOf).toLocaleTimeString();
+      + ' · ' + (age < 1 ? 'just updated' : `updated ${age} min ago`)
+      + (same ? ' · already current, the scan refreshes every 15 minutes' : '');
     body.innerHTML = `<div class="movers-grid">` + d.rows.map(moverRow).join('') + `</div>`;
     body.querySelectorAll('.mover').forEach(el =>
       el.addEventListener('click', () => goAnalyze(el.dataset.s)));
