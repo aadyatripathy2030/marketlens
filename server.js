@@ -820,13 +820,29 @@ async function fetchQuotesUncached(symbols) {
 //
 // One batched /quote call covers the whole universe, cached for 20s, so the
 // scan costs the same whether one person opens it or a thousand do.
-const MOVERS_UNIVERSE = ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AMD','NFLX','COIN','PLTR','AVGO','INTC','MU','SMCI','UBER','BA','DIS','JPM','XOM','SOFI','RIVN','CRM','ORCL'];
+// Twelve Data bills a batch by symbol count and caps how many a single request
+// may carry on smaller plans; 24 came back empty in production, 12 matches what
+// the Markets page already asks for successfully.
+const MOVERS_UNIVERSE = ['AAPL','MSFT','NVDA','AMZN','META','TSLA','AMD','NFLX','COIN','PLTR','SMCI','MU'];
 
 async function fetchScanUncached(symbols) {
   const path = `/quote?symbol=${encodeURIComponent(symbols.join(','))}&apikey=${STOCK_API_KEY}`;
   const { json: j } = await httpsJson({ method: 'GET', hostname: 'api.twelvedata.com', path });
+  // The endpoint answers a single symbol with a bare object, several with one
+  // keyed by symbol, and a rejected request with {code, message} — which keyed
+  // lookup turns into undefined for every symbol and so into a silent empty
+  // result. Fail loudly instead.
+  if (j && j.code && j.status !== 'ok' && !j.close) {
+    throw new Error(`quote batch rejected: ${j.code} ${j.message || ''}`.trim());
+  }
+  const pick = (s) => {
+    if (symbols.length === 1) return j;
+    if (j && j[s]) return j[s];
+    if (Array.isArray(j)) return j.find(x => x && x.symbol === s);
+    return null;
+  };
   return symbols.map(s => {
-    const q = symbols.length === 1 ? j : (j && j[s]);
+    const q = pick(s);
     if (!q || q.status === 'error' || q.close == null) return null;
     const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : null; };
     return {
@@ -870,6 +886,13 @@ async function handleMovers(req, res) {
     const raw = await cached('movers:' + MOVERS_UNIVERSE.join(','), 20000,
       () => fetchScanUncached(MOVERS_UNIVERSE));
     const rows = scanRows(raw).slice(0, 12);
+    // An empty parse is a failure, not an empty market. Saying "available" with
+    // no rows renders as "nothing to show", which reads like a quiet session
+    // rather than a broken scan.
+    if (!rows.length) {
+      return json(res, 200, { available: false, rows: [], source: 'live',
+        message: 'The market-data provider returned nothing for the scan just now. Try again shortly.' });
+    }
     return json(res, 200, {
       available: true, rows, source: 'live',
       marketOpen: rows.some(r => r.marketOpen),
