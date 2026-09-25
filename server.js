@@ -821,10 +821,15 @@ async function fetchQuotesUncached(symbols) {
 //
 // One batched /quote call covers the whole universe, cached for 20s, so the
 // scan costs the same whether one person opens it or a thousand do.
-// Twelve Data bills a batch by symbol count and caps how many a single request
-// may carry on smaller plans; 24 came back empty in production, 12 matches what
-// the Markets page already asks for successfully.
-const MOVERS_UNIVERSE = ['AAPL','MSFT','NVDA','AMZN','META','TSLA','AMD','NFLX','COIN','PLTR','SMCI','MU'];
+// Every symbol in a batch costs one API credit, and the free Twelve Data plan
+// allows eight per minute across the whole app — so a twelve-symbol batch can
+// never succeed, while three does. Measured against production: 1 and 12 both
+// fell back to demo data, 3 came back live.
+//
+// Six leaves headroom for the chart and quote traffic that shares the same
+// budget. On a paid plan this can grow; MOVERS_SYMBOLS overrides it.
+const MOVERS_UNIVERSE = (process.env.MOVERS_SYMBOLS || 'NVDA,TSLA,AAPL,AMD,COIN,PLTR')
+  .toUpperCase().split(',').map(x => x.trim()).filter(Boolean).slice(0, 8);
 
 async function fetchScanUncached(symbols) {
   const path = `/quote?symbol=${encodeURIComponent(symbols.join(','))}&apikey=${STOCK_API_KEY}`;
@@ -884,7 +889,9 @@ async function handleMovers(req, res) {
       message: 'Live scanning needs a market-data key. Set STOCK_API_KEY to enable it.' });
   }
   try {
-    const raw = await cached('movers:' + MOVERS_UNIVERSE.join(','), 20000,
+    // 60s rather than 20s: the limit is per minute, so a shorter cache would
+    // spend the whole budget on this one panel.
+    const raw = await cached('movers:' + MOVERS_UNIVERSE.join(','), 60000,
       () => fetchScanUncached(MOVERS_UNIVERSE));
     const rows = scanRows(raw).slice(0, 12);
     // An empty parse is a failure, not an empty market. Saying "available" with
