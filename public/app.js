@@ -1415,14 +1415,20 @@
     let d;
     try { d = await (await fetch('/api/ranked')).json(); }
     catch { body.innerHTML = ''; note.textContent = ''; return; }
-    if (!d.available) { body.innerHTML = `<p class="compare-note">${esc(d.message || 'Unavailable.')}</p>`; return; }
+    if (!d.available) {
+      body.innerHTML = `<p class="compare-note">${esc(d.message || 'Unavailable.')}</p>`;
+      // Still gathering: come back for it rather than leaving a dead panel.
+      if (d.building) setTimeout(() => { delete body.dataset.loaded; loadRanked(); }, 20000);
+      return;
+    }
     body.dataset.loaded = '1';
     body.innerHTML =
       `<div class="ranked-col"><div class="ranked-h good">Scoring highest</div>`
       + d.strong.map(rankedCard).join('') + `</div>`
       + `<div class="ranked-col"><div class="ranked-h bad">Scoring lowest</div>`
       + d.weak.map(rankedCard).join('') + `</div>`;
-    note.innerHTML = `These are ChartGauge\u2019s own indicator scores, not advice. `
+    note.innerHTML = `Highest and lowest of ${d.scanned || ''} stocks scanned. `
+      + `These are ChartGauge\u2019s own indicator scores, not advice. `
       + `Measured across 36,524 past setups, this score did not predict which way price went next \u2014 `
       + `open any symbol to see the base rate for its own history. Nothing here is a recommendation to buy or sell.`;
     body.querySelectorAll('.rk').forEach(el =>

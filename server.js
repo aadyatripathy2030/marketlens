@@ -216,6 +216,21 @@ function knownUnknown(sym) {
 }
 const noSuchTicker = (sym) => ({ error: `No such ticker: ${sym}. Check the symbol — try AAPL, TSLA, or BTC/USD for crypto.`, kind: 'not_found' });
 
+// Does this symbol actually exist? Used before saving one, so a typo cannot be
+// stored forever. Answers from the rejected-symbol memory or the bars cache
+// when it can, and only reaches the provider for a symbol it has not seen.
+// Without a market-data key there is nothing to check against, so it says yes
+// rather than blocking local development.
+async function symbolResolves(sym) {
+  if (!STOCK_API_KEY) return true;
+  if (knownUnknown(sym)) return false;
+  try { await fetchLive(sym, '1day', 30); return true; }
+  catch (e) {
+    if (classifyDataError(e) === 'not_found') { markUnknown(sym); return false; }
+    return true;   // provider trouble is not the symbol's fault
+  }
+}
+
 async function handleStock(req, res, symbol, strategy, direction, interval) {
   symbol = String(symbol || '').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
   if (!symbol) return json(res, 400, { error: 'Enter a ticker symbol.' });
@@ -663,6 +678,7 @@ async function handleWatchlist(req, res) {
   if (!symbol) return json(res, 400, { error: 'No symbol.' });
   if (b.action === 'remove') { await db.removeWatch(user.id, symbol); }
   else {
+    if (!(await symbolResolves(symbol))) return json(res, 404, noSuchTicker(symbol));
     // Checked only when adding: someone who subscribed, built a long list and
     // then cancelled keeps what they saved, they just cannot add more.
     const cur = await db.listWatch(user.id);
@@ -869,51 +885,84 @@ async function fetchQuotesUncached(symbols) {
 // app already puts on every chart, so nothing new is being asserted here — but
 // see the note the panel carries: that score was measured over 36,524 past
 // setups and did not predict direction.
-const RANKED_UNIVERSE = (process.env.RANKED_SYMBOLS || 'AAPL,MSFT,NVDA,TSLA,AMD,META')
-  .toUpperCase().split(',').map(x => x.trim()).filter(Boolean).slice(0, 8);
+// Six large-cap tech names could not produce a Sell: they move together, so on
+// a green day the "lowest" column was three Holds. This list spans sectors and
+// includes names that actually trend down, so both columns mean something.
+const RANKED_UNIVERSE = (process.env.RANKED_SYMBOLS ||
+  'AAPL,MSFT,NVDA,TSLA,AMD,META,AMZN,GOOGL,INTC,PFE,XOM,KO,DIS,BA,NKE,WBA,F,T,VZ,PYPL')
+  .toUpperCase().split(',').map(x => x.trim()).filter(Boolean).slice(0, 30);
 
-async function buildRanked() {
-  const out = [];
-  for (const sym of RANKED_UNIVERSE) {
-    try {
-      // Sequential, not Promise.all: eight credits a minute is the budget, and
-      // a parallel burst spends the lot at once and gets the batch rejected.
-      const data = await fetchLive(sym, '1day', 260);
-      const prices = (data.prices || []).slice(-260);
-      if (prices.length < 60) continue;
-      const candles = prices.map(x => ({ open: x.open, high: x.high, low: x.low, close: x.close, volume: x.volume || 0 }));
-      const rating = I.overallRating(I.techReport(candles));
-      const closes = candles.map(c => c.close);
-      const last = closes[closes.length - 1], prev = closes[closes.length - 2] || last;
-      out.push({
-        symbol: sym, price: last,
-        changePct: prev ? ((last - prev) / prev) * 100 : 0,
-        score: rating.score, label: rating.label, tone: rating.tone,
-        agreeing: rating.agreeing, groupCount: rating.groupCount, risk: rating.risk,
-      });
-    } catch (e) { /* one symbol failing must not empty the panel */ }
-  }
-  return out;
+// Scanning twenty symbols costs twenty credits against a budget of eight a
+// minute, so it cannot happen inside a request. A background pass walks the
+// list slowly and keeps a store; requests answer from the store immediately,
+// with however much has been gathered so far.
+const RANKED_GAP_MS = Number(process.env.RANKED_GAP_MS || 9000);   // ~6.6/min
+const RANKED_REFRESH_MS = Number(process.env.RANKED_REFRESH_MS || 1800000);
+const rankedStore = { rows: [], asOf: 0, running: false, lastStart: 0 };
+
+async function rateOne(sym) {
+  const data = await fetchLive(sym, '1day', 260);
+  const prices = (data.prices || []).slice(-260);
+  if (prices.length < 60) return null;
+  const candles = prices.map(x => ({ open: x.open, high: x.high, low: x.low, close: x.close, volume: x.volume || 0 }));
+  const rating = I.overallRating(I.techReport(candles));
+  const closes = candles.map(c => c.close);
+  const last = closes[closes.length - 1], prev = closes[closes.length - 2] || last;
+  return {
+    symbol: sym, price: last,
+    changePct: prev ? ((last - prev) / prev) * 100 : 0,
+    score: rating.score, label: rating.label, tone: rating.tone,
+    agreeing: rating.agreeing, groupCount: rating.groupCount, risk: rating.risk,
+  };
+}
+
+async function refreshRanked() {
+  if (rankedStore.running) return;
+  rankedStore.running = true;
+  rankedStore.lastStart = Date.now();
+  const gathered = [];
+  try {
+    for (const sym of RANKED_UNIVERSE) {
+      try {
+        const row = await rateOne(sym);
+        if (row) {
+          gathered.push(row);
+          // Published as it goes, so the panel fills in rather than staying
+          // empty for the whole pass.
+          rankedStore.rows = gathered.slice();
+          rankedStore.asOf = Date.now();
+        }
+      } catch (e) { /* one symbol is not the panel */ }
+      await new Promise(r => setTimeout(r, RANKED_GAP_MS));
+    }
+  } finally { rankedStore.running = false; }
+}
+
+// Kicked off at boot and on a timer. unref() so it never holds the process up.
+function startRankedLoop() {
+  if (!STOCK_API_KEY) return;
+  refreshRanked();
+  const t = setInterval(refreshRanked, RANKED_REFRESH_MS);
+  if (t.unref) t.unref();
 }
 
 async function handleRanked(req, res) {
   if (!STOCK_API_KEY) return json(res, 200, { available: false, message: 'Live ratings need a market-data key.' });
-  try {
-    // Fifteen minutes: these are daily-bar ratings, which do not change
-    // meaningfully minute to minute, and the credit budget is small.
-    const rows = await cached('ranked:' + RANKED_UNIVERSE.join(','), 900000, buildRanked);
-    if (!rows.length) return json(res, 200, { available: false, message: 'Ratings are unavailable right now.' });
-    const byScore = rows.slice().sort((a, b) => b.score - a.score);
-    return json(res, 200, {
-      available: true,
-      strong: byScore.slice(0, 3),
-      weak: byScore.slice(-3).reverse(),
-      asOf: Date.now(),
-    });
-  } catch (e) {
-    logError(e);
-    return json(res, 200, { available: false, message: 'Ratings are unavailable right now.' });
+  // A dyno that slept through its timer restarts the pass on the next visit.
+  if (!rankedStore.running && Date.now() - rankedStore.lastStart > RANKED_REFRESH_MS) refreshRanked();
+  const rows = rankedStore.rows;
+  if (rows.length < 4) {
+    return json(res, 200, { available: false, building: true,
+      message: 'Ratings are still being gathered — check back in a minute.' });
   }
+  const byScore = rows.slice().sort((a, b) => b.score - a.score);
+  return json(res, 200, {
+    available: true,
+    strong: byScore.slice(0, 3),
+    weak: byScore.slice(-3).reverse(),
+    scanned: rows.length, universe: RANKED_UNIVERSE.length,
+    asOf: rankedStore.asOf,
+  });
 }
 
 // ---- Movers scan ----
@@ -1053,6 +1102,7 @@ async function handleAlerts(req, res) {
   const direction = b.direction === 'below' ? 'below' : 'above';
   const target = Number(b.target);
   if (!symbol || !Number.isFinite(target) || target <= 0) return json(res, 400, { error: 'Enter a ticker and a target price above 0.' });
+  if (!(await symbolResolves(symbol))) return json(res, 404, noSuchTicker(symbol));
   if (!hasPro(user)) {
     const cur = await db.listAlerts(user.id);
     if (cur.filter(x => !x.triggered).length >= FREE_ALERT_MAX) {
@@ -1539,5 +1589,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 db.init().then((storeMode) => {
-  server.listen(PORT, () => console.log(`ChartGauge running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'}, fundamentals: ${FMP_API_KEY ? 'on' : 'off'}, news: ${FINNHUB_API_KEY ? 'on' : 'off'}, accounts: ${storeMode})`));
+  server.listen(PORT, () => {
+    console.log(`ChartGauge running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'}, fundamentals: ${FMP_API_KEY ? 'on' : 'off'}, news: ${FINNHUB_API_KEY ? 'on' : 'off'}, accounts: ${storeMode})`);
+    // Started after listen so a slow first pass never delays accepting traffic.
+    startRankedLoop();
+  });
 });
