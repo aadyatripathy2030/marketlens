@@ -146,6 +146,18 @@ const barsTtl = (interval) => /min|^1h$|^4h$/.test(String(interval)) ? 30000 : 1
 // One ledger now covers every upstream call. Requests a person is waiting on
 // spend freely; background work waits until there is headroom above a reserve
 // kept for them, so it can only ever use what is spare.
+// When the provider reports the day's allowance gone, background work stops
+// until the next UTC day rather than retrying into a wall — every failed retry
+// still counts against tomorrow if the clock has rolled over mid-pass.
+let dailyQuotaOutUntil = 0, dailyQuotaMsg = '';
+function markDailyQuotaOut(msg) {
+  const d = new Date(); d.setUTCHours(24, 0, 0, 0);
+  dailyQuotaOutUntil = d.getTime();
+  dailyQuotaMsg = String(msg || '').slice(0, 200);
+  console.error('[data] daily quota exhausted, pausing background work until', d.toISOString(), '-', dailyQuotaMsg);
+}
+const dailyQuotaOut = () => Date.now() < dailyQuotaOutUntil;
+
 const CREDITS_PER_MIN = Number(process.env.DATA_CREDITS_PER_MIN || 8);
 const USER_RESERVE = Number(process.env.DATA_USER_RESERVE || 5);
 let creditLog = [];
@@ -160,8 +172,10 @@ const creditsFree = () => Math.max(0, CREDITS_PER_MIN - creditsUsed());
 // Resolves once the background task may spend `n` without eating into the
 // reserve. Gives up after the timeout so a busy period cannot wedge it.
 async function awaitSpareCredits(n, timeoutMs) {
+  if (dailyQuotaOut()) return false;
   const until = Date.now() + (timeoutMs || 120000);
   while (Date.now() < until) {
+    if (dailyQuotaOut()) return false;
     if (creditsUsed() + n <= CREDITS_PER_MIN - USER_RESERVE) return true;
     await new Promise(r => setTimeout(r, 4000));
   }
@@ -222,6 +236,10 @@ function classifyDataError(e) {
   const msg = String((e && e.message) || '');
   const code = e && e.upstreamCode;
   if (code === 404 || /not found|does not exist|invalid symbol|no data/i.test(msg)) return 'not_found';
+  // Twelve Data exhausts two separate allowances and says which in the message.
+  // Telling a visitor to "try again in a minute" when the day's quota is gone
+  // is simply wrong, and it invites a retry that cannot succeed.
+  if (/day|daily|24 ?hour/i.test(msg) && /credit|limit|quota/i.test(msg)) return 'quota_daily';
   if (code === 429 || /rate limit|too many|credit|minute/i.test(msg)) return 'rate_limited';
   if (code === 401 || code === 403 || /api ?key|unauthor/i.test(msg)) return 'auth';
   return 'unavailable';
@@ -282,6 +300,7 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
       if (kind === 'not_found') { markUnknown(symbol); return json(res, 404, noSuchTicker(symbol)); }
       logError(e);
       if (kind === 'auth') return json(res, 503, { error: 'Market data is not configured correctly. This is our problem, not yours.', kind });
+      if (kind === 'quota_daily') { markDailyQuotaOut(e.message); return json(res, 503, { error: 'Market data has hit its daily limit for today. It resets tomorrow.', kind }); }
       if (kind === 'rate_limited') return json(res, 503, { error: 'Market data is rate-limited right now. Try again in a minute.', kind });
       return json(res, 503, { error: 'Market data is unavailable right now. Try again shortly.', kind });
     }
@@ -699,6 +718,7 @@ async function handleAdmin(req, res) {
     store: db.storeMode(),
     services: { prices: !!STOCK_API_KEY, ai: !!ANTHROPIC_API_KEY, fundamentals: !!FMP_API_KEY, news: !!FINNHUB_API_KEY, analytics: !!GA_ID },
     credits: { usedLastMinute: creditsUsed(), perMinute: CREDITS_PER_MIN, reservedForUsers: USER_RESERVE,
+      dailyQuotaOut: dailyQuotaOut(), dailyQuotaMsg,
       rankedScanned: rankedStore.rows.length, rankedUniverse: RANKED_UNIVERSE.length, rankedRunning: rankedStore.running },
   });
 }
@@ -979,7 +999,7 @@ async function refreshRanked() {
 
 // Kicked off at boot and on a timer. unref() so it never holds the process up.
 function startRankedLoop() {
-  if (!STOCK_API_KEY) return;
+  if (!STOCK_API_KEY || dailyQuotaOut()) return;
   refreshRanked();
   const t = setInterval(refreshRanked, RANKED_REFRESH_MS);
   if (t.unref) t.unref();
