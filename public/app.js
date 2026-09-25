@@ -1204,7 +1204,7 @@
     }
   }
   async function checkAuth() {
-    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; launch = j.launch || launch; billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; }
+    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; launch = j.launch || launch; showGoogleButtons(!!j.googleAuth); billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; }
     renderAcct();
     $('watchBtn').classList.toggle('hidden', !currentUser);
     $('navAdmin').classList.toggle('hidden', !(currentUser && currentUser.admin));
@@ -1879,6 +1879,42 @@
       renderLearnGrid();
     });
   }
+
+  // ---- Sign in with Google ----
+  // The buttons stay hidden until the server confirms it is configured, so a
+  // deployment without Google credentials never shows a button that 404s.
+  function showGoogleButtons(on) {
+    ['gateGoogle', 'gateGoogleOr', 'authGoogle'].forEach(id => {
+      const el = $(id); if (el) el.classList.toggle('hidden', !on);
+    });
+  }
+  function goGoogle(fromGate) {
+    // Leaving the page for Google, so the agreement has to be recorded first
+    // or the reader comes back and is asked again.
+    if (fromGate) setAgreed();
+    const next = location.pathname + location.search;
+    location.href = '/api/auth/google?next=' + encodeURIComponent(next);
+  }
+  if ($('gateGoogle')) $('gateGoogle').addEventListener('click', () => goGoogle(true));
+  if ($('authGoogle')) $('authGoogle').addEventListener('click', () => goGoogle(false));
+
+  // Report what happened on the way back, then tidy the URL.
+  (function readGoogleResult() {
+    const p = new URLSearchParams(location.search);
+    const err = p.get('google_error');
+    if (!err && !p.get('google')) return;
+    const MSG = {
+      cancelled: 'Google sign-in was cancelled.',
+      expired: 'That sign-in link expired. Please try again.',
+      unverified_email: 'That Google account has no verified email address, so it cannot be used to sign in.',
+      no_code: 'Google did not complete the sign-in. Please try again.',
+      failed: 'Could not complete Google sign-in. Please try again.',
+    };
+    if (err) window.setTimeout(() => alert(MSG[err] || MSG.failed), 100);
+    p.delete('google'); p.delete('google_error');
+    const qs = p.toString();
+    try { history.replaceState({}, '', location.pathname + (qs ? '?' + qs : '')); } catch (e) {}
+  })();
 
   // ---- First-visit gate (terms agreement + sign in) ----
   const gateAuthEl = document.querySelector('.gate-auth');

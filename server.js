@@ -679,6 +679,112 @@ async function handleLogin(req, res) {
   setSessionCookie(req, res, token);
   return json(res, 200, { user: { id: user.id, email: user.email, plan: isPro(user) ? 'pro' : user.plan } });
 }
+// ---- Sign in with Google ----
+// The authorization-code flow, done by hand because this project has no
+// dependencies. Dormant until both env vars are set, like Stripe.
+//
+// The id_token is read without verifying its signature, which is safe only
+// because of how it arrives: this server fetched it directly from Google's
+// token endpoint over TLS, authenticating with the client secret. Google's own
+// documentation says verification is unnecessary in exactly that case. It
+// would NOT be safe for a token handed over by the browser.
+const GOOGLE_CLIENT_ID = (process.env.GOOGLE_CLIENT_ID || '').trim();
+const GOOGLE_CLIENT_SECRET = (process.env.GOOGLE_CLIENT_SECRET || '').trim();
+const googleEnabled = () => !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+const googleRedirect = (req) => siteOrigin(req) + '/api/auth/google/callback';
+
+// Short-lived, single-use state values, to stop a forged callback signing
+// someone into an account they did not ask for.
+const googleStates = new Map();
+function newGoogleState(next) {
+  const v = crypto.randomBytes(16).toString('hex');
+  googleStates.set(v, { at: Date.now(), next: next || '/' });
+  if (googleStates.size > 500) for (const [k, o] of googleStates) if (Date.now() - o.at > 600000) googleStates.delete(k);
+  return v;
+}
+function takeGoogleState(v) {
+  const o = googleStates.get(v);
+  if (!o) return null;
+  googleStates.delete(v);                       // single use
+  return Date.now() - o.at < 600000 ? o : null; // ten minutes
+}
+
+function googleTokenExchange(code, redirectUri) {
+  const body = new URLSearchParams({
+    code, client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET,
+    redirect_uri: redirectUri, grant_type: 'authorization_code',
+  }).toString();
+  return new Promise((resolve, reject) => {
+    const r = https.request({ method: 'POST', hostname: 'oauth2.googleapis.com', path: '/token',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) } }, resp => {
+      let d = ''; resp.on('data', c => d += c);
+      resp.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { reject(new Error('Bad token response')); } });
+    });
+    r.on('error', reject);
+    r.setTimeout(10000, () => r.destroy(new Error('Google timed out')));
+    r.end(body);
+  });
+}
+
+function decodeIdToken(idToken) {
+  const part = String(idToken || '').split('.')[1];
+  if (!part) throw new Error('Malformed id_token');
+  return JSON.parse(Buffer.from(part.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+}
+
+async function handleGoogleStart(req, res) {
+  if (!googleEnabled()) return json(res, 404, { error: 'Google sign-in is not configured.' });
+  const q = new URLSearchParams(req.url.split('?')[1] || '');
+  const next = /^\/[A-Za-z0-9\/_-]*$/.test(q.get('next') || '') ? q.get('next') : '/';
+  const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: googleRedirect(req),
+    response_type: 'code',
+    scope: 'openid email',          // nothing beyond identity
+    state: newGoogleState(next),
+    prompt: 'select_account',
+  }).toString();
+  res.writeHead(302, { Location: url });
+  res.end();
+}
+
+const googleFail = (res, why) => { res.writeHead(302, { Location: '/?google_error=' + encodeURIComponent(why) }); res.end(); };
+
+async function handleGoogleCallback(req, res) {
+  if (!googleEnabled()) return json(res, 404, { error: 'Google sign-in is not configured.' });
+  const q = new URLSearchParams(req.url.split('?')[1] || '');
+  if (q.get('error')) return googleFail(res, 'cancelled');
+  const st = takeGoogleState(q.get('state') || '');
+  if (!st) return googleFail(res, 'expired');
+  const code = q.get('code');
+  if (!code) return googleFail(res, 'no_code');
+  try {
+    const tok = await googleTokenExchange(code, googleRedirect(req));
+    if (!tok || !tok.id_token) throw new Error(tok && tok.error_description ? tok.error_description : 'No id_token');
+    const claims = decodeIdToken(tok.id_token);
+    if (claims.aud !== GOOGLE_CLIENT_ID) throw new Error('Token issued for another client');
+    if (!/accounts\.google\.com$/.test(String(claims.iss || '').replace(/^https:\/\//, ''))) throw new Error('Unexpected issuer');
+    const email = String(claims.email || '').toLowerCase().trim();
+    // An unverified Google email must never be trusted: it would let anyone
+    // claiming that address take over the matching password account.
+    if (!email || claims.email_verified !== true) return googleFail(res, 'unverified_email');
+
+    let user = await db.getUserByGoogleId(claims.sub);
+    if (!user) {
+      const existing = await db.getUserByEmail(email);
+      if (existing) { await db.linkGoogleId(existing.id, claims.sub); user = existing; }
+      else user = await db.createGoogleUser(email, claims.sub);
+    }
+    const token = await db.createSession(user.id);
+    setSessionCookie(req, res, token);
+    res.writeHead(302, { Location: st.next + (st.next.includes('?') ? '&' : '?') + 'google=ok' });
+    return res.end();
+  } catch (e) {
+    logError(e);
+    return googleFail(res, 'failed');
+  }
+}
+
 async function handleLogout(req, res) {
   await db.deleteSession(parseCookies(req).session);
   setSessionCookie(req, res, '', true);
@@ -698,6 +804,7 @@ async function handleMe(req, res) {
     billing: await billingInfo(),
     // lastFree is the final free day itself, which is the date to show; `until`
     // is the instant access changes.
+    googleAuth: googleEnabled(),
     launch: { free: inLaunchPeriod(),
       until: Number.isFinite(FREE_UNTIL) ? FREE_UNTIL : null,
       lastFree: Number.isFinite(FREE_UNTIL) ? FREE_UNTIL - 1 : null },
@@ -1703,6 +1810,8 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/analyze-image' && req.method === 'POST') return await handleAnalyzeImage(req, res);
     if (url === '/api/auth/signup' && req.method === 'POST') return await handleSignup(req, res);
     if (url === '/api/auth/login' && req.method === 'POST') return await handleLogin(req, res);
+    if (url === '/api/auth/google' && req.method === 'GET') return await handleGoogleStart(req, res);
+    if (url === '/api/auth/google/callback' && req.method === 'GET') return await handleGoogleCallback(req, res);
     if (url === '/api/auth/logout' && req.method === 'POST') return await handleLogout(req, res);
     if (url === '/api/auth/me' && req.method === 'GET') return await handleMe(req, res);
     if (url === '/api/watchlist') return await handleWatchlist(req, res);

@@ -52,6 +52,7 @@ const buildTerms = () => h('Terms of Service', [
     `${SITE} is provided as-is, with no guarantee of uptime, accuracy, or fitness for any purpose. It may be slow, unavailable, or discontinued at any time.`),
 
   s('Your account',
+    `You can create an account with an email address and a password, or with "Continue with Google". Signing in with Google shares your email address and Google account identifier with ${SITE} and nothing else; ${SITE} never receives your Google password. If you later sign in with Google using the same email address as an existing password account, the two are treated as one account.`,
     `You are responsible for anything done through your account and for keeping your password secure. Do not reuse a password from a bank, broker, or any account that matters — this is not a financial institution and should not be treated as one.`,
     `You must be 18 or older to hold an account.`),
 
@@ -92,6 +93,7 @@ const buildPrivacy = () => h('Privacy Policy', [
       '<strong>Session token</strong> — a random value in an HttpOnly cookie so you stay signed in',
       '<strong>Watchlist and price alerts</strong> — the ticker symbols and targets you choose to save',
       '<strong>Plan status</strong> — whether the account is free or Pro',
+      '<strong>Google account identifier</strong> — only if you sign in with Google: the opaque user id Google issues for you, stored so the same Google account signs into the same ChartGauge account next time. It is not your Google password, and it gives no access to anything else in your Google account.',
     ]),
     `Charts and market data require an account, so using those features means the above exists. The lessons and these policy pages can be read without an account, and reading them creates none of it. Your display preferences — simple or advanced mode, candle colours, the number of take-profit levels — are kept in your own browser and are never sent to the server.`),
 
@@ -109,6 +111,7 @@ const buildPrivacy = () => h('Privacy Policy', [
       '<strong>Anthropic</strong> — when a written summary or chat reply is generated: the ticker, the computed indicator values, and anything you type into the chat. If you upload a chart screenshot for reading, the image is sent too. Do not upload images containing personal or account information.',
       '<strong>Stripe</strong> — your email address and subscription details, if you subscribe.',
       '<strong>Google Analytics</strong> — page views and general usage, to see which parts of the site get used. Only after you accept the cookie banner; if you decline, nothing is sent to Google.',
+      '<strong>Google (sign-in)</strong> — only if you choose "Continue with Google". You sign in on Google\u2019s own page; ' + SITE + ' never sees your Google password. ' + SITE + ' asks Google for two things: your email address and your account identifier. Nothing else is requested, and nothing is written back to your Google account.',
       '<strong>Render</strong> — the hosting provider, which processes requests and stores the database.',
     ]),
     `Your data is not sold, and is not shared with advertisers or data brokers.`),

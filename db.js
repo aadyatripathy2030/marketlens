@@ -30,6 +30,11 @@ async function init() {
         plan TEXT NOT NULL DEFAULT 'free', created BIGINT NOT NULL)`);
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_customer TEXT');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_sub TEXT');
+      // Google's subject id. Stable for the life of the account and never
+      // reused, unlike an email address, so it is what a Google login is
+      // matched on once the two are linked.
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT');
+      await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS users_google_id_idx ON users (google_id) WHERE google_id IS NOT NULL');
       await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
         token TEXT PRIMARY KEY, uid TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires BIGINT NOT NULL)`);
       await pool.query(`CREATE TABLE IF NOT EXISTS watchlist (
@@ -62,6 +67,8 @@ function hashPw(pw) {
   return salt + ':' + hash;
 }
 function verifyPw(pw, stored) {
+  // A Google-only account has no password hash. Nothing can match it, so a
+  // password attempt on such an account must fail rather than throw.
   const [salt, hash] = String(stored || '').split(':');
   if (!salt || !hash) return false;
   const h = crypto.scryptSync(pw, salt, 64).toString('hex');
@@ -70,6 +77,41 @@ function verifyPw(pw, stored) {
 }
 
 const pub = (u) => u && { id: u.id, email: u.email, plan: u.plan };
+
+// ---- Google-linked accounts ----
+// Three cases, in order: a returning Google user (match on google_id), someone
+// whose email already has a password account (link the two), and a new user.
+async function getUserByGoogleId(gid) {
+  if (!gid) return null;
+  if (mode === 'postgres') {
+    const r = await pool.query('SELECT * FROM users WHERE google_id=$1', [String(gid)]);
+    return r.rows[0] || null;
+  }
+  for (const u of mem.users.values()) if (u.google_id === String(gid)) return u;
+  return null;
+}
+
+async function linkGoogleId(uid, gid) {
+  if (mode === 'postgres') { await pool.query('UPDATE users SET google_id=$1 WHERE id=$2', [String(gid), uid]); return; }
+  const u = mem.users.get(uid); if (u) u.google_id = String(gid);
+}
+
+// Created with no password: the only way in is Google until one is set.
+async function createGoogleUser(email, gid) {
+  email = String(email).toLowerCase().trim();
+  const id = crypto.randomUUID();
+  const rec = { id, email, pw: '', google_id: String(gid), plan: 'free', created: Date.now() };
+  if (mode === 'postgres') {
+    try {
+      await pool.query('INSERT INTO users (id, email, pw, plan, created, google_id) VALUES ($1,$2,$3,$4,$5,$6)',
+        [id, email, '', 'free', rec.created, String(gid)]);
+    } catch (e) { if (/duplicate|unique/i.test(e.message)) throw new Error('EMAIL_TAKEN'); throw e; }
+  } else {
+    if (mem.byEmail.has(email)) throw new Error('EMAIL_TAKEN');
+    mem.users.set(id, rec); mem.byEmail.set(email, rec);
+  }
+  return rec;
+}
 
 // ---- users ----
 async function createUser(email, pw) {
@@ -221,6 +263,7 @@ async function peekUsage(k, kind) {
 
 module.exports = {
   bumpUsage, peekUsage,
+  getUserByGoogleId, linkGoogleId, createGoogleUser,
   init, storeMode, hasUrl, lastError, verifyPw,
   createUser, getUserByEmail, getUserById,
   createSession, getSessionUser, deleteSession,
