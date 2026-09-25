@@ -25,7 +25,7 @@ const AI_MODEL = (process.env.ANTHROPIC_MODEL || 'claude-opus-4-8').trim();
 // indicators back in plain English is not a task that needs the big one.
 const AI_MODEL_FREE = (process.env.ANTHROPIC_MODEL_FREE || 'claude-haiku-4-5').trim();
 const FMP_API_KEY = (process.env.FMP_API_KEY || '').replace(/\s/g, ''); // Financial Modeling Prep — fundamentals
-const FINNHUB_API_KEY = (process.env.FINNHUB_API_KEY || '').replace(/\s/g, ''); // Finnhub — company news
+const FINNHUB_API_KEY = (process.env.FINNHUB_API_KEY || '').replace(/\s/g, ''); // Finnhub — company news and plain quotes
 const GA_ID = (process.env.GA_MEASUREMENT_ID || 'G-4GG1NXEE2E').trim();         // Google Analytics 4 (public Measurement ID; env can override)
 const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || '').replace(/\s/g, '');       // sk_...
 const STRIPE_WEBHOOK_SECRET = (process.env.STRIPE_WEBHOOK_SECRET || '').replace(/\s/g, ''); // whsec_...
@@ -719,6 +719,7 @@ async function handleAdmin(req, res) {
     services: { prices: !!STOCK_API_KEY, ai: !!ANTHROPIC_API_KEY, fundamentals: !!FMP_API_KEY, news: !!FINNHUB_API_KEY, analytics: !!GA_ID },
     credits: { usedLastMinute: creditsUsed(), perMinute: CREDITS_PER_MIN, reservedForUsers: USER_RESERVE,
       dailyQuotaOut: dailyQuotaOut(), dailyQuotaMsg,
+      finnhubUsedLastMinute: finnhubUsed(), finnhubPerMinute: FINNHUB_PER_MIN,
       rankedScanned: rankedStore.rows.length, rankedUniverse: RANKED_UNIVERSE.length, rankedRunning: rankedStore.running },
   });
 }
@@ -914,11 +915,59 @@ function demoQuote(sym) {
   // Marked, so a generated price can never be reported as a real one.
   return { symbol: sym, price, change: price - prev, changePct: prev ? ((price - prev) / prev) * 100 : 0, demo: true };
 }
+// ---- Plain quotes: Finnhub first ----
+// Twelve Data bills a quote per symbol out of the same small allowance the
+// charts need, and the Markets page alone asks for sixteen. Finnhub's free
+// tier allows about sixty calls a minute with no daily cap, and its quote
+// endpoint is free (its candles are not, which is why charts stay on Twelve
+// Data). Moving quotes here leaves the daily budget for the charts.
+//
+// Finnhub answers one symbol per request, so a set costs one call each — still
+// far cheaper against a 60/min limit than against 8/min shared with charts.
+const FINNHUB_PER_MIN = Number(process.env.FINNHUB_PER_MIN || 55);
+let finnhubLog = [];
+function finnhubUsed() {
+  const cut = Date.now() - 60000;
+  if (finnhubLog.length && finnhubLog[0] <= cut) finnhubLog = finnhubLog.filter(t => t > cut);
+  return finnhubLog.length;
+}
+function finnhubSpend(n) { const now = Date.now(); for (let i = 0; i < n; i++) finnhubLog.push(now); }
+
+async function fetchQuoteFinnhub(symbol) {
+  const path = `/api/v1/quote?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_API_KEY}`;
+  const { json: j } = await httpsJson({ method: 'GET', hostname: 'finnhub.io', path });
+  // Finnhub answers an unknown symbol with zeroes rather than an error.
+  if (!j || j.c == null || Number(j.c) === 0) return null;
+  const price = Number(j.c), prev = Number(j.pc) || price;
+  return {
+    symbol, price,
+    change: j.d != null ? Number(j.d) : price - prev,
+    changePct: j.dp != null ? Number(j.dp) : (prev ? ((price - prev) / prev) * 100 : 0),
+  };
+}
+
+async function fetchQuotesFinnhub(symbols) {
+  if (finnhubUsed() + symbols.length > FINNHUB_PER_MIN) return null;   // fall through
+  finnhubSpend(symbols.length);
+  const rows = await Promise.all(symbols.map(s => fetchQuoteFinnhub(s).catch(() => null)));
+  // A partial answer is not worth having here: the caller would silently show
+  // some real prices beside demo ones. Either Finnhub covered the set or it did
+  // not, and the Twelve Data path takes over.
+  return rows.every(Boolean) ? rows : null;
+}
+
 function fetchQuotes(symbols) {
-  if (!STOCK_API_KEY) return Promise.resolve(symbols.map(demoQuote));
+  if (!STOCK_API_KEY && !FINNHUB_API_KEY) return Promise.resolve(symbols.map(demoQuote));
   // Matches the client's live-quote poll, so polling costs one upstream call
   // per symbol set per interval no matter how many tabs are open.
-  return cached(`quotes:${symbols.join(',')}`, 10000, () => fetchQuotesUncached(symbols));
+  return cached(`quotes:${symbols.join(',')}`, 10000, async () => {
+    if (FINNHUB_API_KEY) {
+      try { const r = await fetchQuotesFinnhub(symbols); if (r) return r; }
+      catch (e) { logError(e); }
+    }
+    if (!STOCK_API_KEY) return symbols.map(demoQuote);
+    return fetchQuotesUncached(symbols);
+  });
 }
 async function fetchQuotesUncached(symbols) {
   try {
