@@ -791,7 +791,8 @@ async function handleCompare(req, res, raw) {
 function demoQuote(sym) {
   const c = I.demoCandles(sym, OUTPUTSIZE['1day']);
   const price = c[c.length - 1].c, prev = c[c.length - 2].c;
-  return { symbol: sym, price, change: price - prev, changePct: prev ? ((price - prev) / prev) * 100 : 0 };
+  // Marked, so a generated price can never be reported as a real one.
+  return { symbol: sym, price, change: price - prev, changePct: prev ? ((price - prev) / prev) * 100 : 0, demo: true };
 }
 function fetchQuotes(symbols) {
   if (!STOCK_API_KEY) return Promise.resolve(symbols.map(demoQuote));
@@ -908,7 +909,12 @@ async function handleMovers(req, res) {
 async function handleQuotes(req, res, raw) {
   const symbols = String(raw || '').toUpperCase().split(',').map(s => s.replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16)).filter(Boolean).slice(0, 24);
   if (!symbols.length) return json(res, 400, { error: 'No symbols.' });
-  return json(res, 200, { quotes: await fetchQuotes(symbols), source: STOCK_API_KEY ? 'live' : 'demo' });
+  // Source described whether a key was configured, not whether the prices came
+  // back — so when the provider failed and every quote fell back to generated
+  // data, the Markets page labelled invented numbers "live".
+  const quotes = await fetchQuotes(symbols);
+  const anyDemo = quotes.some(q => q && q.demo);
+  return json(res, 200, { quotes, source: anyDemo ? 'demo' : 'live' });
 }
 
 // ---- Price alerts ----
