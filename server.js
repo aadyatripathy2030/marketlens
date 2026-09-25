@@ -1028,7 +1028,8 @@ const VIEW_SEO = {
     desc: 'Eleven short lessons covering market basics, technical and fundamental analysis, valuation, financial statements, risk management, dividends, growth, value and options — each with a quiz.' },
   'settings': { view: 'settings', title: 'Settings — simple or advanced view — ChartGauge',
     desc: 'Choose how much of the analysis to show: the chart and exit levels only, or every indicator and written summary.' },
-  'pricing': { view: 'pricing', title: 'Plans — ChartGauge', desc: 'Every feature is free. Pro exists so people who find ChartGauge useful can help cover the data and model costs.' },
+  'pricing': { view: 'pricing', title: 'Plans and billing — ChartGauge',
+    desc: 'What a free ChartGauge account includes, what Pro adds, and what each billing period costs per month. Charts, indicators, stop-loss and take-profit levels and the measured base rate are free on any account.' },
   'chat': { view: 'chat', title: 'Ask Claude about a stock or the market — ChartGauge',
     desc: 'Ask questions about a ticker or a market concept and get a plain-English answer grounded in live prices.' },
 };
