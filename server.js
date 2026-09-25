@@ -137,6 +137,37 @@ if (sweep.unref) sweep.unref();
 // Intraday bars move constantly; daily and above do not.
 const barsTtl = (interval) => /min|^1h$|^4h$/.test(String(interval)) ? 30000 : 120000;
 
+// ---- Upstream credit budget ----
+// Twelve Data bills one credit per symbol per request and the plan allows a
+// small number each minute across the whole app. Background work — the ranked
+// home panel walking twenty symbols — was spending most of that, so a visitor
+// asking for a chart got "rate-limited" while nothing was visibly happening.
+//
+// One ledger now covers every upstream call. Requests a person is waiting on
+// spend freely; background work waits until there is headroom above a reserve
+// kept for them, so it can only ever use what is spare.
+const CREDITS_PER_MIN = Number(process.env.DATA_CREDITS_PER_MIN || 8);
+const USER_RESERVE = Number(process.env.DATA_USER_RESERVE || 5);
+let creditLog = [];
+function creditsUsed() {
+  const cut = Date.now() - 60000;
+  if (creditLog.length && creditLog[0] <= cut) creditLog = creditLog.filter(t => t > cut);
+  return creditLog.length;
+}
+function spendCredits(n) { const now = Date.now(); for (let i = 0; i < Math.max(1, n); i++) creditLog.push(now); }
+const creditsFree = () => Math.max(0, CREDITS_PER_MIN - creditsUsed());
+
+// Resolves once the background task may spend `n` without eating into the
+// reserve. Gives up after the timeout so a busy period cannot wedge it.
+async function awaitSpareCredits(n, timeoutMs) {
+  const until = Date.now() + (timeoutMs || 120000);
+  while (Date.now() < until) {
+    if (creditsUsed() + n <= CREDITS_PER_MIN - USER_RESERVE) return true;
+    await new Promise(r => setTimeout(r, 4000));
+  }
+  return false;
+}
+
 // ---- Market data ----
 async function fetchLive(symbol, interval, sizeOverride) {
   const size0 = sizeOverride || OUTPUTSIZE[interval] || 1300;
@@ -146,6 +177,7 @@ async function fetchLive(symbol, interval, sizeOverride) {
 async function fetchLiveUncached(symbol, interval, sizeOverride) {
   // Twelve Data: /time_series?symbol=AAPL&interval=1day&outputsize=N&apikey=KEY
   const size = sizeOverride || OUTPUTSIZE[interval] || 1300;
+  spendCredits(1);
   const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${size}&apikey=${STOCK_API_KEY}`;
   const { json: j } = await httpsJson({ method: 'GET', hostname: 'api.twelvedata.com',
     path: url.replace('https://api.twelvedata.com', '') });
@@ -666,6 +698,8 @@ async function handleAdmin(req, res) {
     errors: errorLog.slice(-25).reverse(),
     store: db.storeMode(),
     services: { prices: !!STOCK_API_KEY, ai: !!ANTHROPIC_API_KEY, fundamentals: !!FMP_API_KEY, news: !!FINNHUB_API_KEY, analytics: !!GA_ID },
+    credits: { usedLastMinute: creditsUsed(), perMinute: CREDITS_PER_MIN, reservedForUsers: USER_RESERVE,
+      rankedScanned: rankedStore.rows.length, rankedUniverse: RANKED_UNIVERSE.length, rankedRunning: rankedStore.running },
   });
 }
 
@@ -868,6 +902,7 @@ function fetchQuotes(symbols) {
 }
 async function fetchQuotesUncached(symbols) {
   try {
+    spendCredits(symbols.length);   // a batch costs one credit per symbol
     const path = `/quote?symbol=${encodeURIComponent(symbols.join(','))}&apikey=${STOCK_API_KEY}`;
     const { json: j } = await httpsJson({ method: 'GET', hostname: 'api.twelvedata.com', path });
     return symbols.map(s => {
@@ -896,7 +931,8 @@ const RANKED_UNIVERSE = (process.env.RANKED_SYMBOLS ||
 // minute, so it cannot happen inside a request. A background pass walks the
 // list slowly and keeps a store; requests answer from the store immediately,
 // with however much has been gathered so far.
-const RANKED_GAP_MS = Number(process.env.RANKED_GAP_MS || 9000);   // ~6.6/min
+// No fixed gap any more — the pass waits for spare credits instead, so its
+// pace follows how busy the site is rather than a guess made in advance.
 const RANKED_REFRESH_MS = Number(process.env.RANKED_REFRESH_MS || 1800000);
 const rankedStore = { rows: [], asOf: 0, running: false, lastStart: 0 };
 
@@ -923,6 +959,10 @@ async function refreshRanked() {
   const gathered = [];
   try {
     for (const sym of RANKED_UNIVERSE) {
+      // Yields to anyone actually waiting on a chart. If the site stays busy
+      // for two minutes the pass stops early and keeps what it has — a partial
+      // panel is fine, a rate-limited visitor is not.
+      if (!await awaitSpareCredits(1)) break;
       try {
         const row = await rateOne(sym);
         if (row) {
@@ -933,7 +973,6 @@ async function refreshRanked() {
           rankedStore.asOf = Date.now();
         }
       } catch (e) { /* one symbol is not the panel */ }
-      await new Promise(r => setTimeout(r, RANKED_GAP_MS));
     }
   } finally { rankedStore.running = false; }
 }
@@ -988,6 +1027,7 @@ const MOVERS_UNIVERSE = (process.env.MOVERS_SYMBOLS || 'NVDA,TSLA,AAPL,AMD,COIN,
   .toUpperCase().split(',').map(x => x.trim()).filter(Boolean).slice(0, 8);
 
 async function fetchScanUncached(symbols) {
+  spendCredits(symbols.length);
   const path = `/quote?symbol=${encodeURIComponent(symbols.join(','))}&apikey=${STOCK_API_KEY}`;
   const { json: j } = await httpsJson({ method: 'GET', hostname: 'api.twelvedata.com', path });
   // The endpoint answers a single symbol with a bare object, several with one
@@ -1045,9 +1085,9 @@ async function handleMovers(req, res) {
       message: 'Live scanning needs a market-data key. Set STOCK_API_KEY to enable it.' });
   }
   try {
-    // 60s rather than 20s: the limit is per minute, so a shorter cache would
-    // spend the whole budget on this one panel.
-    const raw = await cached('movers:' + MOVERS_UNIVERSE.join(','), 60000,
+    // Three minutes, not one: this panel costs a credit per symbol and the
+    // budget is per minute, so a short cache spends most of it here.
+    const raw = await cached('movers:' + MOVERS_UNIVERSE.join(','), 180000,
       () => fetchScanUncached(MOVERS_UNIVERSE));
     const rows = scanRows(raw).slice(0, 12);
     // An empty parse is a failure, not an empty market. Saying "available" with
