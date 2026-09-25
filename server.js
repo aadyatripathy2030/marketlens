@@ -512,8 +512,8 @@ async function handleAnalyze(req, res) {
 
 // ---- Uploaded-chart analysis (Claude vision) ----
 async function callClaudeVision(base64, mediaType) {
-  const system = 'You are a cautious technical-analysis assistant reading a stock chart image. Describe what you see: overall trend, notable support/resistance levels, chart patterns, and what the visible momentum suggests. Then give a single mechanical lean — "Buy", "Sell", or "Hold/Neutral" — based ONLY on the visible price action, and explain why in one sentence. Be explicit that this is a mechanical read of one image, is frequently wrong, and is NOT financial advice. Keep it to 4-6 sentences. If the image is not a stock/price chart, say so instead.';
-  const user = 'Analyze this chart and give your read plus a Buy/Sell/Hold lean.';
+  const system = 'You are a cautious technical-analysis assistant reading a stock chart image. Describe what you see: overall trend, notable support/resistance levels, chart patterns, and what the visible momentum suggests. Then give a single mechanical read — "Bullish", "Bearish", or "Mixed" — describing what the visible price action looks like, NOT what the reader should do, based ONLY on the visible price action, and explain why in one sentence. Be explicit that this is a mechanical read of one image, is frequently wrong, and is NOT financial advice. Keep it to 4-6 sentences. If the image is not a stock/price chart, say so instead.';
+  const user = 'Analyze this chart and give your read plus a bullish / bearish / mixed description of what it shows.';
   const body = JSON.stringify({
     model: AI_MODEL, max_tokens: 500, system,
     messages: [{ role: 'user', content: [

@@ -152,13 +152,13 @@ function verdict(strategy, direction, fast, slow, r, slope, last) {
 
   if (dirOf(strategy, direction) === 'short') {
     // A negative score (downside expected) is the favourable case for a sell/short.
-    if (score <= -TH) return { action: 'Sell', strength, tone: 'bearish', score, rationale };
-    if (score >= TH) return { action: 'Avoid', strength: '', tone: 'neutral', score, rationale };
-    return { action: 'Wait', strength: '', tone: 'neutral', score, rationale };
+    if (score <= -TH) return { action: 'Bearish', strength, tone: 'bearish', score, rationale };
+    if (score >= TH) return { action: 'Against the trend', strength: '', tone: 'neutral', score, rationale };
+    return { action: 'No clear signal', strength: '', tone: 'neutral', score, rationale };
   }
-  if (score >= TH) return { action: 'Buy', strength, tone: 'bullish', score, rationale };
-  if (score <= -TH) return { action: 'Sell', strength, tone: 'bearish', score, rationale };
-  return { action: 'Hold', strength: '', tone: 'neutral', score, rationale };
+  if (score >= TH) return { action: 'Bullish', strength, tone: 'bullish', score, rationale };
+  if (score <= -TH) return { action: 'Bearish', strength, tone: 'bearish', score, rationale };
+  return { action: 'Mixed', strength: '', tone: 'neutral', score, rationale };
 }
 
 function analyze(closes, strategy, direction) {
@@ -379,7 +379,12 @@ function overallRating(rep) {
 
   // Thresholds calibrated so the labels actually partition: the old scale
   // returned Strong Buy on 30% of all bars, which tells a reader nothing.
-  const label = score >= 72 ? 'Strong Buy' : score >= 58 ? 'Buy' : score >= 42 ? 'Hold' : score >= 28 ? 'Sell' : 'Strong Sell';
+  // Named for what the score measures, not for what to do about it. Across
+  // 36,524 observations in 2026-09, and 7,870 more on current code in 2026-09,
+  // this score showed no relationship with forward returns — "Strong Buy"
+  // preceded below-average returns at both horizons tested. It does reliably
+  // describe how aligned the indicators are, so that is what it now says.
+  const label = score >= 72 ? 'Strongly bullish' : score >= 58 ? 'Bullish' : score >= 42 ? 'Mixed' : score >= 28 ? 'Bearish' : 'Strongly bearish';
   const tone = score >= 58 ? 'bullish' : score <= 41 ? 'bearish' : 'neutral';
 
   // Agreement is now a countable fact — how many of the independent groups
