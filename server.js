@@ -26,7 +26,11 @@ const AI_MODEL = (process.env.ANTHROPIC_MODEL || 'claude-opus-4-8').trim();
 const AI_MODEL_FREE = (process.env.ANTHROPIC_MODEL_FREE || 'claude-haiku-4-5').trim();
 const FMP_API_KEY = (process.env.FMP_API_KEY || '').replace(/\s/g, ''); // Financial Modeling Prep — fundamentals
 const FINNHUB_API_KEY = (process.env.FINNHUB_API_KEY || '').replace(/\s/g, ''); // Finnhub — company news and plain quotes
-const GA_ID = (process.env.GA_MEASUREMENT_ID || 'G-4GG1NXEE2E').trim();         // Google Analytics 4 (public Measurement ID; env can override)
+// Google Analytics 4 measurement id. No default on purpose: a hard-coded one
+// meant that if the env var were ever missing the site would quietly report to
+// a property nobody here can open. Unset means analytics simply does not load,
+// which is the safe way round.
+const GA_ID = (process.env.GA_MEASUREMENT_ID || '').trim();
 const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || '').replace(/\s/g, '');       // sk_...
 const STRIPE_WEBHOOK_SECRET = (process.env.STRIPE_WEBHOOK_SECRET || '').replace(/\s/g, ''); // whsec_...
 // Pro price IDs per billing period (weekly / monthly / yearly). STRIPE_PRICE_ID stays as a monthly fallback.
