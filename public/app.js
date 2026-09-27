@@ -567,7 +567,6 @@
   const DESTINATIONS = [
     { v: 'home',      t: 'Home',      d: 'Look up any ticker, and see where the major indices sit today.' },
     { v: 'analyze',   t: 'Analyze',   d: 'The full read on one symbol: candlestick chart, thirteen indicators, exit levels and the measured base rate.' },
-    { v: 'chat',      t: 'Ask Claude', d: 'Ask about a ticker or a market idea and get a plain-English answer grounded in live prices.' },
     { v: 'compare',   t: 'Compare',   d: 'Put two or more companies side by side on valuation, margins, growth and debt.' },
     { v: 'screener',  t: 'Screener',  d: 'Filter a curated list of stocks by sector, market capitalisation and price.' },
     { v: 'markets',   t: 'Markets',   d: 'Live quotes for the major US indices and the most active stocks.' },
@@ -1425,7 +1424,7 @@
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
   let currentView = 'home';
-  const VIEWS = ['home', 'analyze', 'chat', 'compare', 'screener', 'markets', 'movers', 'accuracy', 'watchlist', 'alerts', 'learn', 'settings', 'pricing', 'admin', 'legal'];
+  const VIEWS = ['home', 'analyze', 'compare', 'screener', 'markets', 'movers', 'accuracy', 'watchlist', 'alerts', 'learn', 'settings', 'pricing', 'admin', 'legal'];
   const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact'];
   // Each view has a real URL now, so navigation updates the address bar and
   // the back button works. pushUrl is skipped when we are *reacting* to a URL
@@ -1457,7 +1456,6 @@
     if (name === 'settings') renderSettings();
     if (name === 'watchlist') renderWatchView();
     if (name === 'home') { loadHomeSnapshot(); loadRanked(); }
-    if (name === 'chat') { renderChat(); renderChatSuggest(); $('chatInput').focus(); }
     if (name === 'learn') renderLearnGrid();
     if (name === 'compare') { renderCompareChips(); if (compareSymbols.length >= 2 && !$('compareResult').innerHTML) loadCompare(); }
     if (name === 'screener' && !$('screenResult').innerHTML) loadScreen();
@@ -1594,55 +1592,6 @@
     bindQuoteCards($('wvGrid'));
   }
 
-  // ---- AI Analyst chat ----
-  const chatHistory = [];
-  const CHAT_SUGGEST = ['Should I buy Apple?', 'Compare NVDA vs AMD', 'Explain RSI simply', 'Why can a stock fall on good earnings?'];
-  function renderChatSuggest() {
-    $('chatSuggest').innerHTML = chatHistory.length ? '' : CHAT_SUGGEST.map(s => `<button type="button" class="chat-chip">${esc(s)}</button>`).join('');
-    $('chatSuggest').querySelectorAll('.chat-chip').forEach(b => b.addEventListener('click', () => { $('chatInput').value = b.textContent; sendChat(); }));
-  }
-  function renderChat() {
-    const el = $('chatMsgs');
-    if (!chatHistory.length) { el.innerHTML = `<div class="chat-empty">Claude sees the live quote for any ticker you name here, and the stock you last analyzed. Nothing else from your account is sent.</div>`; return; }
-    el.innerHTML = chatHistory.map(m => `<div class="bubble ${m.role === 'user' ? 'user' : 'ai'}${m.thinking ? ' thinking' : ''}">${esc(m.content)}</div>`).join('');
-    el.scrollTop = el.scrollHeight;
-  }
-  function chatContext() {
-    const d = lastData; if (!d) return '';
-    const r = d.rating || {}, t = d.tech || {};
-    return `The user is currently viewing ${d.symbol} at ${(+d.latest).toFixed(2)} ${d.currency} (${d.changePct.toFixed(2)}% today). ChartGauge indicator score ${r.score}/100 = "${r.label}", ${r.agreeing}/${r.groupCount} indicator groups agreeing, risk ${r.risk}. RSI ${t.rsi14}, trend ${t.trend ? t.trend.strength + '/100 ' + t.trend.direction : 'n/a'}.`;
-  }
-  async function sendChat() {
-    const text = $('chatInput').value.trim();
-    if (!text) return;
-    $('chatInput').value = '';
-    chatHistory.push({ role: 'user', content: text });
-    if (chatHistory.length > 200) chatHistory.splice(0, chatHistory.length - 200);  // bound memory
-    const pending = { role: 'assistant', content: 'Thinking…', thinking: true };
-    chatHistory.push(pending);
-    renderChatSuggest(); renderChat();
-    $('chatSend').disabled = true;
-    try {
-      // The server keeps only the last 12 messages, so sending more just wastes
-      // bandwidth — and a long enough session would exceed its 2MB body cap and
-      // be dropped outright. Send the same window it will actually use.
-      const payload = {
-        messages: chatHistory.filter(m => !m.thinking).slice(-12).map(m => ({ role: m.role, content: String(m.content).slice(0, 4000) })),
-        context: chatContext(),
-      };
-      const j = await (await fetchTimeout('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }, 60000)).json();
-      pending.content = isProGate(j) ? (j.message + '\n\nOpen Plans from the menu to subscribe.') : (j.reply || 'No response.');
-      pending.thinking = false;
-    } catch (e) {
-      pending.content = e && e.name === 'AbortError'
-        ? 'That took too long to come back — the server may have been asleep. Ask again.'
-        : 'Something went wrong reaching Claude. Please try again.';
-      pending.thinking = false;
-    }
-    finally { $('chatSend').disabled = false; renderChat(); }
-  }
-  $('chatForm').addEventListener('submit', (e) => { e.preventDefault(); sendChat(); });
-
   // ---- Compare ----
   let compareSymbols = ['NVDA', 'AMD'];
   const CMP_ROWS = ['Market cap', 'Revenue (TTM)', 'P/E', 'PEG', 'Net margin', 'Gross margin', 'ROE', 'Debt / Equity', 'Dividend yield', 'Beta'];
@@ -1764,7 +1713,7 @@
   // What the daily allowance becomes once the launch period ends. The server
   // reports null while everything is open, so this cannot be read from limits.
   const AI_FALLBACK_N = 3;
-  const PRICING_LEAD_AFTER = 'The chart, every indicator, the stop-loss and take-profit levels and the measured base rate are free for everyone with an account. Pro adds the parts that cost money to run each time: unlimited written reports, Ask Claude, chart-image reading, the screener and side-by-side compare, and more take-profit levels.';
+  const PRICING_LEAD_AFTER = 'The chart, every indicator, the stop-loss and take-profit levels and the measured base rate are free for everyone with an account. Pro adds the parts that cost money to run each time: unlimited written reports, chart-image reading, the screener and side-by-side compare, and more take-profit levels.';
   function renderPricing() {
     const pro = !!(currentUser && currentUser.plan === 'pro');
     const li = (arr) => arr.map(([t, on]) => `<li class="${on ? '' : 'off'}">${esc(t)}</li>`).join('');
@@ -1785,7 +1734,6 @@
       ['Every lesson', 1],
       // Open right now, but saying so without saying they change would be the
       // kind of small dishonesty people notice on the day it changes.
-      ['Ask Claude' + (launch.free ? ` — Pro from ${launchDateAfter()}` : ''), launch.free ? 1 : 0],
       ['Chart-image reading' + (launch.free ? ` — Pro from ${launchDateAfter()}` : ''), launch.free ? 1 : 0],
       ['Screener and side-by-side compare' + (launch.free ? ` — Pro from ${launchDateAfter()}` : ''), launch.free ? 1 : 0],
     ];
@@ -1832,7 +1780,7 @@
     $('pricingLead').innerHTML = launch.free
       ? `<strong>Everything is free for everyone through ${esc(launchDate())}.</strong> `
         + `Every feature listed below is open on a free account until then — no subscription, no daily limits. `
-        + `From ${esc(launchDateAfter())}, unlimited written reports, Ask Claude, chart-image reading, the screener, `
+        + `From ${esc(launchDateAfter())}, unlimited written reports, chart-image reading, the screener, `
         + `side-by-side compare and extra take-profit levels become part of Pro. The chart, every indicator, the `
         + `stop-loss and take-profit levels and the measured base rate stay free after that date too.`
       : PRICING_LEAD_AFTER;
@@ -2014,7 +1962,7 @@
     const until = new Date(launch.lastFree || launch.until)
       .toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' });
     $('launchText').innerHTML = `<b>Everything is free until ${esc(until)}</b> &mdash; ${esc(left)}. `
-      + `After that, written reports, Ask Claude, chart reading, the screener and compare become part of Pro.`;
+      + `After that, written reports, chart reading, the screener and compare become part of Pro.`;
     bar.classList.remove('hidden');
   }
   if ($('launchClose')) $('launchClose').addEventListener('click', () => {
@@ -2116,10 +2064,9 @@
       + ` ${esc(l.level)} · ${l.minutes} min read · ${l.quiz.length} question quiz</div>`;
     html += l.sections.map(s => `<div class="learn-section"><h3>${esc(s.h)}</h3><p>${esc(s.p)}</p></div>`).join('');
     html += `<div class="card quiz" id="quiz"></div>`;
-    html += `<button type="button" class="btn btn-ai learn-ask" id="learnAsk">Ask Claude about this lesson</button></div>`;
+    html += `</div>`;
     $('learnHost').innerHTML = html;
     $('learnBack').addEventListener('click', renderLearnGrid);
-    $('learnAsk').addEventListener('click', () => { showView('chat'); $('chatInput').value = `Explain "${l.title}" simply, with an example.`; sendChat(); });
     renderQuiz(l);
   }
   function renderQuiz(l) {

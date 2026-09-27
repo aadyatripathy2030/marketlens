@@ -680,7 +680,7 @@ async function currentUser(req) { return db.getSessionUser(parseCookies(req).ses
 
 // ---- plan gating ----
 // Pro covers the features that cost money every time they run: the written
-// reports, the chat, reading an uploaded chart, and the screener and compare
+// reports, reading an uploaded chart, and the screener and compare
 // pages (which fan out into dozens of price-API calls). Everything that is
 // pure computation on data already fetched — the chart, every indicator, the
 // levels, the measured base rate, the lessons — stays free for everyone,
@@ -966,51 +966,6 @@ async function handleWatchlist(req, res) {
     await db.addWatch(user.id, symbol);
   }
   return json(res, 200, { symbols: await db.listWatch(user.id) });
-}
-
-// ---- AI Analyst chat (grounded with live quotes for mentioned tickers) ----
-const KNOWN_TICKERS = new Set(('AAPL MSFT GOOGL GOOG AMZN NVDA META TSLA BRK.B JPM V MA UNH HD PG JNJ XOM CVX KO PEP BAC WMT DIS NFLX ADBE CRM ORCL INTC AMD QCOM CSCO IBM TXN AVGO MU PYPL SHOP UBER ABNB COIN PLTR SNOW BABA NKE SBUX MCD T VZ TMUS F GM BA CAT GE MMM HON UPS FDX LMT RTX GS MS WFC C AXP BLK NOW INTU AMAT LRCX ASML ARM MRVL SMCI DELL DDOG NET CRWD PANW ABT PFE MRK LLY TMO BMY AMGN GILD CVS COST TGT LOW CMCSA SPY QQQ DIA IWM VTI VOO').split(' '));
-const NAME_TO_TICKER = { apple: 'AAPL', tesla: 'TSLA', nvidia: 'NVDA', microsoft: 'MSFT', amazon: 'AMZN', google: 'GOOGL', alphabet: 'GOOGL', meta: 'META', facebook: 'META', netflix: 'NFLX', 'coca cola': 'KO', disney: 'DIS', walmart: 'WMT', nike: 'NKE', starbucks: 'SBUX', boeing: 'BA', coinbase: 'COIN', palantir: 'PLTR', broadcom: 'AVGO', servicenow: 'NOW' };
-// Common all-caps words that are also tickers but rarely meant as such.
-const TICKER_STOP = new Set('AI US USA CEO IPO ETF SEC EPS RSI PE EV OK TV NOW ALL ON OR SO BY GO AT IS IT AM PM AN AS BE DO IF IN NO OF TO UP WE ALL A I'.split(' '));
-function extractTickers(text) {
-  const found = new Set();
-  const t = String(text || '');
-  // Only tokens already UPPERCASE in the source (that's how tickers are written).
-  (t.match(/\b[A-Z]{1,5}(?:\.[A-Z])?\b/g) || []).forEach(w => { if (KNOWN_TICKERS.has(w) && !TICKER_STOP.has(w)) found.add(w); });
-  const low = t.toLowerCase();
-  for (const [name, sym] of Object.entries(NAME_TO_TICKER)) if (low.includes(name)) found.add(sym);
-  return [...found].slice(0, 4);
-}
-async function handleChat(req, res) {
-  const { pro } = await plan(req);
-  if (!pro) return json(res, 402, PRO_ONLY('Ask Claude'));
-  const b = await readBody(req, 2e6);
-  const msgs = (Array.isArray(b.messages) ? b.messages : [])
-    .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
-    .slice(-12).map(m => ({ role: m.role, content: m.content.slice(0, 4000) }));
-  if (!msgs.length) return json(res, 400, { error: 'No message.' });
-  if (!ANTHROPIC_API_KEY) return json(res, 200, { reply: 'Chat needs a Claude key (ANTHROPIC_API_KEY) set on the server. Everything else works without one.', source: 'none' });
-
-  const lastUser = [...msgs].reverse().find(m => m.role === 'user');
-  const tickers = extractTickers(lastUser && lastUser.content);
-  let liveCtx = b.context ? String(b.context).slice(0, 600) : '';
-  if (tickers.length) {
-    try {
-      const qs = await fetchQuotes(tickers);
-      liveCtx += ' Live quotes — ' + qs.map(q => `${q.symbol} $${(+q.price).toFixed(2)} (${q.changePct >= 0 ? '+' : ''}${q.changePct.toFixed(2)}%)`).join(', ') + '.';
-    } catch {}
-  }
-  const system = 'You are the analyst chat inside ChartGauge, a stock-charting tool — a friendly finance assistant for beginners and enthusiasts. Discuss stocks, markets, and investing concepts in clear plain English; explain what indicators or ratings suggest, compare companies, and lay out balanced bull/bear cases. Use any LIVE DATA provided. ALWAYS stay balanced, note uncertainty, and be explicit that this is educational information, NOT personalized financial advice — never tell the user what they personally should do with their money, and never promise returns. Keep replies concise: a short paragraph or a few tight bullets.'
-    + (liveCtx ? ('\n\nLIVE DATA (as of now): ' + liveCtx) : '');
-  const body = JSON.stringify({ model: AI_MODEL, max_tokens: 800, system, messages: msgs });
-  try {
-    const { json: j } = await httpsJson({ method: 'POST', hostname: 'api.anthropic.com', path: '/v1/messages',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) } }, body);
-    const text = j && j.content && j.content[0] && j.content[0].text;
-    if (!text) throw new Error(j && j.error ? (j.error.message || 'AI error') : 'No AI response');
-    return json(res, 200, { reply: text.trim(), source: 'ai', grounded: tickers });
-  } catch (e) { return json(res, 200, { reply: 'I hit an error reaching Claude (' + e.message + '). Try again.', source: 'error' }); }
 }
 
 // ---- Fundamentals + news (Financial Modeling Prep) ----
@@ -1643,8 +1598,6 @@ const VIEW_SEO = {
     desc: 'A live scan of the most active US stocks ranked by unusual volume, the size of the move and where price sits in the day range. A description of what is happening, not a prediction of what happens next.' },
   'pricing': { view: 'pricing', title: 'Plans and billing — ChartGauge',
     desc: 'What a free ChartGauge account includes, what Pro adds, and what each billing period costs per month. Charts, indicators, stop-loss and take-profit levels and the measured base rate are free on any account.' },
-  'chat': { view: 'chat', title: 'Ask Claude about a stock or the market — ChartGauge',
-    desc: 'Ask questions about a ticker or a market concept and get a plain-English answer grounded in live prices.' },
 };
 
 function lessonSeo(id) {
@@ -1790,7 +1743,7 @@ const GA_SNIPPET = (GA_ID ? `<meta name="ga-id" content="${esc(GA_ID)}">` : '')
 // 'admin' is routable so the operator can open /admin directly, but it is
 // absent from VIEW_SEO, so it never reaches the sitemap, and robots.txt
 // disallows it. The page itself is guarded server-side regardless.
-const APP_PATH = /^\/(analyze|markets|movers|accuracy|compare|screener|alerts|watchlist|learn|settings|pricing|chat|terms|privacy|refunds|contact|admin)(\/|$)|^\/stock\//;
+const APP_PATH = /^\/(analyze|markets|movers|accuracy|compare|screener|alerts|watchlist|learn|settings|pricing|terms|privacy|refunds|contact|admin)(\/|$)|^\/stock\//;
 
 function serveDocument(req, res, urlPath) {
   const origin = siteOrigin(req);
@@ -1960,7 +1913,7 @@ const server = http.createServer(async (req, res) => {
     // Everything that returns market data, in one list. Auth, billing, robots
     // and the sitemap are deliberately absent: sign-in has to work before you
     // are signed in, and crawlers must still reach the documents.
-    if (/^\/api\/(stock|quotes|fundamentals|analyze|analyze-stream|analyze-image|chat|compare|screen|watchlist|alerts|movers|ranked)\b/.test(url)) {
+    if (/^\/api\/(stock|quotes|fundamentals|analyze|analyze-stream|analyze-image|compare|screen|watchlist|alerts|movers|ranked)\b/.test(url)) {
       if (await requireAccount(req, res)) return;
     }
     if (url === '/api/admin' && req.method === 'GET') return await handleAdmin(req, res);
@@ -1983,7 +1936,6 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/movers' && req.method === 'GET') return await handleMovers(req, res);
     if (url === '/api/ranked' && req.method === 'GET') return await handleRanked(req, res);
     if (url === '/api/accuracy' && req.method === 'GET') return await handleAccuracy(req, res);
-    if (url === '/api/chat' && req.method === 'POST') return await handleChat(req, res);
     if (url === '/api/fundamentals' && req.method === 'GET') return await handleFundamentals(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbol'));
     if (url === '/api/compare' && req.method === 'GET') return await handleCompare(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));
     if (url === '/api/alerts') return await handleAlerts(req, res);
