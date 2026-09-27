@@ -45,6 +45,9 @@
 </div>
 
 <header class="topbar">
+  <button type="button" class="nav-toggle" id="navToggle" aria-label="Show or hide the menu" aria-expanded="true">
+    <span></span><span></span><span></span>
+  </button>
   <a class="brand" data-view="home">ChartGauge</a>
   <nav class="nav" id="nav">
     <a class="nav-link active" data-view="home">Home</a>
@@ -388,17 +391,13 @@
   <!-- SETTINGS -->
   <section class="view hidden" id="view-settings">
     <h1 class="view-h">Settings</h1>
-    <p class="learn-lead">How much of the analysis to show. This only changes what is displayed — the numbers behind it are the same either way.</p>
-    <div class="mode-opts" id="modeOpts">
-      <button type="button" class="mode-opt" data-mode="simple">
-        <span class="mode-name">Simple</span>
-        <span class="mode-desc">The candlestick chart, and where the stop loss and take-profit levels sit. Nothing else.</span>
-      </button>
-      <button type="button" class="mode-opt" data-mode="advanced">
-        <span class="mode-name">Advanced</span>
-        <span class="mode-desc">Everything: indicator score, all 13 technical readings, price projection, the written summary, bull and bear case, fundamentals and news.</span>
-      </button>
+    <p class="learn-lead">Turn any part of the analysis on or off. This only changes what is shown &mdash; the numbers behind it are computed the same either way, and nothing here is sent to the server.</p>
+    <div class="set-bar">
+      <button type="button" class="btn btn-ghost" id="setAllOn">Turn everything on</button>
+      <button type="button" class="btn btn-ghost" id="setAllOff">Chart only</button>
+      <button type="button" class="btn btn-ghost" id="setReset">Reset to defaults</button>
     </div>
+    <div id="settingsHost"></div>
   </section>
 
   <!-- LEGAL (terms / privacy / refunds / contact — server-rendered) -->

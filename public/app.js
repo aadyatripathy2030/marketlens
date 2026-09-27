@@ -309,29 +309,81 @@
 
   // Display mode. Simple keeps the chart and the exit levels and hides the rest;
   // it changes what is rendered, never what is computed.
-  const MODE_KEY = 'chartgauge_mode';
-  let uiMode = 'advanced';
-  try { if (localStorage.getItem(MODE_KEY) === 'simple') uiMode = 'simple'; } catch (e) {}
-  function applyMode() {
-    document.body.classList.toggle('mode-simple', uiMode === 'simple');
-    // In simple mode the levels are the point, so draw them on the chart; the
-    // overlay pills that would normally toggle them are hidden.
-    if (uiMode === 'simple') { show.levels = true; show.fast = false; show.slow = false; show.proj = false; }
-    document.querySelectorAll('#modeOpts .mode-opt').forEach(b => b.classList.toggle('active', b.dataset.mode === uiMode));
-    if (typeof drawChart === 'function' && lastData) drawChart();
+  // ---- Display preferences ----
+  // Replaces the old Simple/Advanced pair. Two presets could never match what
+  // any particular reader wanted; these are the same switches, individually.
+  const PREFS_KEY = 'chartgauge_prefs';
+  const PREF_DEFS = [
+    { k: 'baserate',     on: true,  sel: '.edge-line',      name: 'Measured base rate',
+      desc: 'What actually happened, historically, at scores like today’s on this symbol.' },
+    { k: 'score',        on: true,  sel: '.ai-score-card',  name: 'Indicator score',
+      desc: 'The 0–100 composite and its bullish / bearish reading.' },
+    { k: 'reason',       on: true,  sel: '.reason',         name: 'One-line summary',
+      desc: 'The sentence under the price that sums up the read.' },
+    { k: 'levels',       on: true,  sel: '#levelsCard',     name: 'Stop loss and take profit',
+      desc: 'Exit levels derived from ATR and recent swing highs and lows.' },
+    { k: 'tiles',        on: true,  sel: '.tiles',          name: 'Key figures',
+      desc: 'The row of headline numbers above the indicator grid.' },
+    { k: 'tech',         on: true,  sel: '#techCard',       name: 'Technical readings',
+      desc: 'All thirteen indicators in a grid, each in plain English.' },
+    { k: 'projection',   on: true,  sel: '#bandsCard',      name: 'Price projection',
+      desc: 'The forecast cone. It is a volatility band, not a prediction.' },
+    { k: 'thesis',       on: true,  sel: '#thesisCard',     name: 'Bull and bear case',
+      desc: 'The strongest points either way, drawn from the indicators.' },
+    { k: 'fundamentals', on: true,  sel: '#fundCard',       name: 'Fundamentals',
+      desc: 'Revenue, margins, valuation ratios and company profile.' },
+    { k: 'news',         on: true,  sel: '#newsCard',       name: 'News',
+      desc: 'Recent headlines for the symbol.' },
+    { k: 'summary',      on: true,  sel: '.ai-card:not(.upload-card)', name: 'Written summary',
+      desc: 'The paragraph describing what the indicators say.' },
+    { k: 'upload',       on: true,  sel: '.upload-card',    name: 'Read a chart screenshot',
+      desc: 'Upload a chart image and have it read.' },
+    { k: 'overlays',     on: true,  sel: '#overlays',       name: 'Chart layer buttons',
+      desc: 'The Candles / SMA / Projection toggles above the chart.' },
+    { k: 'ranges',       on: true,  sel: '.tf-group',       name: 'Candle size and history',
+      desc: 'The interval and history buttons under the chart.' },
+  ];
+  let prefs = {};
+  PREF_DEFS.forEach(d => { prefs[d.k] = d.on; });
+  try {
+    const saved = JSON.parse(localStorage.getItem(PREFS_KEY) || '{}');
+    PREF_DEFS.forEach(d => { if (typeof saved[d.k] === 'boolean') prefs[d.k] = saved[d.k]; });
+  } catch (e) {}
+  const savePrefs = () => { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch (e) {} };
+
+  function applyPrefs() {
+    PREF_DEFS.forEach(d => {
+      document.querySelectorAll(d.sel).forEach(el => el.classList.toggle('pref-off', !prefs[d.k]));
+    });
+    // With the whole right-hand column off, the grid should not leave a gap
+    // where it used to be.
+    const sideOff = !prefs.summary && !prefs.upload;
+    document.body.classList.toggle('no-sidebar', sideOff);
+    const side = document.querySelector('.sidebar');
+    if (side) side.classList.toggle('pref-off', sideOff);
   }
-  function setMode(m) {
-    uiMode = m === 'simple' ? 'simple' : 'advanced';
-    try { localStorage.setItem(MODE_KEY, uiMode); } catch (e) {}
-    if (uiMode === 'advanced') {                 // restore the default overlays
-      show.fast = true; show.slow = true; show.proj = true; show.levels = false;
-      document.querySelectorAll('#overlays .ov[data-k]').forEach(b => {
-        const k = b.dataset.k;
-        if (k === 'type') return;
-        b.classList.toggle('active', !!show[k]);
-      });
-    }
-    applyMode();
+
+  function renderSettings() {
+    const host = $('settingsHost');
+    if (!host) return;
+    host.innerHTML = PREF_DEFS.map(d =>
+      `<label class="set-row"><span class="set-text"><span class="set-name">${esc(d.name)}</span>`
+      + `<span class="set-desc">${esc(d.desc)}</span></span>`
+      + `<input type="checkbox" class="set-box" data-k="${d.k}"${prefs[d.k] ? ' checked' : ''} />`
+      + `<span class="set-switch" aria-hidden="true"></span></label>`).join('');
+    host.querySelectorAll('.set-box').forEach(b => b.addEventListener('change', () => {
+      prefs[b.dataset.k] = b.checked;
+      savePrefs(); applyPrefs();
+    }));
+  }
+
+  function setAllPrefs(on) {
+    PREF_DEFS.forEach(d => { prefs[d.k] = on; });
+    savePrefs(); applyPrefs(); renderSettings();
+  }
+  function resetPrefs() {
+    PREF_DEFS.forEach(d => { prefs[d.k] = d.on; });
+    savePrefs(); applyPrefs(); renderSettings();
   }
 
   // Axis gutters, TradingView-style: price scale down the right edge, time
@@ -493,8 +545,29 @@
     syncColorInputs(); drawChart();
   });
 
-  document.querySelectorAll('#modeOpts .mode-opt').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
-  applyMode();
+  // ---- Collapsible top navigation ----
+  // The bar carries thirteen destinations now. The button hides the strip and
+  // brings it back — deliberately one state rather than a dropdown, so the
+  // control means one thing and the tabs are never unreachable.
+  const NAV_KEY = 'chartgauge_nav_collapsed';
+  let navCollapsed = false;
+  try { navCollapsed = localStorage.getItem(NAV_KEY) === '1'; } catch (e) {}
+  function applyNav() {
+    document.body.classList.toggle('nav-collapsed', navCollapsed);
+    const t = $('navToggle');
+    if (t) t.setAttribute('aria-expanded', String(!navCollapsed));
+  }
+  if ($('navToggle')) $('navToggle').addEventListener('click', () => {
+    navCollapsed = !navCollapsed;
+    try { localStorage.setItem(NAV_KEY, navCollapsed ? '1' : '0'); } catch (e) {}
+    applyNav();
+  });
+  applyNav();
+
+  if ($('setAllOn')) $('setAllOn').addEventListener('click', () => setAllPrefs(true));
+  if ($('setAllOff')) $('setAllOff').addEventListener('click', () => setAllPrefs(false));
+  if ($('setReset')) $('setReset').addEventListener('click', resetPrefs);
+  applyPrefs();
 
   window.addEventListener('resize', drawChart);
 
@@ -1314,6 +1387,7 @@
     if (name === 'markets') loadMarkets();
     if (name === 'movers') loadMovers();
     if (name === 'accuracy') loadAccuracy();
+    if (name === 'settings') renderSettings();
     if (name === 'watchlist') renderWatchView();
     if (name === 'home') { loadHomeSnapshot(); loadRanked(); }
     if (name === 'chat') { renderChat(); renderChatSuggest(); $('chatInput').focus(); }
