@@ -6,7 +6,10 @@
 <title>ChartGauge — stock charts, indicators and a plain-English read</title>
 <meta name="description" content="Free stock charts with SMA, RSI, MACD, Bollinger bands, ATR and VWAP, plus ATR-based stop-loss and take-profit levels and a written read of what the indicators say. Stocks and crypto. Educational, not financial advice." />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-<link rel="apple-touch-icon" href="/avatar.png" />
+<!-- 180px is what iOS asks for. This used to point at avatar.png, the
+     4096px original, so every device saving the site pulled 490KB for an icon. -->
+<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
 <meta name="theme-color" content="#0e1014" />
 <meta name="color-scheme" content="dark" />
 <!--SEO-->
@@ -54,6 +57,12 @@
     <div class="acct" id="acct"></div>
   </div>
 </header>
+
+<div class="launch-bar hidden" id="launchBar">
+  <span id="launchText"></span>
+  <a class="launch-link" data-view="pricing">See what changes</a>
+  <button type="button" class="launch-x" id="launchClose" aria-label="Dismiss">&times;</button>
+</div>
 
 <!-- Slide-out menu. Holds the destinations and the display switches together,
      so everything that changes what you see is behind one control. -->
@@ -393,6 +402,17 @@
       <button type="button" class="btn btn-ghost" id="setReset">Reset to defaults</button>
     </div>
     <div id="settingsHost"></div>
+
+    <div class="danger" id="dangerZone">
+      <h2 class="danger-h">Delete your account</h2>
+      <p class="danger-p">This removes your account, your watchlist and your price alerts permanently. It cannot be undone. If you have a Pro subscription it is cancelled first &mdash; you will not be charged again.</p>
+      <label class="danger-label" for="delConfirm">Type <b>DELETE</b> to confirm</label>
+      <div class="danger-row">
+        <input type="text" id="delConfirm" class="input" placeholder="DELETE" autocomplete="off" spellcheck="false" />
+        <button type="button" class="btn btn-danger" id="delBtn">Delete my account</button>
+      </div>
+      <div class="auth-err hidden" id="delErr"></div>
+    </div>
   </section>
 
   <!-- LEGAL (terms / privacy / refunds / contact — server-rendered) -->

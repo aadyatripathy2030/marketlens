@@ -1347,6 +1347,9 @@
     // The gate comes down only for a signed-in visitor who has agreed on this
     // device; anything else leaves it up, including a stale agreement flag
     // with no session behind it.
+    renderLaunchBar();
+    const dz = $('dangerZone');
+    if (dz) dz.classList.toggle('hidden', !currentUser);
     if (currentUser && hasAgreed()) { hideGate(); releasePending(); loadWatchlist(); }
     else if (!ON_OPEN_PAGE) showGate();
     else { watchSymbols = []; renderWatchStrip(); }
@@ -1931,6 +1934,56 @@
       host.dataset.loaded = '1';
     } catch (e) { /* the server-rendered copy stays */ }
   }
+
+  // ---- Launch countdown ----
+  // Everyone drops to the free tier at the same moment on 18 October. Saying
+  // so in advance is the difference between a planned change and a surprise.
+  function renderLaunchBar() {
+    const bar = $('launchBar');
+    if (!bar || !launch.free || !launch.until) return;
+    try { if (localStorage.getItem('chartgauge_launch_dismissed') === String(launch.until)) return; } catch (e) {}
+    const ms = launch.until - Date.now();
+    if (ms <= 0) return;
+    const days = Math.floor(ms / 86400000);
+    const hours = Math.floor((ms % 86400000) / 3600000);
+    const left = days >= 2 ? `${days} days left`
+      : days === 1 ? `1 day, ${hours} hours left`
+      : hours >= 1 ? `${hours} hours left` : 'less than an hour left';
+    const until = new Date(launch.lastFree || launch.until)
+      .toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+    $('launchText').innerHTML = `<b>Everything is free until ${esc(until)}</b> &mdash; ${esc(left)}. `
+      + `After that, written reports, Ask Claude, chart reading, the screener and compare become part of Pro.`;
+    bar.classList.remove('hidden');
+  }
+  if ($('launchClose')) $('launchClose').addEventListener('click', () => {
+    $('launchBar').classList.add('hidden');
+    // Keyed to this deadline, so a future promotion is not silently suppressed.
+    try { localStorage.setItem('chartgauge_launch_dismissed', String(launch.until)); } catch (e) {}
+  });
+
+  // ---- Delete account ----
+  async function deleteAccount() {
+    const err = $('delErr'), btn = $('delBtn');
+    err.classList.add('hidden');
+    const confirmText = ($('delConfirm').value || '').trim();
+    if (confirmText.toUpperCase() !== 'DELETE') {
+      err.textContent = 'Type DELETE in the box to confirm.'; err.classList.remove('hidden'); return;
+    }
+    if (!window.confirm('Delete your account permanently? This cannot be undone.')) return;
+    btn.disabled = true; btn.textContent = 'Deleting…';
+    try {
+      const r = await fetch('/api/auth/delete', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: confirmText }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Could not delete the account.');
+      alert('Your account has been deleted.');
+      location.href = '/';
+    } catch (e) {
+      err.textContent = e.message; err.classList.remove('hidden');
+      btn.disabled = false; btn.textContent = 'Delete my account';
+    }
+  }
+  if ($('delBtn')) $('delBtn').addEventListener('click', deleteAccount);
 
   let lastMoversAsOf = 0;
   async function loadMovers() {

@@ -844,6 +844,52 @@ async function handleGoogleCallback(req, res) {
   }
 }
 
+// Deleting an account cancels its subscription first. Removing the row while
+// Stripe keeps charging the card would be the worst possible failure here, and
+// the user would have no account left to cancel from.
+async function handleDeleteAccount(req, res) {
+  const user = await currentUser(req);
+  if (!user) return json(res, 401, { error: 'Please sign in.' });
+  const b = await readBody(req).catch(() => ({}));
+  // Typed confirmation, because this cannot be undone and a stray click should
+  // not be enough.
+  if (String(b && b.confirm || '').trim().toUpperCase() !== 'DELETE') {
+    return json(res, 400, { error: 'Type DELETE to confirm.' });
+  }
+  if (user.stripe_sub && STRIPE_SECRET_KEY) {
+    try {
+      await stripeDelete('subscriptions/' + encodeURIComponent(user.stripe_sub));
+    } catch (e) {
+      logError(e);
+      // Refuse rather than delete: an orphaned live subscription is worse than
+      // a failed delete, and the billing portal is still reachable right now.
+      return json(res, 502, { error: 'Could not cancel your subscription with Stripe, so nothing was deleted. Cancel from Manage subscription first, or email us and we will sort it.' });
+    }
+  }
+  try {
+    await db.deleteUser(user.id);
+  } catch (e) { logError(e); return json(res, 500, { error: 'Could not delete the account. Please email us.' }); }
+  setSessionCookie(req, res, '', true);
+  return json(res, 200, { ok: true });
+}
+
+function stripeDelete(apiPath) {
+  return new Promise((resolve, reject) => {
+    const r = https.request({ method: 'DELETE', hostname: 'api.stripe.com', path: '/v1/' + apiPath,
+      headers: { 'Authorization': 'Bearer ' + STRIPE_SECRET_KEY } }, resp => {
+      let d = ''; resp.on('data', c => d += c);
+      resp.on('end', () => {
+        let j = null; try { j = JSON.parse(d); } catch (e) {}
+        if (resp.statusCode >= 400) return reject(new Error(j && j.error ? j.error.message : 'Stripe ' + resp.statusCode));
+        resolve(j);
+      });
+    });
+    r.on('error', reject);
+    r.setTimeout(10000, () => r.destroy(new Error('Stripe timed out')));
+    r.end();
+  });
+}
+
 async function handleLogout(req, res) {
   await db.deleteSession(parseCookies(req).session);
   setSessionCookie(req, res, '', true);
@@ -1921,6 +1967,7 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/auth/google' && req.method === 'GET') return await handleGoogleStart(req, res);
     if (url === '/api/auth/google/callback' && req.method === 'GET') return await handleGoogleCallback(req, res);
     if (url === '/api/auth/logout' && req.method === 'POST') return await handleLogout(req, res);
+    if (url === '/api/auth/delete' && req.method === 'POST') return await handleDeleteAccount(req, res);
     if (url === '/api/auth/me' && req.method === 'GET') return await handleMe(req, res);
     if (url === '/api/watchlist') return await handleWatchlist(req, res);
     if (url === '/api/quotes' && req.method === 'GET') return await handleQuotes(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));

@@ -672,3 +672,29 @@ body.drawer-open .drawer { transform: translateX(0); }
 .drawer-link-desc { display: block; font-size: 12px; line-height: 1.5; color: var(--muted);
   opacity: .78; margin-top: 3px; }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+/* ---- Launch countdown ---- */
+.launch-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 10px 22px; font-size: 13px; background: var(--accent-soft, rgba(76,158,255,.12));
+  border-bottom: 1px solid var(--border); }
+.launch-bar.hidden { display: none; }
+.launch-bar b { color: var(--text); }
+.launch-link { color: var(--accent); font-weight: 600; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.launch-link:hover { text-decoration: underline; }
+.launch-x { margin-left: auto; font-size: 20px; line-height: 1; color: var(--muted);
+  background: none; border: none; cursor: pointer; padding: 0 4px; }
+.launch-x:hover { color: var(--text); }
+
+/* ---- Delete account ---- */
+.danger { margin-top: 40px; padding: 20px; max-width: 760px;
+  border: 1px solid var(--bad); border-radius: var(--radius); background: var(--bad-soft); }
+.danger.hidden { display: none; }
+.danger-h { font-size: 15px; font-weight: 700; color: var(--bad); margin: 0 0 8px; }
+.danger-p { font-size: 13px; line-height: 1.6; color: var(--muted); margin: 0 0 14px; }
+.danger-label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 7px; }
+.danger-label b { color: var(--text); }
+.danger-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.danger-row .input { flex: 1; min-width: 180px; text-transform: none; }
+.btn-danger { background: var(--bad); color: #fff; border: none; font-weight: 600; white-space: nowrap; }
+.btn-danger:hover { filter: brightness(1.08); }
+.btn-danger:disabled { opacity: .6; cursor: default; }

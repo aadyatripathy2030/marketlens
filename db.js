@@ -232,6 +232,24 @@ async function setFree(uid) {
   if (mode === 'postgres') await pool.query("UPDATE users SET plan='free' WHERE id=$1", [uid]);
   else { const u = mem.users.get(uid); if (u) u.plan = 'free'; }
 }
+// Removes the account and everything hanging off it. Sessions, watchlist and
+// alerts cascade in Postgres; the daily usage rows are keyed by account id and
+// have no foreign key, so they are cleared explicitly.
+async function deleteUser(uid) {
+  if (mode === 'postgres') {
+    await pool.query('DELETE FROM usage_daily WHERE k=$1', ['u:' + uid]);
+    await pool.query('DELETE FROM users WHERE id=$1', [uid]);
+    return;
+  }
+  const u = mem.users.get(uid);
+  if (u) mem.byEmail.delete(u.email);
+  mem.users.delete(uid);
+  mem.watch.delete(uid);
+  mem.alerts.delete(uid);
+  for (const [t, s] of mem.sessions) if (s && (s.uid === uid || s === uid)) mem.sessions.delete(t);
+  for (const k of [...mem.usage.keys()]) if (k.startsWith('u:' + uid + '|')) mem.usage.delete(k);
+}
+
 async function findByStripeSub(sub) {
   if (!sub) return null;
   if (mode === 'postgres') { const r = await pool.query('SELECT * FROM users WHERE stripe_sub=$1', [sub]); return r.rows[0] || null; }
@@ -337,6 +355,7 @@ async function accuracyStats() {
 }
 
 module.exports = {
+  deleteUser,
   recordPrediction, ungradedFor, gradePrediction, accuracyStats,
   bumpUsage, peekUsage,
   getUserByGoogleId, linkGoogleId, createGoogleUser,
