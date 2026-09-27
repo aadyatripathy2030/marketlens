@@ -661,19 +661,14 @@ body.drawer-open .drawer { transform: translateX(0); }
 .drawer-close { font-size: 26px; line-height: 1; color: var(--muted); background: none; border: none;
   cursor: pointer; padding: 0 4px; }
 .drawer-close:hover { color: var(--text); }
-.drawer-nav { display: flex; flex-direction: column; padding: 10px 10px 14px; }
-.drawer-link { font-size: 14.5px; font-weight: 600; color: var(--muted); text-decoration: none;
-  padding: 10px 12px; border-radius: 9px; cursor: pointer; }
-.drawer-link:hover { color: var(--text); background: var(--card); }
-.drawer-link.active { color: var(--text); background: var(--card-hi); }
-.drawer-sec { border-top: 1px solid var(--border); padding: 16px 18px 28px; }
-.drawer-sec-head { font-size: 12px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase;
-  color: var(--muted); margin-bottom: 12px; }
-.drawer-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.drawer-nav { display: flex; flex-direction: column; gap: 2px; padding: 10px 10px 24px; }
+.drawer-link { display: block; text-decoration: none; padding: 11px 12px; border-radius: 10px;
+  cursor: pointer; transition: background .15s; }
+.drawer-link:hover { background: var(--card); }
+.drawer-link.active { background: var(--card-hi); }
+.drawer-link-top { display: flex; align-items: center; gap: 8px; }
+.drawer-link-name { font-size: 14.5px; font-weight: 650; color: var(--muted); }
+.drawer-link:hover .drawer-link-name, .drawer-link.active .drawer-link-name { color: var(--text); }
+.drawer-link-desc { display: block; font-size: 12px; line-height: 1.5; color: var(--muted);
+  opacity: .78; margin-top: 3px; }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
-/* The switch rows are narrower here than on the settings page. */
-.drawer-sec .set-row { padding: 11px 0; gap: 12px; }
-.drawer-sec .set-name { font-size: 13.5px; }
-.drawer-sec .set-desc { display: none; }
-/* Below this width the top strip would wrap or scroll, so the menu carries it. */
-@media (max-width: 900px) { .topbar .nav { display: none; } }

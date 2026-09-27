@@ -561,28 +561,49 @@
   const drawer = $('drawer'), scrim = $('drawerScrim');
   let drawerOpen = false, lastFocus = null;
 
+  // The destinations, with a line each saying what they are for. This is now
+  // the only navigation, so a label alone is not enough — someone opening
+  // "Movers" or "Accuracy" for the first time should not have to guess.
+  const DESTINATIONS = [
+    { v: 'home',      t: 'Home',      d: 'Look up any ticker, and see where the major indices sit today.' },
+    { v: 'analyze',   t: 'Analyze',   d: 'The full read on one symbol: candlestick chart, thirteen indicators, exit levels and the measured base rate.' },
+    { v: 'chat',      t: 'Ask Claude', d: 'Ask about a ticker or a market idea and get a plain-English answer grounded in live prices.' },
+    { v: 'compare',   t: 'Compare',   d: 'Put two or more companies side by side on valuation, margins, growth and debt.' },
+    { v: 'screener',  t: 'Screener',  d: 'Filter a curated list of stocks by sector, market capitalisation and price.' },
+    { v: 'markets',   t: 'Markets',   d: 'Live quotes for the major US indices and the most active stocks.' },
+    { v: 'movers',    t: 'Movers',    d: 'What is actually moving right now, ranked by how unusual the volume and the day\u2019s range are.' },
+    { v: 'accuracy',  t: 'Accuracy',  d: 'The measured record of how this site\u2019s own readings have performed, published whether or not it flatters them.' },
+    { v: 'watchlist', t: 'Watchlist', d: 'The tickers you follow, with live prices and one-click analysis.' },
+    { v: 'alerts',    t: 'Alerts',    d: 'Set a target above or below the current price and get flagged when a stock crosses it.', badge: 'alertBadge' },
+    { v: 'learn',     t: 'Learn',     d: 'Nineteen plain-English lessons with quizzes, split by whether they apply to day trading or long-term investing.' },
+    { v: 'pricing',   t: 'Billing',   d: 'What a free account includes, what Pro adds, and what each billing period works out to per month.' },
+    { v: 'settings',  t: 'Settings',  d: 'Turn any part of the analysis on or off \u2014 the score, the indicators, the projection, the summary.' },
+    { v: 'admin',     t: 'Admin',     d: 'Registered accounts, service status, usage and recent errors.', admin: true },
+  ];
+
   function buildDrawerNav() {
     const host = $('drawerNav');
     if (!host) return;
-    // Mirrors the top bar rather than duplicating its markup, so a destination
-    // added there appears here without a second edit — including the admin
-    // link, which is hidden until it applies.
+    const isAdmin = !!(currentUser && currentUser.admin);
     host.innerHTML = '';
-    document.querySelectorAll('#nav .nav-link').forEach(src => {
-      if (src.classList.contains('hidden')) return;
+    DESTINATIONS.forEach(dst => {
+      if (dst.admin && !isAdmin) return;
       const a = document.createElement('a');
-      a.className = 'drawer-link' + (src.classList.contains('active') ? ' active' : '');
-      a.dataset.view = src.dataset.view;
-      a.textContent = src.textContent.trim();
-      a.addEventListener('click', () => { showView(a.dataset.view); closeDrawer(); });
+      a.className = 'drawer-link' + (dst.v === currentView ? ' active' : '');
+      a.dataset.view = dst.v;
+      a.innerHTML = `<span class="drawer-link-top"><span class="drawer-link-name">${esc(dst.t)}</span>`
+        + (dst.badge ? `<span class="nav-badge hidden" id="${dst.badge}"></span>` : '')
+        + `</span><span class="drawer-link-desc">${esc(dst.d)}</span>`;
+      a.addEventListener('click', () => { showView(dst.v); closeDrawer(); });
       host.appendChild(a);
     });
+    // The badge element is rebuilt with the menu, so restore what it was showing.
+    if (typeof lastAlertCount === 'number') updateAlertBadge(lastAlertCount);
   }
 
   function openDrawer() {
     if (!drawer) return;
     buildDrawerNav();
-    renderSettings('drawerSettings');
     lastFocus = document.activeElement;
     drawerOpen = true;
     document.body.classList.add('drawer-open');
@@ -605,9 +626,6 @@
   if ($('drawerClose')) $('drawerClose').addEventListener('click', closeDrawer);
   if (scrim) scrim.addEventListener('click', closeDrawer);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && drawerOpen) closeDrawer(); });
-  if ($('drawerAllOn')) $('drawerAllOn').addEventListener('click', () => setAllPrefs(true));
-  if ($('drawerAllOff')) $('drawerAllOff').addEventListener('click', () => setAllPrefs(false));
-  if ($('drawerReset')) $('drawerReset').addEventListener('click', resetPrefs);
 
   if ($('setAllOn')) $('setAllOn').addEventListener('click', () => setAllPrefs(true));
   if ($('setAllOff')) $('setAllOff').addEventListener('click', () => setAllPrefs(false));
@@ -1326,7 +1344,6 @@
     try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; launch = j.launch || launch; showGoogleButtons(!!j.googleAuth); billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; }
     renderAcct();
     $('watchBtn').classList.toggle('hidden', !currentUser);
-    $('navAdmin').classList.toggle('hidden', !(currentUser && currentUser.admin));
     // The gate comes down only for a signed-in visitor who has agreed on this
     // device; anything else leaves it up, including a stale agreement flag
     // with no session behind it.
@@ -1404,6 +1421,7 @@
   checkAuth();
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
+  let currentView = 'home';
   const VIEWS = ['home', 'analyze', 'chat', 'compare', 'screener', 'markets', 'movers', 'accuracy', 'watchlist', 'alerts', 'learn', 'settings', 'pricing', 'admin', 'legal'];
   const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact'];
   // Each view has a real URL now, so navigation updates the address bar and
@@ -1427,7 +1445,8 @@
     if (!VIEWS.includes(name)) name = 'home';
     if (!opts || !opts.fromUrl) syncUrl(name, !!(opts && opts.replace));
     VIEWS.forEach(v => $('view-' + v).classList.toggle('hidden', v !== name));
-    document.querySelectorAll('.nav-link').forEach(l => l.classList.toggle('active', l.dataset.view === name));
+    currentView = name;
+    document.querySelectorAll('.drawer-link').forEach(l => l.classList.toggle('active', l.dataset.view === name));
     window.scrollTo(0, 0);
     if (name === 'markets') loadMarkets();
     if (name === 'movers') loadMovers();
@@ -1686,7 +1705,13 @@
   $('screenForm').addEventListener('submit', (e) => { e.preventDefault(); loadScreen(); });
 
   // ---- Price alerts ----
-  function updateAlertBadge(n) { const b = $('alertBadge'); if (n > 0) { b.textContent = n; b.classList.remove('hidden'); } else b.classList.add('hidden'); }
+  let lastAlertCount = 0;
+  function updateAlertBadge(n) {
+    lastAlertCount = n;
+    const b = $('alertBadge');            // only exists while the menu is built
+    if (!b) return;
+    if (n > 0) { b.textContent = n; b.classList.remove('hidden'); } else b.classList.add('hidden');
+  }
   async function loadAlerts() {
     if (!currentUser) { $('alertList').innerHTML = `<div class="view-empty">Sign in to create price alerts that watch your stocks for you.<br><button class="btn btn-primary" id="alSignin">Sign in</button></div>`; $('alSignin').addEventListener('click', () => openAuth('login')); return; }
     $('alertList').innerHTML = `<p class="compare-note">Loading…</p>`;
@@ -2085,7 +2110,6 @@
       if (!r.ok) throw new Error(j.error || 'Something went wrong.');
       currentUser = j.user; renderAcct();
       $('watchBtn').classList.remove('hidden');
-      $('navAdmin').classList.toggle('hidden', !(currentUser && currentUser.admin));
       loadWatchlist(); hideGate(); releasePending();
     } catch (e) { gateErr(e.message); }
   }
