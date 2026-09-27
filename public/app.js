@@ -54,7 +54,7 @@
   // policy pages, which must be reachable to be agreed to, and the lessons,
   // which are the site's search-visible writing and would otherwise meet
   // arrivals from Google with a sign-in wall.
-  const ON_OPEN_PAGE = /^\/(terms|privacy|refunds|contact|learn)(\/|$)/.test(location.pathname);
+  const ON_OPEN_PAGE = /^\/(terms|privacy|refunds|contact|learn|accuracy)(\/|$)/.test(location.pathname);
   // Versioned, so a future change to the terms can ask again. The old key still
   // counts: the substance of what it accepted has not changed.
   const AGREE_KEY = 'chartgauge_agreed_v1';
@@ -154,7 +154,8 @@
       : diff < -3
         ? `<span class="none">did worse than</span> simply being invested, by ${Math.abs(diff).toFixed(1)} points`
         : `<span class="none">made no difference</span> versus simply being invested`;
-    el.innerHTML = `Measured on this symbol's own history: at scores near <b>${rt.score}</b>, it was higher `
+    el.innerHTML = `<a class="edge-more" href="/accuracy">What is this?</a>`
+      + `Measured on this symbol's own history: at scores near <b>${rt.score}</b>, it was higher `
       + `${e.horizon} bars later <b>${e.winRate}%</b> of the time across <b>${e.n}</b> past occurrences. `
       + `On any bar it was higher <b>${e.baseWinRate}%</b> of the time — so this setup ${verdict}.`;
   }
@@ -1285,7 +1286,7 @@
   checkAuth();
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
-  const VIEWS = ['home', 'analyze', 'chat', 'compare', 'screener', 'markets', 'movers', 'watchlist', 'alerts', 'learn', 'settings', 'pricing', 'admin', 'legal'];
+  const VIEWS = ['home', 'analyze', 'chat', 'compare', 'screener', 'markets', 'movers', 'accuracy', 'watchlist', 'alerts', 'learn', 'settings', 'pricing', 'admin', 'legal'];
   const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact'];
   // Each view has a real URL now, so navigation updates the address bar and
   // the back button works. pushUrl is skipped when we are *reacting* to a URL
@@ -1312,6 +1313,7 @@
     window.scrollTo(0, 0);
     if (name === 'markets') loadMarkets();
     if (name === 'movers') loadMovers();
+    if (name === 'accuracy') loadAccuracy();
     if (name === 'watchlist') renderWatchView();
     if (name === 'home') { loadHomeSnapshot(); loadRanked(); }
     if (name === 'chat') { renderChat(); renderChatSuggest(); $('chatInput').focus(); }
@@ -1755,6 +1757,35 @@
       + `<span>${esc(rangeWord(r.rangePos))}</span>`
       + `<span>day range ${r.rangePct == null ? '—' : r.rangePct.toFixed(1) + '%'}</span>`
       + `</div></div>`;
+  }
+
+  // The accuracy figures are already in the document, server-rendered. This
+  // only refreshes them when the view is reached by in-app navigation, where
+  // the server-rendered copy belongs to whichever page was loaded first.
+  async function loadAccuracy() {
+    const host = $('accuracySsr');
+    if (!host || host.dataset.loaded) return;
+    try {
+      const d = await fetch('/api/accuracy').then(r => r.json());
+      if (!d.graded) {
+        host.innerHTML = `<p class="compare-note">`
+          + (d.recorded ? `${d.recorded} readings recorded so far; none have` : 'No readings have')
+          + ` reached their ${d.horizon}-day outcome yet, so there is nothing to report. This page fills in on its own.</p>`;
+        return;
+      }
+      const pc = (v) => v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+      const ORDER = ['Very bullish', 'Bullish', 'Mixed', 'Bearish', 'Very bearish'];
+      const rows = ORDER.map(l => d.labels.find(x => x.label === l)).filter(Boolean).map(x =>
+        `<tr><td>${esc(x.label)}</td><td>${x.n}</td><td>${pc(x.mean)}</td>`
+        + `<td>${x.mean == null || d.baseline == null ? '—' : pc(x.mean - d.baseline)}</td>`
+        + `<td>${x.winRate == null ? '—' : x.winRate.toFixed(0) + '%'}</td></tr>`).join('');
+      host.innerHTML = `<p><strong>${d.graded}</strong> of ${d.recorded} recorded readings have reached their `
+        + `${d.horizon}-trading-day outcome. Across all of them the average return was <strong>${pc(d.baseline)}</strong> — `
+        + `what you would have had without consulting the score at all.</p>`
+        + `<div class="compare-scroll"><table class="acc-table"><thead><tr><th>Reading</th><th>Count</th>`
+        + `<th>Average return</th><th>vs doing nothing</th><th>Higher after</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      host.dataset.loaded = '1';
+    } catch (e) { /* the server-rendered copy stays */ }
   }
 
   let lastMoversAsOf = 0;

@@ -291,6 +291,54 @@ async function symbolResolves(sym) {
   }
 }
 
+// ---- Public accuracy record ----
+// Readings are written down when shown and graded once the outcome exists.
+// Grading rides on bars that were fetched anyway — when anyone opens a symbol
+// we already hold its whole daily history, so settling its outstanding
+// readings costs no extra upstream call. Symbols nobody opens are settled by
+// the ranked pass, which fetches daily bars every six hours regardless.
+const ACCURACY_HORIZON = Number(process.env.ACCURACY_HORIZON || 20);   // trading days
+
+async function recordReading(symbol, prices, rating) {
+  if (!prices.length || !rating || !Number.isFinite(rating.score)) return;
+  const last = prices[prices.length - 1];
+  const day = String(last.date || '').slice(0, 10);
+  const price = Number(last.close);
+  if (!day || !Number.isFinite(price)) return;
+  try {
+    await db.recordPrediction({ symbol, day, score: rating.score, label: rating.label, price });
+  } catch (e) { /* the record is a bonus, never worth failing a chart over */ }
+}
+
+async function gradeReadings(symbol, prices) {
+  if (prices.length < ACCURACY_HORIZON + 1) return;
+  try {
+    const pending = await db.ungradedFor(symbol);
+    if (!pending.length) return;
+    // date -> index, so each reading is graded against the bar exactly
+    // ACCURACY_HORIZON trading days after the one it was made on.
+    const idx = new Map();
+    prices.forEach((p, i) => idx.set(String(p.date || '').slice(0, 10), i));
+    for (const row of pending) {
+      const i = idx.get(row.day);
+      if (i == null) continue;
+      const j = i + ACCURACY_HORIZON;
+      if (j >= prices.length) continue;          // outcome has not happened yet
+      const out = Number(prices[j].close), start = Number(row.price);
+      if (!Number.isFinite(out) || !start) continue;
+      await db.gradePrediction(row.id, out, String(prices[j].date || '').slice(0, 10),
+        ((out - start) / start) * 100);
+    }
+  } catch (e) { logError(e); }
+}
+
+async function handleAccuracy(req, res) {
+  try {
+    const st = await db.accuracyStats();
+    return json(res, 200, { ...st, horizon: ACCURACY_HORIZON });
+  } catch (e) { logError(e); return json(res, 200, { recorded: 0, graded: 0, labels: [], horizon: ACCURACY_HORIZON }); }
+}
+
 async function handleStock(req, res, symbol, strategy, direction, interval) {
   symbol = String(symbol || '').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
   if (!symbol) return json(res, 400, { error: 'Enter a ticker symbol.' });
@@ -324,6 +372,13 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   const candles = data.prices.map(p => ({ open: p.open, high: p.high, low: p.low, close: p.close, volume: p.volume || 0 }));
   const tech = I.techReport(candles);
   const rating = I.overallRating(tech);
+  // Written down now, graded later, never revised. Only on daily bars: the
+  // record is about the daily reading, and an intraday view of the same symbol
+  // would otherwise write a different row for the same day.
+  if (source === 'live' && interval === '1day') {
+    recordReading(symbol, data.prices, rating);
+    gradeReadings(symbol, data.prices);
+  }
   const bands = I.forecastBands(closes);
   const levels = I.tradeLevels(candles, a.direction);
   // What actually happened, historically, at scores like today's. Roughly 50ms
@@ -1135,6 +1190,10 @@ async function rateOne(sym) {
   if (prices.length < 60) return null;
   const candles = prices.map(x => ({ open: x.open, high: x.high, low: x.low, close: x.close, volume: x.volume || 0 }));
   const rating = I.overallRating(I.techReport(candles));
+  // Same free ride: these bars were fetched for the panel, so settle anything
+  // outstanding for this symbol while we hold them.
+  recordReading(sym, prices, rating);
+  gradeReadings(sym, prices);
   const closes = candles.map(c => c.close);
   const last = closes[closes.length - 1], prev = closes[closes.length - 2] || last;
   return {
@@ -1528,6 +1587,8 @@ const VIEW_SEO = {
     desc: 'Eleven short lessons covering market basics, technical and fundamental analysis, valuation, financial statements, risk management, dividends, growth, value and options — each with a quiz.' },
   'settings': { view: 'settings', title: 'Settings — simple or advanced view — ChartGauge',
     desc: 'Choose how much of the analysis to show: the chart and exit levels only, or every indicator and written summary.' },
+  'accuracy': { view: 'accuracy', title: 'How accurate is ChartGauge? — the measured record',
+    desc: 'Every reading ChartGauge has shown is written down before the outcome is known, then graded against what the price actually did 20 trading days later. The running record is published here, including when the score does worse than doing nothing.' },
   'movers': { view: 'movers', title: 'What is moving right now — ChartGauge',
     desc: 'A live scan of the most active US stocks ranked by unusual volume, the size of the move and where price sits in the day range. A description of what is happening, not a prediction of what happens next.' },
   'pricing': { view: 'pricing', title: 'Plans and billing — ChartGauge',
@@ -1678,7 +1739,7 @@ const GA_SNIPPET = GA_ID ? `<meta name="ga-id" content="${esc(GA_ID)}">` : '';
 // 'admin' is routable so the operator can open /admin directly, but it is
 // absent from VIEW_SEO, so it never reaches the sitemap, and robots.txt
 // disallows it. The page itself is guarded server-side regardless.
-const APP_PATH = /^\/(analyze|markets|movers|compare|screener|alerts|watchlist|learn|settings|pricing|chat|terms|privacy|refunds|contact|admin)(\/|$)|^\/stock\//;
+const APP_PATH = /^\/(analyze|markets|movers|accuracy|compare|screener|alerts|watchlist|learn|settings|pricing|chat|terms|privacy|refunds|contact|admin)(\/|$)|^\/stock\//;
 
 function serveDocument(req, res, urlPath) {
   const origin = siteOrigin(req);
@@ -1705,16 +1766,59 @@ function serveDocument(req, res, urlPath) {
     // Lesson prose goes into the document itself so it indexes without JS.
     if (seo.lesson) out = out.replace('<div id="learnHost"></div>', `<div id="learnHost"></div>${lessonHtml(seo.lesson)}`);
     if (seo.legal) out = out.replace('<div id="legalHost"></div>', `<div id="legalHost">${seo.legal.html}</div>`);
+
     // Pages with no market data ship with the gate already down, so they do
     // not flash a sign-in wall before app.js reaches the same conclusion.
     // Must stay in step with ON_OPEN_PAGE in app.js.
-    if (seo.legal || seo.lesson || seo.view === 'learn') {
+    if (seo.legal || seo.lesson || seo.view === 'learn' || seo.view === 'accuracy') {
       out = out.replace('<div class="gate" id="gate">', '<div class="gate hidden" id="gate">');
     }
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
-    res.end(out);
+    // Rendered into the document rather than fetched afterwards, so a crawler
+    // — or anyone citing the figures — sees them without running JavaScript.
+    // Must come after the gate rewrite above, which this return would skip.
+    if (seo.view === 'accuracy') {
+      return db.accuracyStats()
+        .then(st => finish(out.replace('<div id="accuracySsr"></div>', accuracyHtml(st, ACCURACY_HORIZON))))
+        .catch(() => finish(out));
+    }
+    return finish(out);
+
+    function finish(body) {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(body);
+    }
   });
 }
+
+// Server-rendered accuracy figures. Deliberately states the unflattering
+// comparison in words rather than leaving a reader to work it out from a table.
+function accuracyHtml(st, horizon) {
+  const pc = (v) => v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+  if (!st || !st.graded) {
+    return `<div class="acc-ssr"><p>ChartGauge writes down every reading it shows, before the outcome is known, `
+      + `and grades it against what the price actually did ${horizon} trading days later. `
+      + `${st && st.recorded ? esc(String(st.recorded)) + ' readings have been recorded so far; none have' : 'No readings have'} `
+      + `reached their ${horizon}-day outcome yet, so there is nothing to report. This page will fill in on its own.</p></div>`;
+  }
+  const rows = ORDERED_LABELS
+    .map(l => st.labels.find(x => x.label === l))
+    .filter(Boolean)
+    .map(x => `<tr><td>${esc(x.label)}</td><td>${x.n}</td><td>${pc(x.mean)}</td>`
+      + `<td>${x.mean == null || st.baseline == null ? '—' : pc(x.mean - st.baseline)}</td>`
+      + `<td>${x.winRate == null ? '—' : x.winRate.toFixed(0) + '%'}</td></tr>`).join('');
+  const best = st.labels.slice().sort((a, b) => (b.mean ?? -1e9) - (a.mean ?? -1e9))[0];
+  return `<div class="acc-ssr">`
+    + `<p><strong>${st.graded}</strong> of ${st.recorded} recorded readings have reached their `
+    + `${horizon}-trading-day outcome. Across all of them the average return was <strong>${pc(st.baseline)}</strong> — `
+    + `that is what you would have had without consulting the score at all.</p>`
+    + `<table class="acc-table"><thead><tr><th>Reading</th><th>Count</th><th>Average return</th><th>vs doing nothing</th><th>Higher after</th></tr></thead>`
+    + `<tbody>${rows}</tbody></table>`
+    + (best ? `<p>Strongest by average return so far: <strong>${esc(best.label)}</strong> at ${pc(best.mean)}. `
+      + `If that is not the most bullish reading, the score is not ordering outcomes the way its wording implies — `
+      + `which is exactly the sort of thing this page exists to show.</p>` : '')
+    + `</div>`;
+}
+const ORDERED_LABELS = ['Very bullish', 'Bullish', 'Mixed', 'Bearish', 'Very bearish'];
 
 function serveStatic(req, res) {
   let urlPath = decodeURIComponent(req.url.split('?')[0]);
@@ -1822,6 +1926,7 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/quotes' && req.method === 'GET') return await handleQuotes(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));
     if (url === '/api/movers' && req.method === 'GET') return await handleMovers(req, res);
     if (url === '/api/ranked' && req.method === 'GET') return await handleRanked(req, res);
+    if (url === '/api/accuracy' && req.method === 'GET') return await handleAccuracy(req, res);
     if (url === '/api/chat' && req.method === 'POST') return await handleChat(req, res);
     if (url === '/api/fundamentals' && req.method === 'GET') return await handleFundamentals(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbol'));
     if (url === '/api/compare' && req.method === 'GET') return await handleCompare(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));

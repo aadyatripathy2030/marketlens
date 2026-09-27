@@ -614,3 +614,22 @@ body.mode-simple .layout { grid-template-columns: minmax(0, 1fr); }
   font-size: 11.5px; color: var(--muted); }
 .gate-or::before, .gate-or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 .gate-or.hidden, .btn-google.hidden { display: none; }
+
+/* Accuracy record. A plain table on purpose — the numbers are the argument. */
+.acc-ssr p, #accuracySsr p { font-size: 13.5px; line-height: 1.65; color: var(--muted); max-width: 760px; }
+.acc-ssr strong, #accuracySsr strong { color: var(--text); }
+.acc-table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 13px; max-width: 760px; }
+.acc-table th { text-align: left; font-size: 11.5px; text-transform: uppercase; letter-spacing: .3px;
+  color: var(--muted); border-bottom: 1px solid var(--border); padding: 8px 12px 8px 0; font-weight: 600; }
+.acc-table td { padding: 10px 12px 10px 0; border-bottom: 1px solid var(--border);
+  font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.acc-table td:first-child { font-family: var(--font); font-weight: 600; }
+.acc-note { font-size: 12.5px; line-height: 1.65; color: var(--muted); max-width: 760px; margin-top: 16px; }
+
+/* The measured base rate now leads the score card rather than trailing it. */
+.edge-line.lead { margin: 0 0 14px; padding: 0 0 13px; border-bottom: 1px solid var(--border);
+  font-size: 13px; line-height: 1.6; }
+.edge-line.lead b { color: var(--text); }
+.edge-more { float: right; margin-left: 12px; font-size: 11.5px; font-weight: 600;
+  color: var(--accent); text-decoration: none; white-space: nowrap; }
+.edge-more:hover { text-decoration: underline; }

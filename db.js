@@ -10,7 +10,7 @@ const SESSION_TTL = 30 * DAY;
 let pool = null;
 let mode = 'memory';
 let lastErr = null;
-const mem = { users: new Map(), byEmail: new Map(), sessions: new Map(), watch: new Map(), alerts: new Map(), usage: new Map() };
+const mem = { users: new Map(), byEmail: new Map(), sessions: new Map(), watch: new Map(), alerts: new Map(), usage: new Map(), preds: new Map() };
 
 // Render's INTERNAL Postgres host has no dot (e.g. dpg-xxxx-a) and speaks plain
 // TCP; hosted/external hosts (Neon, Render external) are dotted and need SSL.
@@ -44,6 +44,16 @@ async function init() {
         id TEXT PRIMARY KEY, uid TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         symbol TEXT NOT NULL, direction TEXT NOT NULL, target DOUBLE PRECISION NOT NULL,
         created BIGINT NOT NULL, triggered BIGINT NOT NULL DEFAULT 0)`);
+      // Every reading the site has shown, and what happened next. One row per
+      // symbol per day: a score computed from daily bars cannot change until
+      // the next daily close, so recording each view would only duplicate.
+      await pool.query(`CREATE TABLE IF NOT EXISTS predictions (
+        id TEXT PRIMARY KEY, symbol TEXT NOT NULL, day TEXT NOT NULL,
+        score INTEGER NOT NULL, label TEXT NOT NULL, price DOUBLE PRECISION NOT NULL,
+        created BIGINT NOT NULL,
+        out_price DOUBLE PRECISION, out_day TEXT, ret DOUBLE PRECISION, graded BIGINT)`);
+      await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS predictions_sym_day ON predictions (symbol, day)');
+      await pool.query('CREATE INDEX IF NOT EXISTS predictions_ungraded ON predictions (symbol) WHERE graded IS NULL');
       await pool.query(`CREATE TABLE IF NOT EXISTS usage_daily (
         k TEXT NOT NULL, kind TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (k, kind, day))`);
@@ -261,7 +271,73 @@ async function peekUsage(k, kind) {
   return mem.usage.get(k + '|' + kind + '|' + day) || 0;
 }
 
+// ---- Prediction record ----
+// The point of this table is that it is written BEFORE the outcome is known
+// and never rewritten afterwards. A backtest can be tuned until the history
+// flatters you; a timestamped forward record cannot.
+async function recordPrediction(p) {
+  const key = p.symbol + '|' + p.day;
+  if (mode === 'postgres') {
+    // Do nothing on conflict: the first reading of the day is the one that
+    // counts, so a later view cannot quietly revise it.
+    await pool.query(
+      `INSERT INTO predictions (id, symbol, day, score, label, price, created)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (symbol, day) DO NOTHING`,
+      [crypto.randomUUID(), p.symbol, p.day, p.score, p.label, p.price, Date.now()]);
+    return;
+  }
+  if (!mem.preds.has(key)) mem.preds.set(key, { id: key, ...p, created: Date.now(), graded: null });
+}
+
+async function ungradedFor(symbol) {
+  if (mode === 'postgres') {
+    const r = await pool.query('SELECT id, day, price FROM predictions WHERE symbol=$1 AND graded IS NULL', [symbol]);
+    return r.rows;
+  }
+  return [...mem.preds.values()].filter(p => p.symbol === symbol && !p.graded).map(p => ({ id: p.id, day: p.day, price: p.price }));
+}
+
+async function gradePrediction(id, outPrice, outDay, ret) {
+  if (mode === 'postgres') {
+    await pool.query('UPDATE predictions SET out_price=$1, out_day=$2, ret=$3, graded=$4 WHERE id=$5 AND graded IS NULL',
+      [outPrice, outDay, ret, Date.now(), id]);
+    return;
+  }
+  const p = mem.preds.get(id);
+  if (p && !p.graded) { p.out_price = outPrice; p.out_day = outDay; p.ret = ret; p.graded = Date.now(); }
+}
+
+// Aggregate for the public scoreboard. The comparison is every graded reading
+// taken together — the return you would have had without consulting the score
+// at all — so the score is measured against doing nothing, not against a
+// benchmark chosen to flatter it.
+async function accuracyStats() {
+  let rows;
+  if (mode === 'postgres') {
+    const r = await pool.query('SELECT label, ret FROM predictions WHERE graded IS NOT NULL');
+    rows = r.rows;
+    const t = await pool.query('SELECT COUNT(*)::int AS n FROM predictions');
+    var total = t.rows[0].n;
+  } else {
+    rows = [...mem.preds.values()].filter(p => p.graded).map(p => ({ label: p.label, ret: p.ret }));
+    var total = mem.preds.size;
+  }
+  const byLabel = {};
+  for (const r of rows) (byLabel[r.label] ||= []).push(Number(r.ret));
+  const mean = (a) => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
+  const all = rows.map(r => Number(r.ret));
+  return {
+    recorded: total, graded: rows.length,
+    baseline: mean(all),
+    labels: Object.entries(byLabel).map(([label, a]) => ({
+      label, n: a.length, mean: mean(a),
+      winRate: a.length ? (a.filter(x => x > 0).length / a.length) * 100 : null,
+    })),
+  };
+}
+
 module.exports = {
+  recordPrediction, ungradedFor, gradePrediction, accuracyStats,
   bumpUsage, peekUsage,
   getUserByGoogleId, linkGoogleId, createGoogleUser,
   init, storeMode, hasUrl, lastError, verifyPw,

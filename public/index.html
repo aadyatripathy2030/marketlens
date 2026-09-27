@@ -54,6 +54,7 @@
     <a class="nav-link" data-view="screener">Screener</a>
     <a class="nav-link" data-view="markets">Markets</a>
     <a class="nav-link" data-view="movers">Movers</a>
+    <a class="nav-link" data-view="accuracy">Accuracy</a>
     <a class="nav-link" data-view="watchlist">Watchlist</a>
     <a class="nav-link" data-view="alerts">Alerts <span class="nav-badge hidden" id="alertBadge"></span></a>
     <a class="nav-link" data-view="learn">Learn</a>
@@ -138,10 +139,13 @@
             <div class="gauge-num"><div class="gauge-score" id="gScore">—</div><div class="gauge-of">/ 100</div></div>
           </div>
           <div class="ai-score-info">
+            <!-- The measured record leads. The score is the claim; this is the
+                 evidence, and reading the claim first frames the evidence as a
+                 footnote to it rather than the other way round. -->
+            <p class="edge-line lead" id="edgeLine"></p>
             <div class="ai-score-lead">Indicator score</div>
             <div class="ai-rec" id="aiRec">—</div>
             <div class="ai-score-meta"><span>Agreement <b id="aiConf">—</b></span><span>Risk <b id="aiRisk">—</b></span></div>
-            <p class="edge-line" id="edgeLine"></p>
           </div>
         </div>
 
@@ -354,6 +358,15 @@
     <div class="pricing" id="pricingBody"></div>
   </section>
 
+  <!-- ACCURACY -->
+  <section class="view hidden" id="view-accuracy">
+    <h1 class="view-h">How accurate is ChartGauge?</h1>
+    <p class="learn-lead">Every reading this site shows is written down when it is shown &mdash; before anyone knows what happens next &mdash; and graded against what the price actually did afterwards. The record below is published whether it flatters the tool or not.</p>
+    <div id="accuracySsr"></div>
+    <p class="acc-note">This is not a backtest. A backtest can be adjusted until the past looks good; these are timestamped readings recorded in advance and never revised. The comparison column is every graded reading taken together &mdash; the return you would have had without consulting the score at all.</p>
+    <p class="acc-note"><strong>Why publish this?</strong> Because the alternative is asking you to take it on faith, and the measured answer so far is that this score has not predicted direction. A tool that tells you when it does not work is more useful than one that never admits it.</p>
+  </section>
+
   <!-- MOVERS -->
   <section class="view hidden" id="view-movers">
     <h1 class="view-h">What&rsquo;s moving right now</h1>
@@ -406,6 +419,7 @@
       <a href="/privacy">Privacy</a>
       <a href="/refunds">Refunds &amp; cancellation</a>
       <a href="/contact">Contact</a>
+      <a href="/accuracy">Accuracy record</a>
     </nav>
     <p class="foot-note">ChartGauge is a charting tool for learning to read charts. Nothing on it is financial advice.</p>
   </footer>
