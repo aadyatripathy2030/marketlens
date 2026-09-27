@@ -31,6 +31,9 @@ const FINNHUB_API_KEY = (process.env.FINNHUB_API_KEY || '').replace(/\s/g, ''); 
 // a property nobody here can open. Unset means analytics simply does not load,
 // which is the safe way round.
 const GA_ID = (process.env.GA_MEASUREMENT_ID || '').trim();
+// Search Console's HTML-tag verification. Set it to the content="..." value
+// from the meta tag Google shows, not the whole tag.
+const GSC_VERIFY = (process.env.GOOGLE_SITE_VERIFICATION || '').trim();
 const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || '').replace(/\s/g, '');       // sk_...
 const STRIPE_WEBHOOK_SECRET = (process.env.STRIPE_WEBHOOK_SECRET || '').replace(/\s/g, ''); // whsec_...
 // Pro price IDs per billing period (weekly / monthly / yearly). STRIPE_PRICE_ID stays as a monthly fallback.
@@ -1780,7 +1783,8 @@ function lessonHtml(l) {
 // published as a meta tag and app.js loads gtag.js only once the visitor has
 // accepted — so nothing is set before consent, and the CSP below needs no
 // 'unsafe-inline' for scripts.
-const GA_SNIPPET = GA_ID ? `<meta name="ga-id" content="${esc(GA_ID)}">` : '';
+const GA_SNIPPET = (GA_ID ? `<meta name="ga-id" content="${esc(GA_ID)}">` : '')
+  + (GSC_VERIFY ? `<meta name="google-site-verification" content="${esc(GSC_VERIFY)}">` : '');
 // Paths the single-page app owns. Anything matching is served the document
 // with that route's metadata rather than a 404.
 // 'admin' is routable so the operator can open /admin directly, but it is
