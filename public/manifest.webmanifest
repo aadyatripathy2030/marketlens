@@ -1,0 +1,16 @@
+{
+  "name": "ChartGauge — stock charts and indicators",
+  "short_name": "ChartGauge",
+  "description": "Price charts, technical indicators, stop-loss and take-profit levels, and a measured record of how the readings have actually performed.",
+  "start_url": "/?from=app",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0e1014",
+  "theme_color": "#0e1014",
+  "categories": ["finance", "education"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

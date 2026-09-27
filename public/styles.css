@@ -698,3 +698,11 @@ body.drawer-open .drawer { transform: translateX(0); }
 .btn-danger { background: var(--bad); color: #fff; border: none; font-weight: 600; white-space: nowrap; }
 .btn-danger:hover { filter: brightness(1.08); }
 .btn-danger:disabled { opacity: .6; cursor: default; }
+
+/* ---- Install prompt ---- */
+.install-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 10px 22px; font-size: 13px; background: var(--card-hi);
+  border-bottom: 1px solid var(--border); }
+.install-bar.hidden { display: none; }
+.install-bar b { color: var(--text); }
+.install-bar .launch-x { margin-left: auto; }

@@ -81,7 +81,8 @@ function stratLabel(strategy, direction) {
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
+  '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
+  '.webmanifest': 'application/manifest+json; charset=utf-8' };
 
 function json(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); }
 function readBody(req, maxBytes) {
@@ -1905,6 +1906,10 @@ const CSP = [
   // injected stylesheet is a far smaller problem than an injected script.
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self' https://www.googletagmanager.com https://www.google-analytics.com",
+  // Declared rather than left to inherit: worker-src falls back through
+  // child-src to script-src, and browsers have disagreed about that chain.
+  "worker-src 'self'",
+  "manifest-src 'self'",
   "connect-src 'self' https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com",
   "font-src 'self' data:",
 ].join('; ');

@@ -1935,6 +1935,68 @@
     } catch (e) { /* the server-rendered copy stays */ }
   }
 
+  // ---- Install as an app ----
+  // Two very different platforms. Chrome and Android fire beforeinstallprompt
+  // and let a button do it; iOS has no such API at all, so the only honest
+  // thing there is to describe the two taps Apple requires.
+  let deferredInstall = null;
+  const INSTALL_KEY = 'chartgauge_install_dismissed';
+
+  const standalone = () => window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true;
+  const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);   // iPadOS reports as Mac
+  const isSafari = () => /Safari/.test(navigator.userAgent) && !/CriOS|FxiOS|EdgiOS|Chrome/.test(navigator.userAgent);
+
+  function showInstallBar(html, withButton) {
+    const bar = $('installBar');
+    if (!bar) return;
+    try { if (localStorage.getItem(INSTALL_KEY) === '1') return; } catch (e) {}
+    if (standalone()) return;                      // already installed
+    $('installText').innerHTML = html;
+    $('installBtn').classList.toggle('hidden', !withButton);
+    bar.classList.remove('hidden');
+  }
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();                            // we choose when to ask
+    deferredInstall = e;
+    showInstallBar('<b>Install ChartGauge</b> &mdash; add it to your device and it opens like an app, full screen.', true);
+  });
+
+  if ($('installBtn')) $('installBtn').addEventListener('click', async () => {
+    if (!deferredInstall) return;
+    deferredInstall.prompt();
+    try { await deferredInstall.userChoice; } catch (e) {}
+    deferredInstall = null;
+    $('installBar').classList.add('hidden');
+  });
+
+  if ($('installClose')) $('installClose').addEventListener('click', () => {
+    $('installBar').classList.add('hidden');
+    try { localStorage.setItem(INSTALL_KEY, '1'); } catch (e) {}
+  });
+
+  window.addEventListener('appinstalled', () => {
+    $('installBar').classList.add('hidden');
+    try { localStorage.setItem(INSTALL_KEY, '1'); } catch (e) {}
+  });
+
+  // iOS never fires the event, so it gets the instructions instead — and only
+  // in Safari, since Add to Home Screen does not exist in Chrome on iOS.
+  if (isIOS() && isSafari() && !standalone()) {
+    setTimeout(() => showInstallBar(
+      '<b>Add ChartGauge to your Home Screen</b> &mdash; tap the Share button, then <b>Add to Home Screen</b>.', false), 2500);
+  }
+
+  // The worker only provides installability and an offline page; it caches no
+  // data. Registered after load so it never competes with the first render.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  }
+
   // ---- Launch countdown ----
   // Everyone drops to the free tier at the same moment on 18 October. Saying
   // so in advance is the difference between a planned change and a surprise.

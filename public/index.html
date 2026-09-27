@@ -10,6 +10,10 @@
      4096px original, so every device saving the site pulled 490KB for an icon. -->
 <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="ChartGauge" />
 <meta name="theme-color" content="#0e1014" />
 <meta name="color-scheme" content="dark" />
 <!--SEO-->
@@ -57,6 +61,12 @@
     <div class="acct" id="acct"></div>
   </div>
 </header>
+
+<div class="install-bar hidden" id="installBar">
+  <span id="installText"></span>
+  <button type="button" class="btn btn-primary btn-sm hidden" id="installBtn">Install</button>
+  <button type="button" class="launch-x" id="installClose" aria-label="Dismiss">&times;</button>
+</div>
 
 <div class="launch-bar hidden" id="launchBar">
   <span id="launchText"></span>
