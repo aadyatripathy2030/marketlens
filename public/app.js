@@ -363,8 +363,8 @@
     if (side) side.classList.toggle('pref-off', sideOff);
   }
 
-  function renderSettings() {
-    const host = $('settingsHost');
+  function renderSettings(hostId) {
+    const host = $(hostId || 'settingsHost');
     if (!host) return;
     host.innerHTML = PREF_DEFS.map(d =>
       `<label class="set-row"><span class="set-text"><span class="set-name">${esc(d.name)}</span>`
@@ -374,16 +374,25 @@
     host.querySelectorAll('.set-box').forEach(b => b.addEventListener('change', () => {
       prefs[b.dataset.k] = b.checked;
       savePrefs(); applyPrefs();
+      // The same switches exist in two places; keep the other one honest.
+      syncSettingBoxes();
     }));
+  }
+  // Reflects the current prefs into every rendered switch without re-rendering,
+  // so toggling in the drawer does not rebuild the settings page under you.
+  function syncSettingBoxes() {
+    document.querySelectorAll('.set-box').forEach(b => {
+      if (typeof prefs[b.dataset.k] === 'boolean') b.checked = prefs[b.dataset.k];
+    });
   }
 
   function setAllPrefs(on) {
     PREF_DEFS.forEach(d => { prefs[d.k] = on; });
-    savePrefs(); applyPrefs(); renderSettings();
+    savePrefs(); applyPrefs(); syncSettingBoxes();
   }
   function resetPrefs() {
     PREF_DEFS.forEach(d => { prefs[d.k] = d.on; });
-    savePrefs(); applyPrefs(); renderSettings();
+    savePrefs(); applyPrefs(); syncSettingBoxes();
   }
 
   // Axis gutters, TradingView-style: price scale down the right edge, time
@@ -545,24 +554,60 @@
     syncColorInputs(); drawChart();
   });
 
-  // ---- Collapsible top navigation ----
-  // The bar carries thirteen destinations now. The button hides the strip and
-  // brings it back — deliberately one state rather than a dropdown, so the
-  // control means one thing and the tabs are never unreachable.
-  const NAV_KEY = 'chartgauge_nav_collapsed';
-  let navCollapsed = false;
-  try { navCollapsed = localStorage.getItem(NAV_KEY) === '1'; } catch (e) {}
-  function applyNav() {
-    document.body.classList.toggle('nav-collapsed', navCollapsed);
-    const t = $('navToggle');
-    if (t) t.setAttribute('aria-expanded', String(!navCollapsed));
+  // ---- Slide-out menu ----
+  // Thirteen destinations plus fourteen display switches is too much to sit
+  // across the top, so everything that changes what you see lives behind one
+  // control. The top strip stays on wide screens, where there is room for it.
+  const drawer = $('drawer'), scrim = $('drawerScrim');
+  let drawerOpen = false, lastFocus = null;
+
+  function buildDrawerNav() {
+    const host = $('drawerNav');
+    if (!host) return;
+    // Mirrors the top bar rather than duplicating its markup, so a destination
+    // added there appears here without a second edit — including the admin
+    // link, which is hidden until it applies.
+    host.innerHTML = '';
+    document.querySelectorAll('#nav .nav-link').forEach(src => {
+      if (src.classList.contains('hidden')) return;
+      const a = document.createElement('a');
+      a.className = 'drawer-link' + (src.classList.contains('active') ? ' active' : '');
+      a.dataset.view = src.dataset.view;
+      a.textContent = src.textContent.trim();
+      a.addEventListener('click', () => { showView(a.dataset.view); closeDrawer(); });
+      host.appendChild(a);
+    });
   }
-  if ($('navToggle')) $('navToggle').addEventListener('click', () => {
-    navCollapsed = !navCollapsed;
-    try { localStorage.setItem(NAV_KEY, navCollapsed ? '1' : '0'); } catch (e) {}
-    applyNav();
-  });
-  applyNav();
+
+  function openDrawer() {
+    if (!drawer) return;
+    buildDrawerNav();
+    renderSettings('drawerSettings');
+    lastFocus = document.activeElement;
+    drawerOpen = true;
+    document.body.classList.add('drawer-open');
+    drawer.setAttribute('aria-hidden', 'false');
+    scrim.hidden = false;
+    $('navToggle').setAttribute('aria-expanded', 'true');
+    const first = drawer.querySelector('.drawer-close');
+    if (first) first.focus();
+  }
+  function closeDrawer() {
+    if (!drawer) return;
+    drawerOpen = false;
+    document.body.classList.remove('drawer-open');
+    drawer.setAttribute('aria-hidden', 'true');
+    scrim.hidden = true;
+    $('navToggle').setAttribute('aria-expanded', 'false');
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  if ($('navToggle')) $('navToggle').addEventListener('click', () => drawerOpen ? closeDrawer() : openDrawer());
+  if ($('drawerClose')) $('drawerClose').addEventListener('click', closeDrawer);
+  if (scrim) scrim.addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && drawerOpen) closeDrawer(); });
+  if ($('drawerAllOn')) $('drawerAllOn').addEventListener('click', () => setAllPrefs(true));
+  if ($('drawerAllOff')) $('drawerAllOff').addEventListener('click', () => setAllPrefs(false));
+  if ($('drawerReset')) $('drawerReset').addEventListener('click', resetPrefs);
 
   if ($('setAllOn')) $('setAllOn').addEventListener('click', () => setAllPrefs(true));
   if ($('setAllOff')) $('setAllOff').addEventListener('click', () => setAllPrefs(false));

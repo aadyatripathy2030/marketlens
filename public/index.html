@@ -45,11 +45,11 @@
 </div>
 
 <header class="topbar">
-  <button type="button" class="nav-toggle" id="navToggle" aria-label="Show or hide the menu" aria-expanded="true">
+  <button type="button" class="nav-toggle" id="navToggle" aria-label="Open the menu" aria-expanded="false" aria-controls="drawer">
     <span></span><span></span><span></span>
   </button>
   <a class="brand" data-view="home">ChartGauge</a>
-  <nav class="nav" id="nav">
+  <nav class="nav" id="nav" aria-label="Main">
     <a class="nav-link active" data-view="home">Home</a>
     <a class="nav-link" data-view="analyze">Analyze</a>
     <a class="nav-link" data-view="chat">Ask Claude</a>
@@ -70,6 +70,26 @@
     <div class="acct" id="acct"></div>
   </div>
 </header>
+
+<!-- Slide-out menu. Holds the destinations and the display switches together,
+     so everything that changes what you see is behind one control. -->
+<div class="scrim" id="drawerScrim" hidden></div>
+<aside class="drawer" id="drawer" aria-hidden="true" aria-label="Menu">
+  <div class="drawer-head">
+    <span class="drawer-title">Menu</span>
+    <button type="button" class="drawer-close" id="drawerClose" aria-label="Close the menu">&times;</button>
+  </div>
+  <nav class="drawer-nav" id="drawerNav" aria-label="Destinations"></nav>
+  <div class="drawer-sec">
+    <div class="drawer-sec-head">Show on the analysis</div>
+    <div class="drawer-actions">
+      <button type="button" class="btn btn-ghost btn-sm" id="drawerAllOn">All on</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="drawerAllOff">Chart only</button>
+      <button type="button" class="btn btn-ghost btn-sm" id="drawerReset">Reset</button>
+    </div>
+    <div id="drawerSettings"></div>
+  </div>
+</aside>
 
 <main class="app">
   <!-- HOME -->

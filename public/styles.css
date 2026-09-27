@@ -642,4 +642,38 @@ body.no-sidebar .layout { grid-template-columns: minmax(0, 1fr); }
 .nav-toggle:hover { border-color: var(--border-strong); }
 .nav-toggle span { display: block; height: 2px; border-radius: 2px; background: var(--muted); transition: background .15s; }
 .nav-toggle:hover span { background: var(--text); }
-body.nav-collapsed .nav { display: none; }
+
+
+/* ---- Slide-out menu ---- */
+.scrim { position: fixed; inset: 0; z-index: 90; background: rgba(0, 0, 0, .55); }
+.drawer { position: fixed; top: 0; left: 0; bottom: 0; z-index: 100; width: 330px; max-width: 86vw;
+  background: var(--bg2); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain;
+  transform: translateX(-100%); transition: transform .22s ease; }
+body.drawer-open .drawer { transform: translateX(0); }
+/* Off-canvas panels stay in the tab order unless they are taken out of it. */
+.drawer[aria-hidden="true"] { visibility: hidden; }
+.drawer[aria-hidden="false"] { visibility: visible; }
+.drawer-head { display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 18px; border-bottom: 1px solid var(--border); position: sticky; top: 0;
+  background: var(--bg2); z-index: 1; }
+.drawer-title { font-size: 13px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; color: var(--muted); }
+.drawer-close { font-size: 26px; line-height: 1; color: var(--muted); background: none; border: none;
+  cursor: pointer; padding: 0 4px; }
+.drawer-close:hover { color: var(--text); }
+.drawer-nav { display: flex; flex-direction: column; padding: 10px 10px 14px; }
+.drawer-link { font-size: 14.5px; font-weight: 600; color: var(--muted); text-decoration: none;
+  padding: 10px 12px; border-radius: 9px; cursor: pointer; }
+.drawer-link:hover { color: var(--text); background: var(--card); }
+.drawer-link.active { color: var(--text); background: var(--card-hi); }
+.drawer-sec { border-top: 1px solid var(--border); padding: 16px 18px 28px; }
+.drawer-sec-head { font-size: 12px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 12px; }
+.drawer-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+/* The switch rows are narrower here than on the settings page. */
+.drawer-sec .set-row { padding: 11px 0; gap: 12px; }
+.drawer-sec .set-name { font-size: 13.5px; }
+.drawer-sec .set-desc { display: none; }
+/* Below this width the top strip would wrap or scroll, so the menu carries it. */
+@media (max-width: 900px) { .topbar .nav { display: none; } }
