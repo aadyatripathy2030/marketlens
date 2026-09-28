@@ -1652,7 +1652,7 @@ const siteOrigin = (req) => (req.headers['x-forwarded-proto'] || 'http') + '://'
 
 const VIEW_SEO = {
   '': { view: 'home', title: 'ChartGauge — stock charts, indicators and a plain-English read',
-    desc: 'Free stock and crypto charts with SMA, RSI, MACD, Bollinger bands, ATR and VWAP, plus ATR-based stop-loss and take-profit levels and a written read of what the indicators say. Educational, not financial advice.' },
+    desc: 'Stock and crypto charts: thirteen indicators, stop-loss and take-profit levels, all in plain English \u2014 plus a public record of how often the reading was right.' },
   'analyze': { view: 'analyze', title: 'Analyze a stock or crypto pair — ChartGauge',
     desc: 'Enter a ticker or crypto pair for a candlestick chart, 13 technical indicators, an indicator score, and stop-loss and take-profit levels derived from ATR and recent swing highs and lows.' },
   'markets': { view: 'markets', title: 'Market snapshot — indices and trending stocks — ChartGauge',
@@ -1770,9 +1770,11 @@ function jsonLd(seo, origin) {
 }
 
 function seoHead(seo, origin) {
-  // A raster square: most platforms will not render an SVG social image, and
-  // twitter:card=summary crops to a square anyway.
-  const img = origin + '/avatar.png';
+  // 1200x630 raster. It used to point at avatar.png — a 4096x4096 square logo,
+  // which every platform either letterboxed into a thumbnail or declined to
+  // fetch. Paired with twitter:card=summary_large_image below, a shared link
+  // now renders as a banner instead of a favicon.
+  const img = origin + '/og.png';
   return [
     `<link rel="canonical" href="${esc(seo.canonical)}" />`,
     `<meta property="og:type" content="website" />`,
@@ -1781,7 +1783,10 @@ function seoHead(seo, origin) {
     `<meta property="og:description" content="${esc(seo.desc)}" />`,
     `<meta property="og:url" content="${esc(seo.canonical)}" />`,
     `<meta property="og:image" content="${esc(img)}" />`,
-    `<meta name="twitter:card" content="summary" />`,
+    `<meta property="og:image:width" content="1200" />`,
+    `<meta property="og:image:height" content="630" />`,
+    `<meta property="og:image:alt" content="ChartGauge — charts that show their work" />`,
+    `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:title" content="${esc(seo.title)}" />`,
     `<meta name="twitter:description" content="${esc(seo.desc)}" />`,
     `<meta name="twitter:image" content="${esc(img)}" />`,

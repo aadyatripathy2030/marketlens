@@ -1,0 +1,105 @@
+<!-- Source for public/og.png, the 1200x630 social share card.
+
+     Regenerate after editing:
+
+       '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' \
+         --headless --disable-gpu --hide-scrollbars --force-device-scale-factor=1 \
+         --window-size=1200,630 --screenshot=public/og.png tools/og-card.html
+
+     Then re-scrape the URL in each platform's debugger, or the old image
+     stays cached for days. -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root {
+    --bg: #0e1014; --card: #171b22; --text: #edf0f4; --muted: #8a94a3;
+    --border: #29313d; --border-strong: #3a4353; --accent: #4c9eff;
+    --good: #3ddc84; --bad: #ff5f56;
+  }
+  html, body { width: 1200px; height: 630px; }
+  body {
+    background:
+      radial-gradient(900px 500px at 88% -12%, rgba(76,158,255,.16), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 68px 72px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .brand { display: flex; align-items: center; gap: 15px; }
+  .brand-name { font-size: 28px; font-weight: 700; letter-spacing: -.3px; }
+  h1 {
+    font-size: 78px; line-height: 1.02; font-weight: 700; letter-spacing: -2.4px;
+    margin-bottom: 26px; max-width: 16ch;
+  }
+  .sub { font-size: 27px; line-height: 1.45; color: var(--muted); max-width: 30ch; font-weight: 450; }
+  .sub b { color: var(--text); font-weight: 650; }
+  .foot { display: flex; align-items: center; justify-content: space-between; }
+  .url { font-size: 25px; font-weight: 650; color: var(--accent); }
+  .pills { display: flex; gap: 10px; }
+  .pill {
+    font-size: 18px; font-weight: 600; color: var(--muted);
+    border: 1px solid var(--border-strong); border-radius: 999px; padding: 9px 17px;
+  }
+  /* the score dial, echoing the one on the analyze page */
+  .art { position: absolute; right: 84px; top: 214px; width: 310px; height: 310px; }
+  .art .lbl {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 4px;
+  }
+  .art .n { font-size: 66px; font-weight: 700; letter-spacing: -1.5px; }
+  .art .t { font-size: 19px; font-weight: 600; color: var(--muted); }
+</style>
+</head>
+<body>
+
+  <div class="brand">
+    <svg width="46" height="46" viewBox="0 0 512 512" aria-hidden="true">
+      <circle cx="256" cy="256" r="236" fill="none" stroke="#29313d" stroke-width="18"/>
+      <line x1="84" y1="320" x2="428" y2="196" stroke="#4c9eff" stroke-width="26" stroke-linecap="round"/>
+      <g stroke-linecap="round">
+        <line x1="150" y1="212" x2="150" y2="378" stroke="#ff5f56" stroke-width="20"/>
+        <rect x="122" y="242" width="56" height="116" rx="17" fill="#ff5f56"/>
+        <line x1="256" y1="170" x2="256" y2="348" stroke="#3ddc84" stroke-width="20"/>
+        <rect x="228" y="200" width="56" height="124" rx="17" fill="#3ddc84"/>
+        <line x1="362" y1="132" x2="362" y2="318" stroke="#3ddc84" stroke-width="20"/>
+        <rect x="334" y="160" width="56" height="128" rx="17" fill="#3ddc84"/>
+      </g>
+    </svg>
+    <div class="brand-name">ChartGauge</div>
+  </div>
+
+  <div class="art">
+    <svg width="310" height="310" viewBox="0 0 120 120">
+      <circle cx="60" cy="60" r="52" fill="none" stroke="#29313d" stroke-width="11"/>
+      <circle cx="60" cy="60" r="52" fill="none" stroke="#4c9eff" stroke-width="11"
+              stroke-linecap="round" stroke-dasharray="326.7"
+              stroke-dashoffset="150" transform="rotate(-90 60 60)"/>
+    </svg>
+    <div class="lbl"><div class="n">54</div><div class="t">/ 100</div></div>
+  </div>
+
+  <div>
+    <h1>Charts that show their work.</h1>
+    <p class="sub">
+      Thirteen indicators, read in plain English &mdash; and a
+      <b>public record of how often the reading was right</b>,
+      including when it did worse than doing nothing.
+    </p>
+  </div>
+
+  <div class="foot">
+    <div class="url">chartgauge.com</div>
+    <div class="pills">
+      <div class="pill">Stocks &amp; crypto</div>
+      <div class="pill">19 lessons</div>
+      <div class="pill">Not financial advice</div>
+    </div>
+  </div>
+
+</body>
+</html>
