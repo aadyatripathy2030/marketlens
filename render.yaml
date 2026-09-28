@@ -2,6 +2,12 @@
 # NOTE: the service/database names below are Render identifiers, not branding.
 # Renaming them creates a new service (dropping the custom domain) and a new,
 # empty database. Leave them as "marketlens".
+#
+# The live service's URL is https://marketlens-dgit.onrender.com. The "-dgit" is
+# a random suffix Render adds to the onrender.com subdomain — it is NOT part of
+# the service name, and "marketlens" below is correct. (marketlens-i6ru was a
+# duplicate of the same blueprint and is suspended.) Do not "fix" the name to
+# match a hostname.
 # In Render: New → Blueprint (or open your existing blueprint → Manual Sync).
 # The two API keys are sync:false, so Render prompts for them — never commit keys.
 databases:
@@ -44,3 +50,22 @@ services:
         sync: false
       - key: ANTHROPIC_MODEL      # optional; a cheaper model (e.g. claude-haiku-4-5) lowers cost
         value: claude-opus-4-8
+      - key: GOOGLE_CLIENT_ID     # "Sign in with Google" — dormant (silently) until both are set
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_SITE_VERIFICATION  # Search Console token; omit once DNS-verified
+        sync: false
+      - key: PRO_EMAILS           # comma-separated emails given complimentary Pro
+        sync: false
+      - key: CONTACT_EMAIL        # shown on /contact; defaults to chartgauge@gmail.com
+        sync: false
+      - key: FREE_UNTIL           # everything is free until this instant, then the normal split
+        value: "2026-10-18T00:00:00Z"
+
+# Read by the app but deliberately NOT declared here, because each has a working
+# default and listing them would prompt for a value on every blueprint sync:
+#   AI_FREE_DAILY, ACCURACY_HORIZON, ANTHROPIC_MODEL_FREE, DATA_CREDITS_PER_MIN,
+#   DATA_USER_RESERVE, FINNHUB_PER_MIN, FREE_ALERT_MAX, FREE_WATCH_MAX,
+#   MOVERS_SYMBOLS, RANKED_REFRESH_MS, RANKED_SYMBOLS, STRIPE_PRICE_ID (legacy).
+# PORT is set by Render itself — never declare it.
