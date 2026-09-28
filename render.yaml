@@ -1,22 +1,30 @@
 # Render Blueprint — deploy ChartGauge as a free web service + Postgres.
-# NOTE: the service/database names below are Render identifiers, not branding.
-# Renaming them creates a new service (dropping the custom domain) and a new,
-# empty database. Leave them as "marketlens".
 #
-# The live service's URL is https://marketlens-dgit.onrender.com. The "-dgit" is
-# a random suffix Render adds to the onrender.com subdomain — it is NOT part of
-# the service name, and "marketlens" below is correct. (marketlens-i6ru was a
-# duplicate of the same blueprint and is suspended.) Do not "fix" the name to
-# match a hostname.
+# The names below MUST match the live services exactly, as spelled in the Render
+# dashboard's SERVICE NAME column (verified 2026-09-28):
+#
+#   marketlens-dgit      web service, Node, Oregon — serves chartgauge.com
+#   marketlens-db-dgit   PostgreSQL 18, Oregon     — holds every account
+#
+# They previously read "marketlens" and "marketlens-db", which match nothing.
+# A blueprint that names a service Render does not have does not adopt the live
+# one — it CREATES another. That is where the duplicate (marketlens-i6ru) came
+# from, and why it had to be suspended and deleted.
+#
+# So: do not change these to anything else, and in particular do not shorten
+# them back. The "-dgit" is part of the name, not a suffix on the URL.
+# Renaming them on a sync creates a fresh service without the chartgauge.com
+# domain binding, and a fresh, empty database.
+#
 # In Render: New → Blueprint (or open your existing blueprint → Manual Sync).
-# The two API keys are sync:false, so Render prompts for them — never commit keys.
+# Keys are sync:false, so Render prompts for them — never commit keys.
 databases:
-  - name: marketlens-db          # free Postgres; Render provisions + wires it automatically
+  - name: marketlens-db-dgit     # free Postgres; Render provisions + wires it automatically
     plan: free
 
 services:
   - type: web
-    name: marketlens
+    name: marketlens-dgit
     runtime: node
     plan: free
     buildCommand: npm install
@@ -24,7 +32,7 @@ services:
     envVars:
       - key: DATABASE_URL         # auto-filled from the database above — persistent accounts
         fromDatabase:
-          name: marketlens-db
+          name: marketlens-db-dgit
           property: connectionString
       - key: STOCK_API_KEY        # Twelve Data key (twelvedata.com, free tier) — real prices
         sync: false
