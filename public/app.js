@@ -6,6 +6,11 @@
   const col = (n) => CSS.getPropertyValue(n).trim();
   const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+  // new Date(bad).toISOString() throws a RangeError, which used to take the
+  // whole admin dashboard down over a single malformed timestamp.
+  function ymd(v) { const d = new Date(v); return Number.isNaN(d.getTime()) ? '\u2014' : d.toISOString().slice(0, 10); }
+  function hms(v) { const d = new Date(v); return Number.isNaN(d.getTime()) ? '\u2014' : d.toISOString().slice(11, 19); }
+
   // How much of the indicator panel points the same way, as a percentage.
   // There are only five groups, so this lands on multiples of 20 — that is the
   // real resolution of the measure, and rounding it to a percent does not add
@@ -231,7 +236,6 @@
     ['DOT/USD', 'Polkadot'], ['MATIC/USD', 'Polygon'], ['LTC/USD', 'Litecoin'], ['BCH/USD', 'Bitcoin Cash'],
     ['UNI/USD', 'Uniswap'], ['ATOM/USD', 'Cosmos'], ['ETC/USD', 'Ethereum Classic'], ['XLM/USD', 'Stellar'],
   ];
-  const isCrypto = (sym) => String(sym || '').includes('/');
 
   const TICKERS = [
     ['AAPL', 'Apple'], ['MSFT', 'Microsoft'], ['GOOGL', 'Alphabet (Class A)'], ['GOOG', 'Alphabet (Class C)'],
@@ -1831,9 +1835,9 @@
     if (usageEntries.length) html += `<div class="admin-sec"><div class="mkt-h">Top endpoints</div><div class="compare-scroll"><table class="admin-table"><thead><tr><th>Endpoint</th><th>Calls</th></tr></thead><tbody>` + usageEntries.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join('') + `</tbody></table></div></div>`;
     html += `<div class="admin-sec"><div class="mkt-h">Users (${(d.users || []).length})</div><div class="compare-scroll"><table class="admin-table"><thead><tr><th>Email</th><th>Plan</th><th>Joined</th></tr></thead><tbody>` + (d.users || []).map(u => {
       const plan = u.plan === 'pro' ? 'pro (paying)' : u.comp ? 'pro (comp)' : 'free';
-      return `<tr><td>${esc(u.email)}${u.admin ? ' <span class="svc-pill svc-on">admin</span>' : ''}</td><td>${esc(plan)}</td><td>${new Date(u.created).toISOString().slice(0, 10)}</td></tr>`;
+      return `<tr><td>${esc(u.email)}${u.admin ? ' <span class="svc-pill svc-on">admin</span>' : ''}</td><td>${esc(plan)}</td><td>${esc(ymd(u.created))}</td></tr>`;
     }).join('') + `</tbody></table></div></div>`;
-    html += `<div class="admin-sec"><div class="mkt-h">Recent errors (${(d.errors || []).length})</div>` + ((d.errors || []).length ? d.errors.map(e => `<div class="err-line">${new Date(e.t).toISOString().slice(11, 19)} — ${esc(e.msg)}</div>`).join('') : `<p class="compare-note">No errors logged.</p>`) + `</div>`;
+    html += `<div class="admin-sec"><div class="mkt-h">Recent errors (${(d.errors || []).length})</div>` + ((d.errors || []).length ? d.errors.map(e => `<div class="err-line">${esc(hms(e.t))} \u2014 ${esc(e.msg)}</div>`).join('') : `<p class="compare-note">No errors logged.</p>`) + `</div>`;
     $('adminBody').innerHTML = html;
   }
 

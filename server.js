@@ -42,7 +42,6 @@ const STRIPE_PRICES = {
   monthly: (process.env.STRIPE_PRICE_MONTHLY || process.env.STRIPE_PRICE_ID || '').replace(/\s/g, ''),
   yearly: (process.env.STRIPE_PRICE_YEARLY || '').replace(/\s/g, ''),
 };
-const PLAN_LABELS = { weekly: 'week', monthly: 'month', yearly: 'year' };
 const BILLING_ON = !!(STRIPE_SECRET_KEY && (STRIPE_PRICES.weekly || STRIPE_PRICES.monthly || STRIPE_PRICES.yearly));
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'atriuminstitutereal@gmail.com,aadyatripathy3@gmail.com,chartgauge@gmail.com').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
 const isAdmin = (u) => !!(u && ADMIN_EMAILS.includes(String(u.email || '').toLowerCase()));
@@ -181,7 +180,6 @@ function creditsUsed() {
   return creditLog.length;
 }
 function spendCredits(n) { const now = Date.now(); for (let i = 0; i < Math.max(1, n); i++) creditLog.push(now); }
-const creditsFree = () => Math.max(0, CREDITS_PER_MIN - creditsUsed());
 
 // Resolves once the background task may spend `n` without eating into the
 // reserve. Gives up after the timeout so a busy period cannot wedge it.
@@ -665,6 +663,47 @@ async function handleAnalyzeImage(req, res) {
   catch (e) { return json(res, 200, { source: 'error', summary: 'Could not analyze the image (' + e.message + ').' }); }
 }
 
+// ---- Abuse throttling ----
+// Password verification is scrypt, which costs ~30ms of BLOCKING CPU on a
+// single-threaded server. Without a limit that is two problems, not one: an
+// attacker can guess passwords without bound, and thirty-odd requests a second
+// saturate the event loop and take the whole site down. The window is per-IP
+// and per-account, so one attacker cannot lock out an unrelated user by
+// hammering a shared address.
+const hits = new Map();   // key -> { n, resetAt }
+function tooMany(key, limit, windowMs) {
+  const now = Date.now();
+  const h = hits.get(key);
+  if (!h || now > h.resetAt) { hits.set(key, { n: 1, resetAt: now + windowMs }); return 0; }
+  h.n++;
+  return h.n > limit ? Math.ceil((h.resetAt - now) / 1000) : 0;
+}
+// Render sits behind a proxy, so the socket address is always Render's. The
+// left-most x-forwarded-for entry is the client; it is spoofable, which is why
+// the per-account limit below exists alongside it.
+function clientIp(req) {
+  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return fwd || (req.socket && req.socket.remoteAddress) || 'unknown';
+}
+// Dropped rather than grown without bound; these entries are all short-lived.
+const hitsSweep = setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of hits) if (now > v.resetAt) hits.delete(k);
+}, 60000);
+if (hitsSweep.unref) hitsSweep.unref();
+
+function throttled(res, keys) {
+  for (const [key, limit, windowMs] of keys) {
+    const retry = tooMany(key, limit, windowMs);
+    if (retry) {
+      res.setHeader('Retry-After', String(retry));
+      json(res, 429, { error: `Too many attempts. Try again in ${retry < 60 ? retry + ' seconds' : Math.ceil(retry / 60) + ' minutes'}.` });
+      return true;
+    }
+  }
+  return false;
+}
+
 // ---- Accounts + watchlist ----
 function parseCookies(req) {
   const out = {}; (req.headers.cookie || '').split(';').forEach(p => { const i = p.indexOf('='); if (i > 0) out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim()); });
@@ -722,6 +761,7 @@ const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || ''));
 async function handleSignup(req, res) {
   const b = await readBody(req);
   const email = String(b.email || '').toLowerCase().trim();
+  if (throttled(res, [['signup:ip:' + clientIp(req), 5, 60 * 60000]])) return;
   if (!validEmail(email)) return json(res, 400, { error: 'Enter a valid email.' });
   if (String(b.password || '').length < 8) return json(res, 400, { error: 'Password must be at least 8 characters.' });
   try {
@@ -736,6 +776,12 @@ async function handleSignup(req, res) {
 }
 async function handleLogin(req, res) {
   const b = await readBody(req);
+  const email = String(b.email || '').toLowerCase().trim();
+  // Checked before any hashing happens, so a flood costs no CPU.
+  if (throttled(res, [
+    ['login:ip:' + clientIp(req), 20, 15 * 60000],
+    ['login:acct:' + email, 8, 15 * 60000],
+  ])) return;
   const user = await db.getUserByEmail(b.email || '');
   if (!user || !db.verifyPw(b.password || '', user.pw)) return json(res, 401, { error: 'Wrong email or password.' });
   const token = await db.createSession(user.id);
@@ -1237,15 +1283,18 @@ async function refreshRanked() {
 // Kicked off at boot and on a timer. unref() so it never holds the process up.
 function startRankedLoop() {
   if (!STOCK_API_KEY || dailyQuotaOut()) return;
-  refreshRanked();
-  const t = setInterval(refreshRanked, RANKED_REFRESH_MS);
+  // try/finally without a catch re-throws, so a bare call here is an unhandled
+  // rejection — which terminates the process on modern Node.
+  const safeRefresh = () => { try { const p = refreshRanked(); if (p && p.catch) p.catch(logError); } catch (e) { logError(e); } };
+  safeRefresh();
+  const t = setInterval(safeRefresh, RANKED_REFRESH_MS);
   if (t.unref) t.unref();
 }
 
 async function handleRanked(req, res) {
   if (!STOCK_API_KEY) return json(res, 200, { available: false, message: 'Live ratings need a market-data key.' });
   // A dyno that slept through its timer restarts the pass on the next visit.
-  if (!rankedStore.running && Date.now() - rankedStore.lastStart > RANKED_REFRESH_MS) refreshRanked();
+  if (!rankedStore.running && Date.now() - rankedStore.lastStart > RANKED_REFRESH_MS) { const p = refreshRanked(); if (p && p.catch) p.catch(logError); }
   const rows = rankedStore.rows;
   // Six is the floor, not four: with fewer, the top three and bottom three
   // slices overlap and the same symbol appears in both columns — which it did
@@ -1504,10 +1553,15 @@ function stripePost(apiPath, form) {
   });
 }
 function readRawBody(req, cap) { cap = cap || 1e6; return new Promise(resolve => { let d = ''; req.on('data', c => { d += c; if (d.length > cap) req.destroy(); }); req.on('end', () => resolve(d)); req.on('error', () => resolve('')); }); }
+// Stripe's tolerance for how old a signed payload may be. Without it a valid
+// webhook captured once can be replayed forever.
+const STRIPE_SIG_TOLERANCE_S = 300;
 function verifyStripeSig(raw, header, secret) {
   if (!header) return false;
   const parts = {}; header.split(',').forEach(p => { const i = p.indexOf('='); parts[p.slice(0, i)] = p.slice(i + 1); });
   if (!parts.t || !parts.v1) return false;
+  const age = Math.abs(Date.now() / 1000 - Number(parts.t));
+  if (!Number.isFinite(age) || age > STRIPE_SIG_TOLERANCE_S) return false;
   const expected = crypto.createHmac('sha256', secret).update(parts.t + '.' + raw).digest('hex');
   try { return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(parts.v1)); } catch { return false; }
 }
@@ -1549,7 +1603,14 @@ async function handlePortal(req, res) {
 }
 async function handleWebhook(req, res) {
   const raw = await readRawBody(req);
-  if (STRIPE_WEBHOOK_SECRET && !verifyStripeSig(raw, req.headers['stripe-signature'], STRIPE_WEBHOOK_SECRET)) { res.writeHead(400); return res.end('bad signature'); }
+  // Fail CLOSED. This used to verify only when a secret happened to be set,
+  // which meant a missing or mistyped STRIPE_WEBHOOK_SECRET silently turned
+  // this endpoint into "anyone can POST themselves a Pro subscription".
+  if (!STRIPE_WEBHOOK_SECRET) {
+    logError(new Error('webhook rejected: STRIPE_WEBHOOK_SECRET is not set'));
+    res.writeHead(503); return res.end('webhook not configured');
+  }
+  if (!verifyStripeSig(raw, req.headers['stripe-signature'], STRIPE_WEBHOOK_SECRET)) { res.writeHead(400); return res.end('bad signature'); }
   let event; try { event = JSON.parse(raw); } catch { res.writeHead(400); return res.end('bad json'); }
   try {
     if (event.type === 'checkout.session.completed') {
@@ -1589,7 +1650,7 @@ const VIEW_SEO = {
   'watchlist': { view: 'watchlist', title: 'Your watchlist — ChartGauge',
     desc: 'Keep the tickers you follow in one place, with live prices and one-click analysis.' },
   'learn': { view: 'learn', title: 'Learn investing — free plain-English lessons — ChartGauge',
-    desc: 'Eleven short lessons covering market basics, technical and fundamental analysis, valuation, financial statements, risk management, dividends, growth, value and options — each with a quiz.' },
+    desc: 'Nineteen short lessons covering market basics, technical and fundamental analysis, valuation, financial statements, risk management, order types, candlesticks, volume, trading psychology, costs and index funds — each with a quiz.' },
   'settings': { view: 'settings', title: 'Settings — choose what the analysis shows — ChartGauge',
     desc: 'Turn any part of the analysis on or off: the indicator score, the measured base rate, exit levels, the thirteen technical readings, the projection, fundamentals, news and the written summary.' },
   'accuracy': { view: 'accuracy', title: 'How accurate is ChartGauge? — the measured record',
@@ -1745,11 +1806,39 @@ const GA_SNIPPET = (GA_ID ? `<meta name="ga-id" content="${esc(GA_ID)}">` : '')
 // disallows it. The page itself is guarded server-side regardless.
 const APP_PATH = /^\/(analyze|markets|movers|accuracy|compare|screener|alerts|watchlist|learn|settings|pricing|terms|privacy|refunds|contact|admin)(\/|$)|^\/stock\//;
 
+// A mistyped URL used to return the two words "Not found" as plain text on a
+// blank white page, with no styling, no way back and no branding. Cheap to do
+// properly, and it is the page a search engine sees for every dead link.
+function notFound(req, res) {
+  const origin = siteOrigin(req);
+  const body = `<!doctype html><html lang="en"><head><meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Page not found \u2014 ${SITE_NAME}</title>
+<meta name="robots" content="noindex" />
+<link rel="canonical" href="${esc(origin)}/" />
+<link rel="stylesheet" href="/styles.css" />
+</head><body>
+<div class="nf-wrap">
+  <div class="nf-code">404</div>
+  <h1 class="nf-title">That page isn\u2019t here</h1>
+  <p class="nf-sub">The link may be out of date, or the address mistyped. Everything below still works.</p>
+  <div class="nf-links">
+    <a class="nf-primary" href="/">Go to the charts</a>
+    <a class="nf-link" href="/learn">Lessons</a>
+    <a class="nf-link" href="/accuracy">Accuracy record</a>
+    <a class="nf-link" href="/contact">Contact</a>
+  </div>
+</div>
+</body></html>`;
+  res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(body);
+}
+
 function serveDocument(req, res, urlPath) {
   const origin = siteOrigin(req);
   const seo = seoFor(urlPath, req);
   fs.readFile(path.join(PUBLIC, 'index.html'), 'utf8', (err, html) => {
-    if (err) { res.writeHead(404); return res.end('Not found'); }
+    if (err) return notFound(req, res);
     let out = html
       .replace(/<title>[\s\S]*?<\/title>/, `<title>${esc(seo.title)}</title>`)
       .replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${esc(seo.desc)}" />`)
@@ -1834,7 +1923,7 @@ function serveStatic(req, res) {
   if (!filePath.startsWith(PUBLIC)) { res.writeHead(403); return res.end('403'); }
   if (urlPath === '/index.html') return serveDocument(req, res, '/');
   fs.stat(filePath, (err, stat) => {
-    if (err || !stat.isFile()) { res.writeHead(404); return res.end('Not found'); }
+    if (err || !stat.isFile()) return notFound(req, res);
     // Filenames are not content-hashed, so a long max-age would pin stale code
     // after a deploy. Revalidate instead: an unchanged asset costs a 304 with
     // an empty body rather than a re-download.
@@ -1877,6 +1966,9 @@ function securityHeaders(req, res) {
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
   res.setHeader('Content-Security-Policy', CSP);
+  // Safe with the redirect-based Google flow; it would break a popup one.
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   // Only assert HSTS on a request that actually arrived over TLS, so a local
   // http run does not pin the browser to https://localhost.
   if ((req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https') {
@@ -1947,10 +2039,46 @@ const server = http.createServer(async (req, res) => {
   } catch (e) { logError(e); console.error('server error:', e); json(res, 500, { error: 'Internal error' }); }
 });
 
+// ---- Staying up ----
+// A rejected promise that nobody caught terminates the process on modern Node.
+// Every background job here is best-effort — a failed price refresh is not a
+// reason for the site to go down — so these are recorded and swallowed. An
+// uncaught exception is different: the process state is unknown after one, so
+// it is logged and then handed to the platform to restart cleanly, which is
+// what already happened, only silently.
+process.on('unhandledRejection', (reason) => {
+  logError(reason instanceof Error ? reason : new Error('unhandled rejection: ' + String(reason)));
+  console.error('unhandled rejection:', reason);
+});
+process.on('uncaughtException', (e) => {
+  logError(e);
+  console.error('uncaught exception — exiting for a clean restart:', e && e.stack ? e.stack : e);
+  process.exit(1);
+});
+
+// Render sends SIGTERM on every deploy. Closing the listener first lets
+// in-flight requests finish instead of being cut off mid-response.
+let shuttingDown = false;
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.on(sig, () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(sig + ' received — finishing in-flight requests');
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 10000).unref();
+  });
+}
+
 db.init().then((storeMode) => {
   server.listen(PORT, () => {
     console.log(`ChartGauge running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'}, fundamentals: ${FMP_API_KEY ? 'on' : 'off'}, news: ${FINNHUB_API_KEY ? 'on' : 'off'}, accounts: ${storeMode})`);
     // Started after listen so a slow first pass never delays accepting traffic.
     startRankedLoop();
   });
+}).catch((e) => {
+  // The in-memory fallback lives inside db.init, so reaching here means
+  // something unexpected. Serve anyway rather than leaving the site dark.
+  logError(e);
+  console.error('db.init failed outright, serving without it:', e);
+  server.listen(PORT, () => { console.log(`ChartGauge running at http://localhost:${PORT} (degraded)`); startRankedLoop(); });
 });

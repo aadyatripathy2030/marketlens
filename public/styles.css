@@ -690,3 +690,16 @@ body.drawer-open .drawer { transform: translateX(0); }
 .install-bar.hidden { display: none; }
 .install-bar b { color: var(--text); }
 .install-bar .launch-x { margin-left: auto; }
+
+/* 404 */
+.nf-wrap { max-width: 560px; margin: 0 auto; padding: 96px 16px 64px; text-align: center; }
+.nf-code { font-family: var(--font-num); font-size: 64px; font-weight: 700; color: var(--border-strong); line-height: 1; }
+.nf-title { font-size: 26px; font-weight: 700; margin: 14px 0 10px; }
+.nf-sub { color: var(--muted); font-size: 15px; line-height: 1.6; margin-bottom: 28px; }
+.nf-links { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; justify-content: center; }
+/* .btn is styled for <button>; an <a> needs the text-decoration and colour
+   reset explicitly or it renders as an underlined link in a box. */
+.nf-primary { display: inline-block; text-decoration: none; background: var(--accent); color: #10161a; font-size: 14px; font-weight: 700; padding: 10px 18px; border-radius: 999px; border: 0; }
+.nf-primary:hover { filter: brightness(1.08); }
+.nf-link { color: var(--muted); font-size: 14px; font-weight: 600; text-decoration: none; padding: 7px 12px; border: 1px solid var(--border); border-radius: 999px; }
+.nf-link:hover { color: var(--text); border-color: var(--accent); }

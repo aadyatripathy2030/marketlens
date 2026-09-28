@@ -38,8 +38,8 @@
         <span id="gateGoogleText">Continue with Google</span>
       </button>
       <div class="gate-or hidden" id="gateGoogleOr"><span>or use an email address</span></div>
-      <input type="email" id="gateEmail" class="input" placeholder="you@email.com" autocomplete="email" />
-      <input type="password" id="gatePass" class="input" placeholder="Password (8+ characters)" autocomplete="current-password" />
+      <input type="email" id="gateEmail" class="input" aria-label="Email address" placeholder="you@email.com" autocomplete="email" />
+      <input type="password" id="gatePass" class="input" aria-label="Password" placeholder="Password (8+ characters)" autocomplete="current-password" />
       <div class="auth-err hidden" id="gateErr"></div>
       <div class="gate-btns">
         <button type="button" class="btn btn-primary btn-block" id="gateSignin">Sign in</button>
@@ -92,7 +92,7 @@
       <h1 class="hero-h">Look up a ticker.</h1>
       <p class="hero-sub">ChartGauge pulls the price history, computes SMA 20/50/200, RSI, MACD, Bollinger bands, ATR, VWAP, support and resistance, draws them on a candlestick chart, and writes up what they say. It is a study tool. The indicators disagree with each other often, and the score built from them is wrong often.</p>
       <form class="hero-search" id="heroForm">
-        <input id="heroInput" class="input" placeholder="Search a ticker, company, or crypto — AAPL, Tesla, BTC/USD…" autocomplete="off" maxlength="16" />
+        <input id="heroInput" class="input" aria-label="Search for a ticker, company or crypto pair" placeholder="Search a ticker, company, or crypto — AAPL, Tesla, BTC/USD…" autocomplete="off" maxlength="16" />
         <button type="submit" class="btn btn-primary">Analyze</button>
       </form>
       <div class="hero-cta">
@@ -116,7 +116,7 @@
   <div class="controls">
     <form class="search" id="searchForm">
       <div class="search-box">
-        <input type="text" id="symbol" class="input" placeholder="Ticker or crypto pair — AAPL, TSLA, BTC/USD" autocomplete="off" maxlength="16" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest" />
+        <input type="text" id="symbol" class="input" aria-label="Ticker or crypto pair" placeholder="Ticker or crypto pair — AAPL, TSLA, BTC/USD" autocomplete="off" maxlength="16" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest" />
         <div class="suggest hidden" id="suggest" role="listbox"></div>
       </div>
       <button type="submit" class="btn btn-primary" id="goBtn">Analyze</button>
@@ -207,14 +207,14 @@
           </div>
           <div class="color-panel hidden" id="colorPanel">
             <div class="cp-row"><span class="cp-lbl">Up</span>
-              <label>Body <input type="color" data-c="upBody" /></label>
-              <label>Border <input type="color" data-c="upBorder" /></label>
-              <label>Wick <input type="color" data-c="upWick" /></label>
+              <label>Body <input type="color" data-c="upBody" aria-label="up body colour" /></label>
+              <label>Border <input type="color" data-c="upBorder" aria-label="up border colour" /></label>
+              <label>Wick <input type="color" data-c="upWick" aria-label="up wick colour" /></label>
             </div>
             <div class="cp-row"><span class="cp-lbl">Down</span>
-              <label>Body <input type="color" data-c="downBody" /></label>
-              <label>Border <input type="color" data-c="downBorder" /></label>
-              <label>Wick <input type="color" data-c="downWick" /></label>
+              <label>Body <input type="color" data-c="downBody" aria-label="down body colour" /></label>
+              <label>Border <input type="color" data-c="downBorder" aria-label="down border colour" /></label>
+              <label>Wick <input type="color" data-c="downWick" aria-label="down wick colour" /></label>
             </div>
             <button type="button" class="link-btn" id="cpReset">Reset to theme colors</button>
           </div>
