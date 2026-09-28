@@ -45,6 +45,14 @@
     window.gtag('config', id);
   }
 
+  // Fire-and-forget event. Silently does nothing when analytics never loaded —
+  // which is the case for anyone who declined the consent banner, and is the
+  // point: no event should ever be the reason a click fails.
+  function track(name, params) {
+    try { if (typeof window.gtag === 'function') window.gtag('event', name, params || {}); }
+    catch (e) { /* analytics must never break the app */ }
+  }
+
   function initConsent() {
     const bar = $('consent');
     if (!bar) return;
@@ -1152,6 +1160,10 @@
       if (seq !== runSeq) return;                    // superseded by a newer ticker
       if (!r.ok) throw new Error(d.error || 'Could not load');
       lastData = d; liveBar = null;
+      // The activation moment: a chart the visitor asked for actually drew.
+      // After the ok-check and the sequence guard, so a failed lookup or a
+      // superseded request is never counted as one.
+      track('analyze', { symbol: d.symbol, strategy, interval });
       $('modeTag').textContent = d.source === 'live' ? 'live data' : 'demo data';
       $('symName').textContent = d.symbol + (d.name && d.name !== d.symbol ? ' · ' + d.name : '');
       updateWatchBtn(d.symbol);
@@ -1812,6 +1824,7 @@
   }
   async function startCheckout(plan, b) {
     if (b) { b.disabled = true; b.textContent = 'Redirecting…'; }
+    track('begin_checkout', { plan });
     try { const j = await (await fetch('/api/billing/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan }) })).json(); if (j.url) { location.href = j.url; return; } alert(j.error || 'Could not start checkout.'); } catch (e) { alert('Could not start checkout.'); }
     renderPricing();
   }
@@ -2116,6 +2129,8 @@
     const seq = at === -1 ? LESSONS : list;
     const pos = at === -1 ? LESSONS.findIndex(x => x.id === l.id) : at;
     const next = pos > -1 ? seq[pos + 1] : null;
+    // Engagement signal for the /learn pages, which are the SEO surface.
+    track('lesson_complete', { lesson: l.id, score: score.right, of: l.quiz.length });
     s.innerHTML = `<div class="quiz-result">You scored ${score.right} / ${l.quiz.length}.</div>`
       + (next
         ? `<div class="quiz-next-wrap"><div class="quiz-next-label">Next: ${esc(next.title)}`
@@ -2188,6 +2203,7 @@
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'Something went wrong.');
       currentUser = j.user; renderAcct();
+      track(mode === 'signup' ? 'sign_up' : 'login', { method: 'password' });
       $('watchBtn').classList.remove('hidden');
       loadWatchlist(); hideGate(); releasePending();
     } catch (e) { gateErr(e.message); }
@@ -2211,6 +2227,7 @@
   const params = new URLSearchParams(location.search);
   const deep = params.get('symbol'), billing = params.get('billing');
   if (billing === 'success') {
+    track('purchase', { currency: 'USD' });
     showView('pricing');
     $('pricingLead').textContent = 'Thanks for upgrading. Your Pro plan is activating; this can take a few seconds.';
     let tries = 0;
