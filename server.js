@@ -68,6 +68,16 @@ const inLaunchPeriod = () => Number.isFinite(FREE_UNTIL) && Date.now() < FREE_UN
 // could subscribe. hasPro is what the feature gates ask.
 const hasPro = (u) => inLaunchPeriod() || isPro(u);
 const usage = { total: 0 };            // per-endpoint request counters (reset on restart)
+// Counted endpoints. Anything else is tallied under one bucket so an attacker
+// cannot mint unlimited keys by inventing paths.
+const KNOWN_API = new Set([
+  '/api/stock', '/api/quotes', '/api/fundamentals', '/api/analyze', '/api/analyze-stream',
+  '/api/analyze-image', '/api/compare', '/api/screen', '/api/watchlist', '/api/alerts',
+  '/api/movers', '/api/ranked', '/api/accuracy', '/api/admin', '/api/config',
+  '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
+  '/api/auth/delete', '/api/auth/google', '/api/auth/google/callback',
+  '/api/billing/webhook', '/api/billing/checkout', '/api/billing/portal',
+]);
 const errorLog = [];                   // recent server errors (ring buffer)
 function logError(e) { errorLog.push({ t: Date.now(), msg: String((e && e.message) || e).slice(0, 200) }); if (errorLog.length > 60) errorLog.shift(); }
 // Candle intervals, from 1-minute up to monthly. outputsize = how many bars to
@@ -386,7 +396,7 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   // What actually happened, historically, at scores like today's. Roughly 50ms
   // on a full series; null when there is not enough history to say anything.
   let edge = null;
-  try { edge = I.historicalEdge(candles, rating.score, 20); } catch (e) { logError(e); }
+  if (rating.score != null) { try { edge = I.historicalEdge(candles, rating.score, 20); } catch (e) { logError(e); } }
   const last = closes[closes.length - 1];
   const prev = closes[closes.length - 2] || last;
   json(res, 200, {
@@ -411,7 +421,9 @@ function ruleBasedSummary(p) {
   const sma = t.sma || {};
   const trendUp = sma[50] != null && sma[200] != null ? sma[50] > sma[200] : null;
   const rsi = t.rsi14;
-  const lead = `${sym} scores ${r.score}/100 on the technical composite — a "${r.label}" read, with ${r.agreeing} of its ${r.groupCount} indicator groups pointing that way. `;
+  const lead = r.insufficient
+    ? `${sym} does not have enough price history for a technical read — only ${r.groupCount} of ${r.groupsPossible} indicator groups could be computed, so no score is shown. `
+    : `${sym} scores ${r.score}/100 on the technical composite — a "${r.label}" read, with ${r.agreeing} of its ${r.groupCount} indicator groups pointing that way. `;
   const trend = trendUp == null ? '' : trendUp ? 'The long-term trend is up (50-day above the 200-day), ' : 'The long-term trend is down (50-day below the 200-day), ';
   const mom = rsi == null ? '' : rsi >= 70 ? `and momentum is hot — RSI at ${rsi} is overbought, so a pullback wouldn't surprise. `
     : rsi <= 30 ? `and momentum is washed out — RSI at ${rsi} is oversold, which can precede a bounce. `
@@ -437,7 +449,9 @@ function ruleBasedReport(p) {
   const edgeLine = p.edge
     ? ` Measured on this symbol\u2019s own history, setups scoring near this were higher ${p.edge.horizon} bars later ${p.edge.winRate}% of the time, against ${p.edge.baseWinRate}% on any given bar.`
     : "";
-  const conclusion = `The technical model scores ${p.symbol} ${r.score}/100 — a "${r.label}" read, ${r.agreeing} of ${r.groupCount} indicator groups agreeing, ${String(r.risk).toLowerCase()} risk.`
+  const conclusion = r.insufficient
+    ? `There is not enough price history for ${p.symbol} to score it; ${r.groupCount} of ${r.groupsPossible} indicator groups could be computed.`
+    : `The technical model scores ${p.symbol} ${r.score}/100 — a "${r.label}" read, ${r.agreeing} of ${r.groupCount} indicator groups agreeing, ${String(r.risk).toLowerCase()} risk.`
     + edgeLine
     + " This is a mechanical read of price action, not advice; confirm with your own research.";
   return { summary: ruleBasedSummary(p), bull: bull.slice(0, 4), bear: bear.slice(0, 4), conclusion };
@@ -448,7 +462,9 @@ function reportPrompt(p) {
   const fmt = (x) => x == null ? 'n/a' : (typeof x === 'number' ? x.toFixed(2) : x);
   const system = 'You are a sharp, balanced equity analyst writing for curious beginners. You will be given a stock and a set of already-computed technical indicators plus a mechanical rating. Respond with ONLY a JSON object (no markdown, no prose outside it) of the form: {"summary": string (3-4 lively plain-English sentences on where the stock stands and what is driving the rating), "bull": [3 short bullet strings — the strongest reasons it could go up], "bear": [3 short bullet strings — the strongest risks], "conclusion": string (2 sentences tying it together)}. Ground every point in the numbers provided; do not invent fundamentals, news, or price targets. Be explicit in the conclusion that this is a mechanical technical read, often wrong, and NOT financial advice.';
   const user = `SYMBOL: ${p.symbol} @ ${fmt(p.latest)} ${p.currency} (${fmt(p.changePct)}% today)\n`
-    + `RATING: ${r.label} — score ${r.score}/100, ${r.agreeing}/${r.groupCount} indicator groups agreeing, risk ${r.risk}\n`
+    + (r.insufficient
+        ? `RATING: none — not enough price history (${r.groupCount} of ${r.groupsPossible} indicator groups computable). Say plainly that there is too little history to read, and do not invent a rating.\n`
+        : `RATING: ${r.label} — score ${r.score}/100, ${r.agreeing}/${r.groupCount} indicator groups agreeing, risk ${r.risk}\n`)
     + `RSI14: ${fmt(t.rsi14)} | SMA20 ${fmt(sma[20])} / SMA50 ${fmt(sma[50])} / SMA200 ${fmt(sma[200])}\n`
     + `MACD hist: ${fmt(t.macd && t.macd.hist)} | VWAP: ${fmt(t.vwap)} | Bollinger %B: ${fmt(t.bollinger && t.bollinger.pctB)}\n`
     + `ATR: ${fmt(t.atr)} | Volatility(annual %): ${fmt(t.volatility && t.volatility.annual)} | Trend: ${t.trend ? t.trend.strength + '/100 ' + t.trend.direction : 'n/a'}\n`
@@ -1980,7 +1996,14 @@ const server = http.createServer(async (req, res) => {
   try {
     securityHeaders(req, res);
     const url = req.url.split('?')[0];
-    if (url.startsWith('/api/')) { usage.total++; usage[url] = (usage[url] || 0) + 1; }
+    if (url.startsWith('/api/')) {
+      usage.total++;
+      // Only paths that are real endpoints get their own counter. Without this
+      // every distinct /api/<anything> became a permanent key, so a loop over
+      // made-up paths grew this object without bound.
+      if (KNOWN_API.has(url)) usage[url] = (usage[url] || 0) + 1;
+      else usage['/api/(unknown)'] = (usage['/api/(unknown)'] || 0) + 1;
+    }
     if (url === '/robots.txt') {
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
       return res.end(`User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\n\nSitemap: ${siteOrigin(req)}/sitemap.xml\n`);
@@ -2056,6 +2079,15 @@ process.on('uncaughtException', (e) => {
   process.exit(1);
 });
 
+// Expired sessions, swept hourly. Best-effort: a failure here is logged and
+// the site carries on.
+function startSessionPurge() {
+  const run = () => { Promise.resolve(db.purgeExpiredSessions()).catch(logError); };
+  const t = setInterval(run, 3600000);
+  if (t.unref) t.unref();
+  run();
+}
+
 // Render sends SIGTERM on every deploy. Closing the listener first lets
 // in-flight requests finish instead of being cut off mid-response.
 let shuttingDown = false;
@@ -2074,6 +2106,7 @@ db.init().then((storeMode) => {
     console.log(`ChartGauge running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'}, fundamentals: ${FMP_API_KEY ? 'on' : 'off'}, news: ${FINNHUB_API_KEY ? 'on' : 'off'}, accounts: ${storeMode})`);
     // Started after listen so a slow first pass never delays accepting traffic.
     startRankedLoop();
+    startSessionPurge();
   });
 }).catch((e) => {
   // The in-memory fallback lives inside db.init, so reaching here means

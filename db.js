@@ -170,6 +170,20 @@ async function deleteSession(token) {
   else mem.sessions.delete(token);
 }
 
+// Expired sessions were only ever removed when someone presented the dead
+// token, so a row for a visitor who never came back stayed forever. On a free
+// Postgres plan that table is the one thing that grows without a ceiling.
+async function purgeExpiredSessions() {
+  const now = Date.now();
+  if (mode === 'postgres') {
+    const r = await pool.query('DELETE FROM sessions WHERE expires < $1', [now]);
+    return r.rowCount || 0;
+  }
+  let n = 0;
+  for (const [t, s] of mem.sessions) if (!s || s.expires < now) { mem.sessions.delete(t); n++; }
+  return n;
+}
+
 // ---- watchlist ----
 async function listWatch(uid) {
   if (mode === 'postgres') { const r = await pool.query('SELECT symbol FROM watchlist WHERE uid=$1 ORDER BY created DESC', [uid]); return r.rows.map(x => x.symbol); }
@@ -361,7 +375,7 @@ module.exports = {
   getUserByGoogleId, linkGoogleId, createGoogleUser,
   init, storeMode, hasUrl, lastError, verifyPw,
   createUser, getUserByEmail, getUserById,
-  createSession, getSessionUser, deleteSession,
+  createSession, getSessionUser, deleteSession, purgeExpiredSessions,
   listWatch, addWatch, removeWatch,
   listAlerts, addAlert, removeAlert, markTriggered,
   listUsers, counts,

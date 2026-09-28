@@ -293,9 +293,17 @@ function fibonacci(candles, lookback = 60) {
 function volatility(closes, period = 20) {
   if (closes.length < period + 1) return null;
   const rets = [];
-  for (let i = closes.length - period; i < closes.length; i++) rets.push((closes[i] - closes[i - 1]) / closes[i - 1]);
+  // A zero or missing previous close divides to Infinity/NaN and poisons every
+  // number downstream, so those bars are skipped rather than propagated.
+  for (let i = closes.length - period; i < closes.length; i++) {
+    const prev = closes[i - 1];
+    if (!Number.isFinite(prev) || prev === 0 || !Number.isFinite(closes[i])) continue;
+    rets.push((closes[i] - prev) / prev);
+  }
+  if (rets.length < 2) return null;
   const m = avg(rets);
   const daily = Math.sqrt(avg(rets.map(r => (r - m) ** 2)));
+  if (!Number.isFinite(daily)) return null;
   return { daily: daily * 100, annual: daily * Math.sqrt(252) * 100 };
 }
 
@@ -373,6 +381,24 @@ function overallRating(rep) {
   // 5. How cleanly it is trending at all.
   if (trend) add('trend quality', (trend.strength / 100) * (trend.direction === 'up' ? 1 : -1), 0.10);
 
+  // Data sufficiency. The weights below are renormalised over whichever groups
+  // could be computed, so on a very short history two groups drove the whole
+  // scale: ten bars of a rising series returned score 100, "Very bullish", and
+  // reported its agreement as 2 of 2 — 100% — while three of the five groups
+  // had no data at all. That is the same "confidence near-100 by construction"
+  // problem the grouping above was introduced to kill, arriving by a different
+  // route. Below the floor there is no reading to give, so none is given.
+  const GROUPS_POSSIBLE = 5;
+  const MIN_GROUPS = 3;
+  if (groups.length < MIN_GROUPS) {
+    return {
+      score: null, label: 'Not enough history', tone: 'neutral',
+      confidence: null, risk: 'Unknown', agreeing: null,
+      groupCount: groups.length, groupsPossible: GROUPS_POSSIBLE,
+      insufficient: true, groups,
+    };
+  }
+
   const wsum = groups.reduce((a, g) => a + g.w, 0) || 1;
   const bull = groups.reduce((a, g) => a + g.v * g.w, 0) / wsum;
   const score = Math.round(clamp(50 + 50 * bull, 0, 100));
@@ -395,7 +421,8 @@ function overallRating(rep) {
 
   const annual = rep.volatility ? rep.volatility.annual : null;
   const risk = annual == null ? 'Unknown' : annual < 25 ? 'Low' : annual < 45 ? 'Moderate' : annual < 70 ? 'High' : 'Very High';
-  return { score, label, tone, confidence, risk, agreeing, groupCount: groups.length, groups };
+  return { score, label, tone, confidence, risk, agreeing,
+    groupCount: groups.length, groupsPossible: GROUPS_POSSIBLE, insufficient: false, groups };
 }
 
 // Probabilistic forecast bands (±1σ ≈ 68% range) per horizon, in trading days.

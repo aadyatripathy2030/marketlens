@@ -141,6 +141,7 @@
     if (t.rsi14 != null) bits.push(t.rsi14 >= 70 ? 'overbought' : t.rsi14 <= 30 ? 'oversold' : t.rsi14 >= 50 ? 'firm momentum' : 'soft momentum');
     if (t.macd) bits.push(t.macd.hist > 0 ? 'MACD bullish' : 'MACD bearish');
     if (t.trend) bits.push((t.trend.strength >= 60 ? 'strong' : t.trend.strength >= 35 ? 'moderate' : 'weak') + ' ' + t.trend.direction + 'trend');
+    if (r.insufficient) return `Only ${r.groupCount} of ${r.groupsPossible} indicator groups have enough history here, so no score is shown.`;
     return `Comprehensive read across 13 signals → ${r.label || '—'}${bits.length ? '. ' + bits.join(', ') + '.' : ''}`;
   }
 
@@ -1161,7 +1162,10 @@
       const rt = d.rating || {};
       const v = d.verdict || {};
       $('vAction').textContent = rt.label || v.action || d.signal.label;
-      $('vMeta').textContent = rt.score != null ? rt.score + '/100' : (v.score != null ? 'score ' + v.score : '');
+      // Falling back to the older per-strategy score here would print a
+      // confident number directly beside "Not enough history".
+      $('vMeta').textContent = rt.score != null ? rt.score + '/100'
+        : rt.insufficient ? '' : (v.score != null ? 'score ' + v.score : '');
       $('verdict').className = 'verdict ' + (rt.tone || v.tone || 'neutral');
       $('reason').textContent = ratingReason(d);
       const GAUGE_C = 2 * Math.PI * 52;
@@ -1636,7 +1640,7 @@
       rows.map(r => `<th data-s="${esc(r.symbol)}">${esc(r.symbol)}<span class="ct-name">${esc(r.name || '')}</span></th>`).join('') + `</tr></thead><tbody>`;
     html += ctRow('Price', rows.map(r => '$' + (+r.price).toFixed(2)));
     html += ctRow('Change', rows.map(r => `<span class="${r.changePct >= 0 ? 'up' : 'down'}">${r.changePct >= 0 ? '+' : ''}${r.changePct.toFixed(2)}%</span>`), true);
-    html += ctRow('Indicator score', rows.map(r => `<span class="ct-score">${r.rating.score}/100</span>`), true);
+    html += ctRow('Indicator score', rows.map(r => `<span class="ct-score">${r.rating && r.rating.score != null ? r.rating.score + '/100' : '\u2014'}</span>`), true);
     html += ctRow('Recommendation', rows.map(r => `<span class="ct-rec ${r.rating.tone}">${esc(r.rating.label)}</span>`), true);
     html += ctRow('Risk', rows.map(r => esc(r.rating.risk || '—')));
     if (data.hasFundamentals) CMP_ROWS.forEach(label => html += ctRow(label, rows.map(r => r.metrics ? (r.metrics[label] || '—') : '—')));
