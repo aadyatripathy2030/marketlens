@@ -6,6 +6,15 @@
   const col = (n) => CSS.getPropertyValue(n).trim();
   const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+  // How much of the indicator panel points the same way, as a percentage.
+  // There are only five groups, so this lands on multiples of 20 — that is the
+  // real resolution of the measure, and rounding it to a percent does not add
+  // precision that isn't there.
+  function agreePct(agreeing, groupCount) {
+    if (agreeing == null || !groupCount) return null;
+    return Math.round((agreeing / groupCount) * 100);
+  }
+
   // ---- Analytics consent ----
   // Google Analytics is loaded here rather than injected into the document, so
   // that nothing is requested from Google and no cookie is set until the
@@ -1157,8 +1166,8 @@
       $('gScore').textContent = rt.score != null ? rt.score : '—';
       $('aiRec').textContent = rt.label || '—';
       $('aiRec').className = 'ai-rec ' + (rt.tone || 'neutral');
-      $('aiConf').textContent = (rt.agreeing != null && rt.groupCount)
-        ? `${rt.agreeing} of ${rt.groupCount}` : (rt.confidence != null ? rt.confidence + '%' : '—');
+      const conf = agreePct(rt.agreeing, rt.groupCount);
+      $('aiConf').textContent = conf != null ? conf + '%' : (rt.confidence != null ? rt.confidence + '%' : '—');
       renderEdge(d.edge, rt);
       $('aiRisk').textContent = rt.risk || '—';
       $('aiRisk').className = 'risk-' + String(rt.risk || 'neutral').split(' ')[0];
@@ -1544,7 +1553,7 @@
       + `<span class="rk-score ${tint}">${r.score}</span></div>`
       + `<div class="rk-label ${esc(r.tone || 'neutral')}">${esc(r.label || '')}</div>`
       + `<div class="rk-meta"><span class="${up ? 'up' : 'down'}">${up ? '+' : ''}${(r.changePct || 0).toFixed(2)}%</span>`
-      + ` <span>\u00b7 ${r.agreeing}/${r.groupCount} groups agree</span></div>`
+      + ` <span>\u00b7 ${agreePct(r.agreeing, r.groupCount) != null ? agreePct(r.agreeing, r.groupCount) + '% agreement' : '\u2014'}</span></div>`
       + `</div>`;
   }
 
