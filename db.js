@@ -34,6 +34,12 @@ async function init() {
       // reused, unlike an email address, so it is what a Google login is
       // matched on once the two are linked.
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT');
+      // Streak, counted in trading days. streak_day is the market day the run
+      // was last extended to, so a second visit the same day is a no-op and a
+      // weekend cannot advance or break it.
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_count INTEGER NOT NULL DEFAULT 0');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_best INTEGER NOT NULL DEFAULT 0');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_day TEXT');
       await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS users_google_id_idx ON users (google_id) WHERE google_id IS NOT NULL');
       await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
         token TEXT PRIMARY KEY, uid TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires BIGINT NOT NULL)`);
@@ -87,6 +93,22 @@ function verifyPw(pw, stored) {
 }
 
 const pub = (u) => u && { id: u.id, email: u.email, plan: u.plan };
+
+// ---- streak ----
+async function getStreak(uid) {
+  const u = await getUserById(uid);
+  if (!u) return null;
+  return { count: u.streak_count || 0, best: u.streak_best || 0, day: u.streak_day || null };
+}
+async function saveStreak(uid, count, best, day) {
+  if (mode === 'postgres') {
+    await pool.query('UPDATE users SET streak_count=$2, streak_best=$3, streak_day=$4 WHERE id=$1',
+      [uid, count, best, day]);
+  } else {
+    const u = mem.users.get(uid);
+    if (u) { u.streak_count = count; u.streak_best = best; u.streak_day = day; }
+  }
+}
 
 // ---- Google-linked accounts ----
 // Three cases, in order: a returning Google user (match on google_id), someone
@@ -376,6 +398,7 @@ module.exports = {
   init, storeMode, hasUrl, lastError, verifyPw,
   createUser, getUserByEmail, getUserById,
   createSession, getSessionUser, deleteSession, purgeExpiredSessions,
+  getStreak, saveStreak,
   listWatch, addWatch, removeWatch,
   listAlerts, addAlert, removeAlert, markTriggered,
   listUsers, counts,

@@ -391,6 +391,12 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
     recordReading(symbol, data.prices, rating);
     gradeReadings(symbol, data.prices);
   }
+  // Any chart counts, on any interval. This sat inside the block above at
+  // first, which meant only a daily chart extended a streak — and the default
+  // for day trading is 5-minute bars, so most visits would not have counted.
+  // Fire-and-forget: bumpStreak swallows its own errors, and a streak must
+  // never be the reason a chart fails.
+  currentUser(req).then(bumpStreak).catch(() => {});
   const bands = I.forecastBands(closes);
   const levels = I.tradeLevels(candles, a.direction);
   // What actually happened, historically, at scores like today's. Roughly 50ms
@@ -677,6 +683,52 @@ async function handleAnalyzeImage(req, res) {
   }
   try { return json(res, 200, { summary: await callClaudeVision(p.image, p.mediaType), source: 'ai' }); }
   catch (e) { return json(res, 200, { source: 'error', summary: 'Could not analyze the image (' + e.message + ').' }); }
+}
+
+// ---- Streak ----
+// Counted in TRADING days, not calendar days. A day the market never opened
+// cannot be a day you missed, so weekends and market holidays neither extend
+// a streak nor break one.
+//
+// Activity on a closed day is credited to the last day the market was open.
+// That is what makes a Saturday visit harmless, and it also gives someone who
+// forgot on Friday the weekend to put it right.
+const MKT = require('./market-days');
+function streakDayFor(now) {
+  const today = MKT.etDay(now);
+  return MKT.isTradingDay(today) ? today : MKT.prevTradingDay(today);
+}
+// Pure, so the rule can be tested without a database.
+function nextStreak(prev, day) {
+  if (!prev || !prev.day) return { count: 1, day, changed: true };
+  if (prev.day === day) return { count: prev.count, day, changed: false };
+  const gap = MKT.tradingDaysBetween(prev.day, day);
+  if (gap <= 0) return { count: prev.count, day: prev.day, changed: false };  // clock skew
+  if (gap === 1) return { count: prev.count + 1, day, changed: true };
+  return { count: 1, day, changed: true };                                     // missed a session
+}
+// Best effort: a streak is a nicety and must never fail the thing it decorates.
+async function bumpStreak(user) {
+  if (!user) return null;
+  try {
+    const prev = await db.getStreak(user.id);
+    const day = streakDayFor(new Date());
+    const next = nextStreak(prev, day);
+    const best = Math.max((prev && prev.best) || 0, next.count);
+    if (next.changed || best !== ((prev && prev.best) || 0)) {
+      await db.saveStreak(user.id, next.count, best, next.day);
+    }
+    return { count: next.count, best, day: next.day };
+  } catch (e) { logError(e); return null; }
+}
+// What to show without touching anything: a run is still alive today if it was
+// extended today or on the previous trading day.
+function streakView(st) {
+  if (!st || !st.day) return { count: 0, best: (st && st.best) || 0, alive: false };
+  const day = streakDayFor(new Date());
+  const gap = MKT.tradingDaysBetween(st.day, day);
+  const alive = gap <= 1;
+  return { count: alive ? st.count : 0, best: st.best || 0, alive, day: st.day };
 }
 
 // ---- Abuse throttling ----
@@ -967,6 +1019,8 @@ async function handleMe(req, res) {
   // badge follows entitlement, so nobody is told they are on Pro when the
   // promotion is the only reason everything is open.
   const access = hasPro(u);
+  let streak = null;
+  if (u) { try { streak = streakView(await db.getStreak(u.id)); } catch (e) { logError(e); } }
   let aiUsed = 0;
   if (!access && ANTHROPIC_API_KEY) { try { aiUsed = await db.peekUsage(clientKey(req, u), 'ai'); } catch (e) {} }
   return json(res, 200, {
@@ -976,6 +1030,7 @@ async function handleMe(req, res) {
     // lastFree is the final free day itself, which is the date to show; `until`
     // is the instant access changes.
     googleAuth: googleEnabled(),
+    streak,
     launch: { free: inLaunchPeriod(),
       until: Number.isFinite(FREE_UNTIL) ? FREE_UNTIL : null,
       lastFree: Number.isFinite(FREE_UNTIL) ? FREE_UNTIL - 1 : null },

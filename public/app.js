@@ -1164,6 +1164,9 @@
       // After the ok-check and the sequence guard, so a failed lookup or a
       // superseded request is never counted as one.
       track('analyze', { symbol: d.symbol, strategy, interval });
+      // The server just extended the streak; pick the new number up so the
+      // badge moves on the visit that earned it, not the next page load.
+      refreshStreak();
       $('modeTag').textContent = d.source === 'live' ? 'live data' : 'demo data';
       $('symName').textContent = d.symbol + (d.name && d.name !== d.symbol ? ' · ' + d.name : '');
       updateWatchBtn(d.symbol);
@@ -1352,7 +1355,18 @@
   });
 
   // ---- Accounts + watchlist ----
-  let currentUser = null, watchSymbols = [], authMode = 'login', billingOn = false, billingPlans = {};
+  let currentUser = null, currentStreak = null, watchSymbols = [], authMode = 'login', billingOn = false, billingPlans = {};
+
+  // Cheap and quiet: the streak only ever changes once a day, so a failure
+  // here just leaves the badge as it was.
+  async function refreshStreak() {
+    try {
+      const j = await (await fetch('/api/auth/me')).json();
+      const before = currentStreak && currentStreak.count;
+      currentStreak = j.streak || null;
+      if ((currentStreak && currentStreak.count) !== before) renderAcct();
+    } catch (e) { /* the badge is decoration */ }
+  }
 
   function renderAcct() {
     const el = $('acct');
@@ -1360,7 +1374,17 @@
       const isPro = currentUser.plan === 'pro';
       const badge = `<span class="plan ${isPro ? 'pro' : ''}">${isPro ? 'PRO' : 'FREE'}</span>`;
       const upgrade = (!isPro && billingOn) ? `<button class="upgrade" id="upgradeNav">Upgrade</button>` : '';
-      el.innerHTML = badge + upgrade + `<span class="email">${esc(currentUser.email)}</span><button class="link-btn" id="logoutBtn">Log out</button>`;
+      // Only worth showing once there is one. The tooltip carries the rule,
+      // because "why didn't my streak break over the weekend" is the obvious
+      // question, and the answer belongs next to the number.
+      const st = currentStreak;
+      const plural = (st && st.count === 1) ? '' : 's';
+      const flame = (st && st.count > 0)
+        ? `<span class="streak" title="${st.count} trading day${plural} in a row`
+          + `${st.best > st.count ? ' \u2014 best ' + st.best : ''}.`
+          + ` Weekends and market holidays do not count against it.">\u25B2 ${st.count}</span>`
+        : '';
+      el.innerHTML = flame + badge + upgrade + `<span class="email">${esc(currentUser.email)}</span><button class="link-btn" id="logoutBtn">Log out</button>`;
       $('logoutBtn').addEventListener('click', logout);
       if ($('upgradeNav')) $('upgradeNav').addEventListener('click', () => showView('pricing'));
     } else {
@@ -1369,7 +1393,7 @@
     }
   }
   async function checkAuth() {
-    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; launch = j.launch || launch; showGoogleButtons(!!j.googleAuth); billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; }
+    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; currentStreak = j.streak || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; launch = j.launch || launch; showGoogleButtons(!!j.googleAuth); billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; currentStreak = null; }
     renderAcct();
     $('watchBtn').classList.toggle('hidden', !currentUser);
     // The gate comes down only for a signed-in visitor who has agreed on this

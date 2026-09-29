@@ -703,3 +703,12 @@ body.drawer-open .drawer { transform: translateX(0); }
 .nf-primary:hover { filter: brightness(1.08); }
 .nf-link { color: var(--muted); font-size: 14px; font-weight: 600; text-decoration: none; padding: 7px 12px; border: 1px solid var(--border); border-radius: 999px; }
 .nf-link:hover { color: var(--text); border-color: var(--accent); }
+
+/* Streak — trading days in a row */
+.streak {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--font-num); font-size: 12px; font-weight: 700;
+  color: var(--warn); background: rgba(224, 163, 62, .12);
+  border: 1px solid rgba(224, 163, 62, .34); border-radius: 999px;
+  padding: 3px 9px; cursor: default; font-variant-numeric: tabular-nums;
+}
