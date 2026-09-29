@@ -1,0 +1,550 @@
+<!doctype html>
+<!-- ChartGauge video exporter.
+
+     Renders the TikTok animations to a real video file. Open it in Chrome
+     from disk (double-click, or: open tools/video-export.html) — it will NOT
+     work inside a published Artifact, because that viewer's sandbox makes
+     downloads inert.
+
+     Everything is drawn to one canvas, including the captions, so
+     canvas.captureStream() sees the whole frame. Recording runs in real time:
+     a 50-second video takes 50 seconds.
+
+     Output is .webm (VP9). TikTok and Instagram both accept it on upload. If
+     you need .mp4, convert with:  ffmpeg -i in.webm -c:v libx264 -crf 18 out.mp4
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ChartGauge video exporter</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+  :root {
+    --bg:#0f1216; --fg:#e8ecf2; --dim:#98a3b3; --line:#262c36; --card:#161b22; --accent:#6aa8ff;
+    --mono:"IBM Plex Mono",ui-monospace,monospace;
+    --body:"Archivo",system-ui,-apple-system,sans-serif;
+    --display:"Archivo Black","Archivo",system-ui,sans-serif;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--body); }
+  .wrap { max-width: 960px; margin:0 auto; padding: 32px 20px 64px; }
+  .eyebrow { font-family:var(--mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); margin-bottom:8px; }
+  h1 { font-family:var(--display); font-size:34px; margin:0 0 10px; }
+  p.lede { color:var(--dim); line-height:1.6; margin:0 0 24px; max-width:62ch; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:14px; }
+  label { font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); width:100%; margin-bottom:-4px; }
+  button, select {
+    font-family:var(--body); font-size:14px; font-weight:600; color:var(--fg);
+    background:var(--card); border:1px solid var(--line); border-radius:9px; padding:10px 14px; cursor:pointer;
+  }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#08101c; }
+  button:disabled { opacity:.45; cursor:default; }
+  button:hover:not(:disabled) { border-color:var(--accent); }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; }
+  .seg button { border:0; border-radius:0; }
+  .seg button + button { border-left:1px solid var(--line); }
+  .seg button.on { background:var(--accent); color:#08101c; }
+  #status { font-family:var(--mono); font-size:13px; color:var(--dim); margin:14px 0; min-height:20px; }
+  #status b { color:var(--fg); }
+  .barwrap { height:6px; background:var(--line); border-radius:99px; overflow:hidden; margin-bottom:18px; }
+  #prog { height:100%; width:0; background:var(--accent); transition:width .1s linear; }
+  canvas { width:270px; max-width:100%; border:1px solid var(--line); border-radius:12px; display:block; background:#0e1014; }
+  .note { font-size:13.5px; color:var(--dim); line-height:1.6; border-left:2px solid var(--line); padding-left:12px; margin-top:22px; }
+  .note b { color:var(--fg); }
+  code { font-family:var(--mono); font-size:12.5px; background:var(--card); padding:2px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Local tool — not an artifact</div>
+  <h1>Video exporter</h1>
+  <p class="lede">Renders an animation to a video file at full resolution. Recording happens in real time, so a 50-second clip takes 50 seconds. Leave the tab in the foreground while it runs — a backgrounded tab throttles the frame timer and the output stutters.</p>
+
+  <div class="row"><label>Animation</label>
+    <select id="pick">
+      <option value="readchart">Read the chart — 50s</option>
+      <option value="rsi70" selected>Overbought isn't sell — 45s</option>
+      <option value="recovery">The recovery curve — 54s</option>
+    </select>
+  </div>
+
+  <div class="row"><label>Resolution</label>
+    <span class="seg" id="res">
+      <button data-w="1080" data-h="1920" class="on">1080 &times; 1920</button>
+      <button data-w="1440" data-h="2560">1440 &times; 2560</button>
+      <button data-w="1440" data-h="2160">1440 &times; 2160</button>
+    </span>
+  </div>
+
+  <div class="row">
+    <button class="primary" id="go">Record</button>
+    <button id="preview">Preview only</button>
+    <a id="dl" hidden></a>
+  </div>
+
+  <div class="barwrap"><div id="prog"></div></div>
+  <div id="status">Ready.</div>
+
+  <canvas id="cv"></canvas>
+
+  <div class="note">
+    <p><b>1440 &times; 2160 is 2:3, not 9:16.</b> TikTok, Reels and Shorts are all 9:16, so a 2:3 upload gets pillarboxed or centre-cropped. <b>1080 &times; 1920</b> is the native size and the safe default; <b>1440 &times; 2560</b> is the same shape at higher resolution. The 2:3 option is here because you asked for it — the animation letterboxes itself inside it rather than stretching.</p>
+    <p>Output is <code>.webm</code> (VP9), which TikTok and Instagram accept. For <code>.mp4</code>:<br>
+    <code>ffmpeg -i in.webm -c:v libx264 -pix_fmt yuv420p -crf 18 out.mp4</code></p>
+  </div>
+</div>
+
+<script>
+// ---------------------------------------------------------------- shared ----
+var C = { bg:'#0e1014', fg:'#edf0f4', dim:'#8a94a3', line:'#29313d', lineSoft:'rgba(41,49,61,.75)',
+          accent:'#4c9eff', good:'#3ddc84', bad:'#ff5f56', warn:'#e0a33e', sma20:'#f0b429', sma50:'#7cc4fa' };
+function ease(t){ return t<0?0:t>1?1:1-Math.pow(1-t,3); }
+function mulberry(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; var t=Math.imul(a^a>>>15,1|a);
+  t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function sma(arr,p,i){ if(i<p-1) return null; var s=0; for(var k=i-p+1;k<=i;k++) s+=arr[k]; return s/p; }
+function rsiSeries(c,p){ p=p||14; var out=new Array(c.length).fill(null),g=0,l=0,i,d;
+  for(i=1;i<=p;i++){ d=c[i]-c[i-1]; if(d>0)g+=d; else l-=d; } g/=p; l/=p;
+  out[p]= l===0?100:100-100/(1+g/l);
+  for(i=p+1;i<c.length;i++){ d=c[i]-c[i-1]; g=(g*(p-1)+(d>0?d:0))/p; l=(l*(p-1)+(d<0?-d:0))/p;
+    out[i]= l===0?100:100-100/(1+g/l); }
+  return out; }
+
+// wrap `text` to `maxW`, return lines
+function wrap(ctx, text, maxW){
+  var words=String(text).split(' '), lines=[], cur='';
+  for (var i=0;i<words.length;i++){
+    var t = cur ? cur+' '+words[i] : words[i];
+    if (ctx.measureText(t).width > maxW && cur) { lines.push(cur); cur=words[i]; }
+    else cur=t;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+// One caption block, drawn into the strip below the chart.
+function drawCaption(ctx, W, H, top, cap){
+  if (!cap) return;
+  var pad = W*0.055, maxW = W - pad*2, y = top + W*0.055;
+  ctx.textAlign='left'; ctx.textBaseline='top';
+
+  if (cap.badge){
+    var bs = W*0.028;
+    ctx.font = '600 '+bs+'px "IBM Plex Mono", monospace';
+    var bw = ctx.measureText(cap.badge.toUpperCase()).width;
+    var bh = bs*2.1, bx = pad, by = y;
+    ctx.strokeStyle='#3a4353'; ctx.lineWidth=Math.max(1,W*0.0012);
+    ctx.beginPath(); ctx.roundRect(bx, by, bw + W*0.048, bh, bh/2); ctx.stroke();
+    ctx.fillStyle=C.dim; ctx.textBaseline='middle';
+    ctx.fillText(cap.badge.toUpperCase(), bx + W*0.024, by + bh/2 + bs*0.06);
+    ctx.textBaseline='top';
+    y += bh + W*0.022;
+  }
+
+  if (cap.big){
+    var fs = W*0.064, lh = fs*1.12;
+    ctx.font = '400 '+fs+'px "Archivo Black", sans-serif';
+    ctx.fillStyle = C.fg;
+    wrap(ctx, cap.big, maxW).forEach(function(line){ ctx.fillText(line, pad, y); y += lh; });
+    y += W*0.018;
+  }
+
+  if (cap.sub){
+    var ss = W*0.040, sl = ss*1.45;
+    ctx.font = '400 '+ss+'px "Archivo", sans-serif';
+    ctx.fillStyle = C.dim;
+    wrap(ctx, cap.sub, maxW).forEach(function(line){ ctx.fillText(line, pad, y); y += sl; });
+    y += W*0.012;
+  }
+
+  if (cap.url){
+    var us = W*0.052;
+    ctx.font = '600 '+us+'px "IBM Plex Mono", monospace';
+    ctx.fillStyle = C.accent;
+    ctx.fillText(cap.url, pad, y); y += us*1.5;
+  }
+
+  if (cap.fine){
+    var ns = W*0.030;
+    ctx.font = '400 '+ns+'px "Archivo", sans-serif';
+    ctx.fillStyle = C.dim;
+    ctx.fillText(cap.fine, pad, y);
+  }
+}
+
+function capAt(list, ms){ for (var i=0;i<list.length;i++) if (ms>=list[i].from && ms<list[i].to) return list[i]; return null; }
+
+// ------------------------------------------------------------- scene: 1 ----
+// Read the chart — candles, SMA 50/200 with the crossover, RSI, exit levels.
+var RC = (function(){
+  var N=340, WIN=130;
+  var closes=(function(){ var r=mulberry(101), o=[], p=100;
+    for(var i=0;i<N;i++){ var ph=i<N*0.52?-1:1; p=Math.max(5,p*(1+ph*0.0022+(r()-0.5)*0.021)); o.push(p);} return o; })();
+  var wob=(function(){ var r=mulberry(7), a=[]; for(var i=0;i<N;i++) a.push(r()); return a; })();
+  var s50=[], s200=[]; for(var i=0;i<N;i++){ s50.push(sma(closes,50,i)); s200.push(sma(closes,200,i)); }
+  var CROSS=-1; for(var j=1;j<N;j++) if(s50[j-1]!=null&&s200[j-1]!=null&&s50[j-1]<=s200[j-1]&&s50[j]>s200[j]){CROSS=j;break;}
+  var RS=rsiSeries(closes); var RSI=RS[N-1];
+  var start=N-WIN, view=closes.slice(start);
+  var vLo=Math.min.apply(null,view), vHi=Math.max.apply(null,view), last=closes[N-1];
+  var atr=(vHi-vLo)*0.055, stopY=last-atr*1.8, tpY=last+atr*2.6;
+  var lo=Math.min(vLo,stopY)*0.985, hi=Math.max(vHi,tpY)*1.012;
+
+  return { dur:50200, ticker:'NVDA',
+    draw:function(ctx,W,H,ms){
+      var st={ candles:Math.min(1,ms/3600),
+               ma: ms<8200?0:Math.min(1,(ms-8200)/4200),
+               rsi: ms<18800?0:Math.min(1,(ms-18800)/1900),
+               levels: ms<25800?0:Math.min(1,(ms-25800)/1900) };
+      var padL=W*0.06, padR=W*0.06;
+      var rsiH = st.rsi>0 ? H*0.22*st.rsi : 0;
+      var top=H*0.185, bot=H-rsiH-H*0.05;
+      var plotH=Math.max(10,bot-top), plotW=W-padL-padR;
+      var X=function(k){ return padL+(k/(WIN-1))*plotW; };
+      var Y=function(v){ return bot-((v-lo)/(hi-lo))*plotH; };
+
+      ctx.strokeStyle=C.lineSoft; ctx.lineWidth=Math.max(1,W*0.0009);
+      for(var g=0;g<=3;g++){ var gy=top+(plotH/3)*g; ctx.beginPath(); ctx.moveTo(padL,gy); ctx.lineTo(W-padR,gy); ctx.stroke(); }
+
+      var shown=Math.floor(WIN*ease(st.candles)), cw=Math.max(1.5,plotW/WIN*0.62);
+      for(var k=0;k<shown;k++){
+        var idx=start+k, c=closes[idx], o=idx>0?closes[idx-1]:c, w=wob[idx];
+        var hp=Math.max(o,c)*(1+0.004+w*0.006), lp=Math.min(o,c)*(1-0.004-(1-w)*0.006);
+        var up=c>=o; ctx.strokeStyle=up?C.good:C.bad; ctx.fillStyle=up?C.good:C.bad;
+        ctx.lineWidth=Math.max(1,W*0.0009);
+        ctx.beginPath(); ctx.moveTo(X(k),Y(hp)); ctx.lineTo(X(k),Y(lp)); ctx.stroke();
+        var yo=Y(o), yc=Y(c); ctx.fillRect(X(k)-cw/2, Math.min(yo,yc), cw, Math.max(1.5,Math.abs(yc-yo)));
+      }
+
+      if(st.ma>0){
+        var maShown=Math.floor(WIN*ease(st.ma));
+        [[s50,C.sma20],[s200,C.sma50]].forEach(function(pr){
+          ctx.strokeStyle=pr[1]; ctx.lineWidth=Math.max(2,W*0.0022); ctx.beginPath(); var began=false;
+          for(var k2=0;k2<maShown;k2++){ var v=pr[0][start+k2]; if(v==null) continue;
+            if(!began){ctx.moveTo(X(k2),Y(v));began=true;} else ctx.lineTo(X(k2),Y(v)); }
+          ctx.stroke();
+        });
+        var ck=CROSS-start;
+        if(ck>0&&maShown>ck){ ctx.strokeStyle=C.fg; ctx.lineWidth=Math.max(1.5,W*0.0015);
+          ctx.beginPath(); ctx.arc(X(ck),Y(s50[CROSS]),Math.max(7,W*0.022),0,Math.PI*2); ctx.stroke(); }
+      }
+
+      if(st.levels>0){
+        var a=ease(st.levels); ctx.save(); ctx.globalAlpha=a;
+        ctx.setLineDash([W*0.005,W*0.005]); ctx.lineWidth=Math.max(1.8,W*0.0018);
+        [[tpY,C.good,'take profit'],[stopY,C.bad,'stop']].forEach(function(L){
+          var yy=Y(L[0]); ctx.strokeStyle=L[1];
+          ctx.beginPath(); ctx.moveTo(padL,yy); ctx.lineTo(W-padR,yy); ctx.stroke();
+          ctx.setLineDash([]); ctx.fillStyle=L[1];
+          ctx.font='600 '+Math.max(9,W*0.030)+'px "IBM Plex Mono", monospace';
+          ctx.textAlign='left'; ctx.textBaseline='bottom';
+          ctx.fillText(L[2], padL+W*0.004, yy-W*0.008);
+          ctx.setLineDash([W*0.005,W*0.005]);
+        });
+        ctx.restore();
+      }
+
+      if(rsiH>4){
+        var rt=H-rsiH, rb=H-H*0.012, rh=rb-rt;
+        ctx.save(); ctx.globalAlpha=ease(st.rsi);
+        ctx.strokeStyle='rgba(41,49,61,.9)'; ctx.lineWidth=Math.max(1,W*0.0009);
+        ctx.beginPath(); ctx.moveTo(padL,rt); ctx.lineTo(W-padR,rt); ctx.stroke();
+        [[70,C.bad],[30,C.good]].forEach(function(z){
+          var y=rb-(z[0]/100)*rh;
+          ctx.strokeStyle=z[1]; ctx.globalAlpha=ease(st.rsi)*0.35; ctx.setLineDash([W*0.004,W*0.004]);
+          ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke(); ctx.setLineDash([]);
+          ctx.globalAlpha=ease(st.rsi)*0.8; ctx.fillStyle=z[1];
+          ctx.font='600 '+Math.max(8,W*0.026)+'px "IBM Plex Mono", monospace';
+          ctx.textAlign='right'; ctx.textBaseline='middle';
+          ctx.fillText(String(z[0]), W-padR-W*0.004, y);
+        });
+        var ry=rb-(RSI/100)*rh; ctx.globalAlpha=ease(st.rsi); ctx.fillStyle=C.accent;
+        ctx.beginPath(); ctx.arc(W-padR-Math.max(22,W*0.10), ry, Math.max(3.5,W*0.012),0,Math.PI*2); ctx.fill();
+        ctx.font='600 '+Math.max(11,W*0.042)+'px "IBM Plex Mono", monospace';
+        ctx.textAlign='left'; ctx.textBaseline='middle';
+        ctx.fillText('RSI '+RSI.toFixed(0), padL, ry);
+        ctx.restore();
+      }
+
+      // ticker
+      var shown2=Math.max(1,Math.floor(WIN*ease(st.candles)));
+      var cur=closes[start+shown2-1], first=closes[start], pct=((cur-first)/first)*100;
+      ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+      ctx.font='400 '+(W*0.050)+'px "Archivo Black", sans-serif'; ctx.fillStyle=C.fg;
+      ctx.fillText('NVDA', W*0.055, H*0.075);
+      var tw=ctx.measureText('NVDA').width;
+      ctx.font='600 '+(W*0.037)+'px "IBM Plex Mono", monospace';
+      ctx.fillStyle = pct>=0?C.good:C.bad;
+      ctx.fillText(cur.toFixed(2)+'  '+(pct>=0?'+':'')+pct.toFixed(1)+'%', W*0.055+tw+W*0.024, H*0.075);
+    } };
+})();
+
+// ------------------------------------------------------------- scene: 2 ----
+// Overbought isn't sell — half the chart, then the reveal.
+var OB = (function(){
+  var N=120;
+  var closes=(function(){ var r=mulberry(13), o=[], p=100;
+    for(var i=0;i<N;i++){ p=Math.max(5,p*(1+0.0042+(r()-0.5)*0.019)); o.push(p);} return o; })();
+  var wob=(function(){ var r=mulberry(29), a=[]; for(var i=0;i<N;i++) a.push(r()); return a; })();
+  var RS=rsiSeries(closes);
+  var CROSS=-1; for(var q=20;q<N-28;q++) if(RS[q-1]!=null&&RS[q-1]<=70&&RS[q]>70){CROSS=q;break;}
+  var lo=Math.min.apply(null,closes)*0.975, hi=Math.max.apply(null,closes)*1.02;
+
+  return { dur:44800, ticker:'RSI 14',
+    draw:function(ctx,W,H,ms){
+      var toCross=Math.min(1,ms/4200), after= ms<14500?0:Math.min(1,(ms-14500)/3400);
+      var bars=1+ease(toCross)*CROSS+ease(after)*(N-1-CROSS);
+      var mk = ms<5300?0:Math.min(1,(ms-5300)/900);
+      var ms2= ms<8800?0:Math.min(1,(ms-8800)/900);
+      var gn = ms<17200?0:Math.min(1,(ms-17200)/1100);
+      var fl = ms<19800?0:Math.min(1,(ms-19800)/1100);
+
+      var padL=W*0.055, padR=W*0.055, rsiH=H*0.26;
+      var top=H*0.155, bot=H-rsiH-H*0.045, plotH=Math.max(10,bot-top), plotW=W-padL-padR;
+      var X=function(k){ return padL+(k/(N-1))*plotW; };
+      var Y=function(v){ return bot-((v-lo)/(hi-lo))*plotH; };
+
+      ctx.strokeStyle='rgba(41,49,61,.7)'; ctx.lineWidth=Math.max(1,W*0.0009);
+      for(var g=0;g<=3;g++){ var gy=top+(plotH/3)*g; ctx.beginPath(); ctx.moveTo(padL,gy); ctx.lineTo(W-padR,gy); ctx.stroke(); }
+
+      var shown=Math.max(1,Math.round(bars)), cw=Math.max(1.6,plotW/N*0.6);
+      for(var k=0;k<shown;k++){
+        var c=closes[k], o=k>0?closes[k-1]:c, w=wob[k];
+        var hp=Math.max(o,c)*(1+0.004+w*0.006), lp=Math.min(o,c)*(1-0.004-(1-w)*0.006);
+        var up=c>=o; ctx.strokeStyle=up?C.good:C.bad; ctx.fillStyle=up?C.good:C.bad;
+        ctx.lineWidth=Math.max(1,W*0.0009);
+        ctx.beginPath(); ctx.moveTo(X(k),Y(hp)); ctx.lineTo(X(k),Y(lp)); ctx.stroke();
+        var yo=Y(o), yc=Y(c); ctx.fillRect(X(k)-cw/2,Math.min(yo,yc),cw,Math.max(1.5,Math.abs(yc-yo)));
+      }
+
+      if(mk>0&&CROSS>-1){
+        ctx.save(); ctx.globalAlpha=ease(mk);
+        ctx.strokeStyle=C.accent; ctx.lineWidth=Math.max(1.6,W*0.0016); ctx.setLineDash([W*0.004,W*0.004]);
+        ctx.beginPath(); ctx.moveTo(X(CROSS),top); ctx.lineTo(X(CROSS),H-H*0.012); ctx.stroke(); ctx.setLineDash([]);
+        ctx.beginPath(); ctx.arc(X(CROSS),Y(closes[CROSS]),Math.max(6,W*0.019),0,Math.PI*2); ctx.stroke();
+        ctx.restore();
+      }
+      if(ms2>0){
+        ctx.save(); ctx.globalAlpha=ease(ms2);
+        ctx.strokeStyle=C.dim; ctx.lineWidth=Math.max(1.4,W*0.0014); ctx.setLineDash([W*0.003,W*0.004]);
+        var sy=Y(closes[CROSS]);
+        ctx.beginPath(); ctx.moveTo(padL,sy); ctx.lineTo(W-padR,sy); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle=C.fg; ctx.font='600 '+Math.max(9,W*0.032)+'px "IBM Plex Mono", monospace';
+        ctx.textAlign='left'; ctx.textBaseline='bottom';
+        ctx.fillText('sold '+closes[CROSS].toFixed(0), padL+W*0.004, sy-W*0.008);
+        ctx.restore();
+      }
+      if(gn>0){
+        var y1=Y(closes[CROSS]), y2=Y(closes[N-1]), gx=X(N-1)-Math.max(26,W*0.13);
+        ctx.save(); ctx.globalAlpha=ease(gn);
+        ctx.strokeStyle=C.good; ctx.lineWidth=Math.max(2,W*0.002);
+        ctx.beginPath(); ctx.moveTo(gx,y1); ctx.lineTo(gx,y2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(gx-W*0.008,y2+W*0.012); ctx.lineTo(gx,y2); ctx.lineTo(gx+W*0.008,y2+W*0.012); ctx.stroke();
+        var fs=Math.max(11,W*0.045); ctx.font='600 '+fs+'px "IBM Plex Mono", monospace';
+        var lbl='+41%', tw=ctx.measureText(lbl).width, my=(y1+y2)/2;
+        ctx.fillStyle='rgba(14,16,20,.88)';
+        ctx.beginPath(); ctx.roundRect(gx-W*0.018-tw-W*0.011, my-fs*0.78, tw+W*0.022, fs*1.56, W*0.008); ctx.fill();
+        ctx.fillStyle=C.good; ctx.textAlign='right'; ctx.textBaseline='middle';
+        ctx.fillText(lbl, gx-W*0.018, my);
+        ctx.restore();
+      }
+
+      var rt=H-rsiH, rb=H-H*0.012, rh=rb-rt;
+      var RY=function(v){ return rb-(v/100)*rh; };
+      ctx.strokeStyle='rgba(41,49,61,.9)'; ctx.lineWidth=Math.max(1,W*0.0009);
+      ctx.beginPath(); ctx.moveTo(padL,rt); ctx.lineTo(W-padR,rt); ctx.stroke();
+      [[70,C.bad],[30,C.good]].forEach(function(z){
+        var y=RY(z[0]);
+        ctx.save(); ctx.globalAlpha=.4; ctx.strokeStyle=z[1]; ctx.setLineDash([W*0.004,W*0.004]);
+        ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke(); ctx.restore();
+        ctx.fillStyle=z[1]; ctx.globalAlpha=.85;
+        ctx.font='600 '+Math.max(8,W*0.026)+'px "IBM Plex Mono", monospace';
+        ctx.textAlign='right'; ctx.textBaseline='middle';
+        ctx.fillText(String(z[0]), W-padR-W*0.004, y); ctx.globalAlpha=1;
+      });
+      if(fl>0){
+        ctx.save(); ctx.globalAlpha=ease(fl);
+        ctx.fillStyle='rgba(76,158,255,.13)';
+        ctx.fillRect(X(CROSS),RY(100),X(N-1)-X(CROSS),RY(60)-RY(100));
+        ctx.strokeStyle=C.accent; ctx.lineWidth=Math.max(1.4,W*0.0014);
+        ctx.beginPath(); ctx.moveTo(X(CROSS),RY(60)); ctx.lineTo(W-padR,RY(60)); ctx.stroke();
+        ctx.fillStyle=C.accent; ctx.font='600 '+Math.max(8,W*0.026)+'px "IBM Plex Mono", monospace';
+        ctx.textAlign='left'; ctx.textBaseline='top';
+        ctx.fillText('60', padL+W*0.004, RY(60)+W*0.005);
+        ctx.restore();
+      }
+      ctx.strokeStyle=C.accent; ctx.lineWidth=Math.max(2,W*0.002);
+      ctx.beginPath(); var began=false;
+      for(var m=0;m<shown;m++){ if(RS[m]==null) continue;
+        if(!began){ctx.moveTo(X(m),RY(RS[m]));began=true;} else ctx.lineTo(X(m),RY(RS[m])); }
+      ctx.stroke();
+
+      var idx=Math.max(0,Math.round(bars)-1), r=RS[idx];
+      ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+      ctx.font='400 '+(W*0.046)+'px "Archivo Black", sans-serif'; ctx.fillStyle=C.fg;
+      ctx.fillText('RSI 14', W*0.055, H*0.068);
+      var tw2=ctx.measureText('RSI 14').width;
+      ctx.font='600 '+(W*0.034)+'px "IBM Plex Mono", monospace';
+      ctx.fillStyle=(r!=null&&r>70)?C.bad:C.good;
+      ctx.fillText((r==null?'—':r.toFixed(0))+'   '+closes[idx].toFixed(2), W*0.055+tw2+W*0.024, H*0.068);
+    } };
+})();
+
+// ------------------------------------------------------------- scene: 3 ----
+// The recovery curve.
+var RV = (function(){
+  function recov(L){ return 1/(1-L)-1; }
+  var MAXL=0.86, MAXG=recov(MAXL);
+  var STOPS=[{l:0.10,at:5700,up:true},{l:0.25,at:13600,up:false},{l:0.50,at:18300,up:true},{l:0.80,at:25000,up:true}];
+  return { dur:54000, ticker:'Gain needed to break even',
+    draw:function(ctx,W,H,ms){
+      var curve=Math.min(1,ms/4600);
+      var padL=W*0.155, padR=W*0.07, padT=H*0.13, padB=H*0.11;
+      var plotW=W-padL-padR, plotH=H-padT-padB;
+      var X=function(L){ return padL+(L/MAXL)*plotW; };
+      var Y=function(G){ return padT+plotH-(G/MAXG)*plotH; };
+
+      ctx.font='600 '+Math.max(8,W*0.027)+'px "IBM Plex Mono", monospace';
+      [0,1,2,4].forEach(function(G){
+        var y=Y(G); ctx.strokeStyle='rgba(41,49,61,.8)'; ctx.lineWidth=Math.max(1,W*0.0009);
+        ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+        ctx.fillStyle='#5b6676'; ctx.textAlign='right'; ctx.textBaseline='middle';
+        ctx.fillText((G*100)+'%', padL-W*0.010, y);
+      });
+      ctx.strokeStyle='rgba(58,67,83,.9)'; ctx.lineWidth=Math.max(1,W*0.0009);
+      ctx.beginPath(); ctx.moveTo(padL,Y(0)); ctx.lineTo(W-padR,Y(0)); ctx.stroke();
+      ctx.fillStyle='#5b6676'; ctx.textAlign='center'; ctx.textBaseline='top';
+      [0.25,0.5,0.75].forEach(function(L){ ctx.fillText('-'+(L*100)+'%', X(L), Y(0)+W*0.010); });
+
+      var reach=MAXL*ease(curve);
+      if(reach>0.001){
+        var grad=ctx.createLinearGradient(padL,0,W-padR,0);
+        grad.addColorStop(0,C.good); grad.addColorStop(0.55,C.warn); grad.addColorStop(1,C.bad);
+        ctx.strokeStyle=grad; ctx.lineWidth=Math.max(2.4,W*0.009);
+        ctx.lineJoin='round'; ctx.lineCap='round';
+        ctx.beginPath();
+        for(var L=0;L<=reach+0.0001;L+=0.004){
+          var x=X(L), y=Y(Math.min(recov(L),MAXG));
+          if(L===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+        ctx.stroke();
+      }
+
+      STOPS.forEach(function(s){
+        var a = ms<s.at?0:ease(Math.min(1,(ms-s.at)/900));
+        if(a<=0.001) return;
+        var gx=X(s.l), gy=Y(Math.min(recov(s.l),MAXG));
+        ctx.save(); ctx.globalAlpha=a;
+        ctx.strokeStyle='rgba(237,240,244,.32)'; ctx.lineWidth=Math.max(1,W*0.0009); ctx.setLineDash([W*0.003,W*0.004]);
+        ctx.beginPath(); ctx.moveTo(gx,Y(0)); ctx.lineTo(gx,gy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(padL,gy); ctx.lineTo(gx,gy); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle=C.bg;
+        ctx.beginPath(); ctx.arc(gx,gy,Math.max(4.5,W*0.016),0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle=C.fg; ctx.lineWidth=Math.max(2,W*0.002);
+        ctx.beginPath(); ctx.arc(gx,gy,Math.max(4.5,W*0.016),0,Math.PI*2); ctx.stroke();
+        var label='+'+Math.round(recov(s.l)*100)+'%';
+        var fs=Math.max(10,W*0.042); ctx.font='600 '+fs+'px "IBM Plex Mono", monospace';
+        var tw=ctx.measureText(label).width, off=Math.max(9,W*0.034);
+        var lx=gx+off, ly=gy+(s.up?-off:off);
+        if(lx+tw+W*0.014>W-padR) lx=gx-tw-off-W*0.008;
+        ctx.fillStyle='rgba(14,16,20,.9)';
+        ctx.beginPath(); ctx.roundRect(lx-W*0.008, ly-fs*0.8, tw+W*0.016, fs*1.6, W*0.008); ctx.fill();
+        ctx.fillStyle = s.l>=0.5?C.bad:C.accent;
+        ctx.textAlign='left'; ctx.textBaseline='middle';
+        ctx.fillText(label,lx,ly);
+        ctx.restore();
+      });
+
+      ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+      ctx.font='600 '+(W*0.030)+'px "IBM Plex Mono", monospace'; ctx.fillStyle=C.dim;
+      ctx.fillText('GAIN NEEDED TO BREAK EVEN', W*0.055, H*0.062);
+    } };
+})();
+
+var SCENES = { readchart:RC, rsi70:OB, recovery:RV };
+var CAPS = {"readchart":[{"from":0,"to":5000,"badge":"","big":"Most people open a stock chart and just see noise.","sub":"","url":"","fine":""},{"from":5000,"to":8000,"badge":"","big":"Here’s what’s actually on it.","sub":"","url":"","fine":""},{"from":8000,"to":18600,"badge":"Trend","big":"The 50-day average, and the 200.","sub":"When the fast one crosses above the slow one, the trend has turned up.","url":"","fine":""},{"from":18600,"to":25600,"badge":"Momentum","big":"This is RSI.","sub":"Near 70 the move is stretched. Near 30 it has been beaten down.","url":"","fine":""},{"from":25600,"to":34200,"badge":"Levels","big":"Where the move is proven wrong, and where it has done its job.","sub":"","url":"","fine":""},{"from":34200,"to":43600,"badge":"","big":"All thirteen of these, on any stock or crypto pair.","sub":"Written out in plain English.","url":"","fine":""},{"from":43600,"to":50200,"badge":"","big":"Nineteen lessons to read it yourself.","sub":"","url":"chartgauge.com","fine":"A study tool. Not financial advice."}],"rsi70":[{"from":0,"to":5100,"badge":"","big":"RSI above 70 means sell.","sub":"That’s the rule everyone repeats.","url":"","fine":""},{"from":5100,"to":8600,"badge":"The signal","big":"This stock crossed 70 right here.","sub":"","url":"","fine":""},{"from":8600,"to":14500,"badge":"","big":"Sell on that rule and you’re out at 106.","sub":"","url":"","fine":""},{"from":14500,"to":19600,"badge":"","big":"It kept going for another seventeen weeks.","sub":"Up 41%.","url":"","fine":""},{"from":19600,"to":24700,"badge":"","big":"RSI never dropped back below 60.","sub":"Not once, the whole way up.","url":"","fine":""},{"from":24700,"to":33400,"badge":"What it actually means","big":"Overbought means the move got stretched.","sub":"In a strong trend it can stay stretched for months.","url":"","fine":""},{"from":33400,"to":40100,"badge":"","big":"Which is why it’s one of thirteen readings.","sub":"Not a signal on its own.","url":"","fine":""},{"from":40100,"to":44800,"badge":"","big":"Nineteen lessons like this one.","sub":"","url":"chartgauge.com","fine":"A study tool. Not financial advice."}],"recovery":[{"from":0,"to":5500,"badge":"","big":"Before your first trade, learn this.","sub":"One piece of arithmetic. It applies to everyone.","url":"","fine":""},{"from":5500,"to":13400,"badge":"Lose 10%","big":"You need 11% to get back to even.","sub":"That sounds fine.","url":"","fine":""},{"from":13400,"to":18100,"badge":"Lose 25%","big":"You need 33%.","sub":"Still sounds manageable.","url":"","fine":""},{"from":18100,"to":24800,"badge":"Lose 50%","big":"You need 100%.","sub":"You have to double what’s left.","url":"","fine":""},{"from":24800,"to":31500,"badge":"Lose 80%","big":"You need 400%.","sub":"Just to be where you started.","url":"","fine":""},{"from":31500,"to":41400,"badge":"","big":"A loss and the gain that undoes it are never the same size.","sub":"The bigger the loss, the further apart they get.","url":"","fine":""},{"from":41400,"to":49300,"badge":"","big":"Which is why how much you risk matters more than how often you’re right.","sub":"","url":"","fine":""},{"from":49300,"to":54000,"badge":"","big":"Lesson four of nineteen.","sub":"","url":"chartgauge.com","fine":"A study tool. Not financial advice."}]};
+
+// ---------------------------------------------------------------- render ----
+var cv=document.getElementById('cv'), ctx=cv.getContext('2d', { alpha:false });
+var statusEl=document.getElementById('status'), prog=document.getElementById('prog');
+var EXP={w:1080,h:1920};
+
+document.querySelectorAll('#res button').forEach(function(b){
+  b.addEventListener('click', function(){
+    document.querySelectorAll('#res button').forEach(function(o){ o.classList.remove('on'); });
+    b.classList.add('on'); EXP={w:+b.dataset.w, h:+b.dataset.h};
+    setup(); frame(0);
+  });
+});
+document.getElementById('pick').addEventListener('change', function(){ setup(); frame(0); });
+
+function setup(){ cv.width=EXP.w; cv.height=EXP.h; }
+
+function frame(ms){
+  var key=document.getElementById('pick').value, sc=SCENES[key], caps=CAPS[key];
+  var W=cv.width, H=cv.height;
+  // 9:16 content box, letterboxed inside a taller/shorter frame if needed
+  var boxH=Math.min(H, W*16/9), boxW=Math.min(W, H*9/16);
+  var ox=(W-boxW)/2, oy=(H-boxH)/2;
+
+  ctx.fillStyle='#000'; ctx.fillRect(0,0,W,H);
+  ctx.save(); ctx.translate(ox,oy);
+  ctx.fillStyle=C.bg; ctx.fillRect(0,0,boxW,boxH);
+  var chartH=boxH*0.67;
+  ctx.save(); ctx.beginPath(); ctx.rect(0,0,boxW,chartH); ctx.clip();
+  sc.draw(ctx, boxW, chartH, ms);
+  ctx.restore();
+  drawCaption(ctx, boxW, boxH, chartH, capAt(caps, ms));
+  ctx.restore();
+}
+
+async function play(record){
+  var key=document.getElementById('pick').value, sc=SCENES[key];
+  var btn=document.getElementById('go'), pv=document.getElementById('preview');
+  btn.disabled=pv.disabled=true;
+  statusEl.innerHTML='Waiting for fonts…';
+  try { await document.fonts.ready; } catch(e){}
+
+  var rec=null, chunks=[];
+  if (record){
+    var stream=cv.captureStream(30);
+    var mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+    rec=new MediaRecorder(stream,{ mimeType:mime, videoBitsPerSecond: 12000000 });
+    rec.ondataavailable=function(e){ if(e.data.size) chunks.push(e.data); };
+    rec.start();
+  }
+
+  var t0=performance.now();
+  await new Promise(function(done){
+    (function step(now){
+      var ms=now-t0;
+      frame(Math.min(ms, sc.dur));
+      prog.style.width=Math.min(100,(ms/sc.dur)*100)+'%';
+      statusEl.innerHTML=(record?'Recording ':'Preview ')+'<b>'+(ms/1000).toFixed(1)+'s</b> of '+(sc.dur/1000).toFixed(1)+'s';
+      if(ms<sc.dur) requestAnimationFrame(step); else done();
+    })(t0);
+  });
+
+  if (record){
+    await new Promise(function(r){ rec.onstop=r; rec.stop(); });
+    var blob=new Blob(chunks,{type:'video/webm'});
+    var url=URL.createObjectURL(blob);
+    var a=document.getElementById('dl');
+    a.href=url; a.download='chartgauge-'+key+'-'+EXP.w+'x'+EXP.h+'.webm';
+    a.click();
+    statusEl.innerHTML='Saved <b>'+a.download+'</b> — '+(blob.size/1048576).toFixed(1)+' MB';
+  } else {
+    statusEl.textContent='Preview finished.';
+  }
+  btn.disabled=pv.disabled=false;
+}
+
+document.getElementById('go').addEventListener('click', function(){ play(true); });
+document.getElementById('preview').addEventListener('click', function(){ play(false); });
+
+setup();
+document.fonts.ready.then(function(){ frame(0); });
+frame(0);
+</script>
+</body>
+</html>
