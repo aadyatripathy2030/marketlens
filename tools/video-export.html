@@ -81,7 +81,7 @@
   <div class="row">
     <button class="primary" id="go">Record</button>
     <button id="preview">Preview only</button>
-    <button id="dlbtn" hidden>⬇ Download video</button>
+    <button id="dlbtn" disabled title="Record a take first — this turns on when it finishes">⬇ Download — record first</button>
     <a id="dl" hidden></a>
   </div>
 
@@ -503,7 +503,11 @@ async function play(record){
   var key=document.getElementById('pick').value, sc=SCENES[key];
   var btn=document.getElementById('go'), pv=document.getElementById('preview');
   btn.disabled=pv.disabled=true;
-  if (record) document.getElementById('dlbtn').hidden=true;
+  if (record) {
+    var db=document.getElementById('dlbtn');
+    db.disabled=true; db.classList.remove('primary');
+    db.textContent='\u2b07 Download \u2014 recording\u2026';
+  }
   statusEl.innerHTML='Waiting for fonts…';
   try { await document.fonts.ready; } catch(e){}
 
@@ -565,8 +569,11 @@ function saveReady(blob, name){
   if (lastUrl) { try { URL.revokeObjectURL(lastUrl); } catch(e){} }
   lastBlob=blob; lastName=name; lastUrl=URL.createObjectURL(blob);
   var b=document.getElementById('dlbtn');
-  b.hidden=false; b.classList.add('primary');
+  // Visible from the start, disabled until there is a file. Hiding it
+  // meant the page opened with no sign a download was ever coming.
+  b.hidden=false; b.disabled=false; b.classList.add('primary');
   b.textContent='\u2b07 Download ' + (blob.size/1048576).toFixed(1) + ' MB';
+  b.title='Save '+name;
 }
 function triggerSave(){
   if (!lastUrl) return;
