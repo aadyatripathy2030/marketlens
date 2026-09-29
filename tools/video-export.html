@@ -81,6 +81,7 @@
   <div class="row">
     <button class="primary" id="go">Record</button>
     <button id="preview">Preview only</button>
+    <button id="dlbtn" hidden>⬇ Download video</button>
     <a id="dl" hidden></a>
   </div>
 
@@ -502,6 +503,7 @@ async function play(record){
   var key=document.getElementById('pick').value, sc=SCENES[key];
   var btn=document.getElementById('go'), pv=document.getElementById('preview');
   btn.disabled=pv.disabled=true;
+  if (record) document.getElementById('dlbtn').hidden=true;
   statusEl.innerHTML='Waiting for fonts…';
   try { await document.fonts.ready; } catch(e){}
 
@@ -528,17 +530,34 @@ async function play(record){
   if (record){
     await new Promise(function(r){ rec.onstop=r; rec.stop(); });
     var blob=new Blob(chunks,{type:'video/webm'});
-    var url=URL.createObjectURL(blob);
-    var a=document.getElementById('dl');
-    a.href=url; a.download='chartgauge-'+key+'-'+EXP.w+'x'+EXP.h+'.webm';
-    a.click();
-    statusEl.innerHTML='Saved <b>'+a.download+'</b> — '+(blob.size/1048576).toFixed(1)+' MB';
+    var name='chartgauge-'+key+'-'+EXP.w+'x'+EXP.h+'.webm';
+    // The automatic save is a convenience and browsers are entitled to refuse
+    // it, so the button below is the real one — it stays on the page until
+    // another recording replaces it.
+    saveReady(blob, name);
+    try { triggerSave(); } catch(e) {}
+    statusEl.innerHTML='Ready: <b>'+name+'</b> \u2014 '+(blob.size/1048576).toFixed(1)+
+      ' MB. If it did not save automatically, press <b>Download video</b>.';
   } else {
     statusEl.textContent='Preview finished.';
   }
   btn.disabled=pv.disabled=false;
 }
 
+var lastBlob=null, lastName='', lastUrl=null;
+function saveReady(blob, name){
+  if (lastUrl) { try { URL.revokeObjectURL(lastUrl); } catch(e){} }
+  lastBlob=blob; lastName=name; lastUrl=URL.createObjectURL(blob);
+  var b=document.getElementById('dlbtn');
+  b.hidden=false; b.classList.add('primary');
+  b.textContent='\u2b07 Download ' + (blob.size/1048576).toFixed(1) + ' MB';
+}
+function triggerSave(){
+  if (!lastUrl) return;
+  var a=document.getElementById('dl');
+  a.href=lastUrl; a.download=lastName; a.click();
+}
+document.getElementById('dlbtn').addEventListener('click', triggerSave);
 document.getElementById('go').addEventListener('click', function(){ play(true); });
 document.getElementById('preview').addEventListener('click', function(){ play(false); });
 
