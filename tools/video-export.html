@@ -93,7 +93,7 @@
 
   <div class="note">
     <p><b>1440 &times; 2160 is 2:3, not 9:16.</b> TikTok, Reels and Shorts are all 9:16, so a 2:3 upload gets pillarboxed or centre-cropped. <b>1080 &times; 1920</b> is the native size and the safe default; <b>1440 &times; 2560</b> is the same shape at higher resolution. The 2:3 option is here because you asked for it — the animation letterboxes itself inside it rather than stretching.</p>
-    <p>Output is <code>.webm</code> (VP9), which TikTok and Instagram accept. For <code>.mp4</code>:<br>
+    <p>Output is <code>.mp4</code> where Chrome supports it, falling back to <code>.webm</code>. A webm from MediaRecorder has no duration in its header, so Finder and QuickTime report it as a second or two even when every frame is there — mp4 avoids that. To convert one anyway:<br>
     <code>ffmpeg -i in.webm -c:v libx264 -pix_fmt yuv420p -crf 18 out.mp4</code></p>
   </div>
 </div>
@@ -709,6 +709,7 @@ async function play(record){
   var key=document.getElementById('pick').value, sc=SCENES[key];
   var btn=document.getElementById('go'), pv=document.getElementById('preview');
   btn.disabled=pv.disabled=true;
+  lockInputs(true);
   if (record) {
     var db=document.getElementById('dlbtn');
     db.disabled=true; db.classList.remove('primary');
@@ -725,8 +726,15 @@ async function play(record){
       if (typeof MediaRecorder === 'undefined') throw new Error('this browser has no MediaRecorder');
       if (!cv.captureStream) throw new Error('this browser cannot capture a canvas stream');
       var stream=cv.captureStream(30);
-      var mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
-      rec=new MediaRecorder(stream,{ mimeType:mime, videoBitsPerSecond: 12000000 });
+      // MP4 first. A webm written by MediaRecorder carries no Duration
+      // element, so Chrome can scan it and get the real length while
+      // QuickTime, Finder preview and most editors read the header and
+      // report a second or two instead. MP4 also uploads everywhere.
+      var mime = ['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9','video/webm']
+        .filter(function(t){ return MediaRecorder.isTypeSupported(t); })[0] || '';
+      recMime = mime;
+      rec = mime ? new MediaRecorder(stream,{ mimeType:mime, videoBitsPerSecond: 12000000 })
+                 : new MediaRecorder(stream,{ videoBitsPerSecond: 12000000 });
       rec.ondataavailable=function(e){ if(e.data.size) chunks.push(e.data); };
       rec.onerror=function(e){ fail('recorder error: '+((e&&e.error&&e.error.name)||'unknown')); };
       rec.start();
@@ -749,23 +757,51 @@ async function play(record){
 
   if (record){
     await new Promise(function(r){ rec.onstop=r; rec.stop(); });
-    var blob=new Blob(chunks,{type:'video/webm'});
+    var type = (recMime || 'video/webm').split(';')[0];
+    var ext = type.indexOf('mp4') > -1 ? 'mp4' : 'webm';
+    var blob=new Blob(chunks,{type:type});
     if (!blob.size) { fail('the recorder produced no data \u2014 open this file in Chrome from your Mac, not in a preview pane'); return; }
-    var name='chartgauge-'+key+'-'+EXP.w+'x'+EXP.h+'.webm';
+    var name='chartgauge-'+key+'-'+EXP.w+'x'+EXP.h+'.'+ext;
     // The automatic save is a convenience and browsers are entitled to refuse
     // it, so the button below is the real one — it stays on the page until
     // another recording replaces it.
     saveReady(blob, name);
     try { triggerSave(); } catch(e) {}
-    statusEl.innerHTML='Ready: <b>'+name+'</b> \u2014 '+(blob.size/1048576).toFixed(1)+
-      ' MB. If it did not save automatically, press <b>Download video</b>.';
+    var secs = await measure(lastUrl);
+    var want = sc.dur/1000;
+    var lenTxt = isFinite(secs) ? secs.toFixed(1)+'s' : 'unknown length';
+    var warn = (isFinite(secs) && secs < want - 2)
+      ? ' <b style="color:#ff5f56">Short \u2014 expected '+want.toFixed(1)+'s. Keep the tab in front while it records.</b>'
+      : '';
+    statusEl.innerHTML='Ready: <b>'+name+'</b> \u2014 '+lenTxt+', '+(blob.size/1048576).toFixed(1)+
+      ' MB.'+warn+' If it did not save automatically, press <b>Download</b>.';
   } else {
     statusEl.textContent='Preview finished.';
   }
   btn.disabled=pv.disabled=false;
+  lockInputs(false);
 }
 
+var recMime = '';
+// Changing the animation or the resolution mid-take resizes the canvas,
+// which breaks the capture stream. Lock both while one is running.
+function lockInputs(on){
+  document.getElementById('pick').disabled = on;
+  document.querySelectorAll('#res button').forEach(function(b){ b.disabled = on; });
+}
+// Read the real duration back off the file, so a short recording shows up
+// here instead of being discovered in an editor later.
+function measure(url){
+  return new Promise(function(res){
+    var v=document.createElement('video');
+    v.preload='metadata'; v.src=url;
+    v.onloadedmetadata=function(){ res(v.duration); };
+    v.onerror=function(){ res(NaN); };
+    setTimeout(function(){ res(NaN); }, 4000);
+  });
+}
 function fail(msg){
+  lockInputs(false);
   statusEl.innerHTML='<b style="color:#ff5f56">Could not record:</b> '+msg;
   document.getElementById('go').disabled=false;
   document.getElementById('preview').disabled=false;
