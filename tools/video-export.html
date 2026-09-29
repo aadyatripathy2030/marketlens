@@ -67,6 +67,7 @@
       <option value="readchart">Read the chart — 50s</option>
       <option value="rsi70" selected>Overbought isn't sell — 45s</option>
       <option value="recovery">The recovery curve — 54s</option>
+      <option value="candles">Five candle patterns — 37s</option>
     </select>
   </div>
 
@@ -462,8 +463,59 @@ var RV = (function(){
     } };
 })();
 
-var SCENES = { readchart:RC, rsi70:OB, recovery:RV };
-var CAPS = {"readchart":[{"from":0,"to":5000,"badge":"","big":"Most people open a stock chart and just see noise.","sub":"","url":"","fine":""},{"from":5000,"to":8000,"badge":"","big":"Here’s what’s actually on it.","sub":"","url":"","fine":""},{"from":8000,"to":18600,"badge":"Trend","big":"The 50-day average, and the 200.","sub":"When the fast one crosses above the slow one, the trend has turned up.","url":"","fine":""},{"from":18600,"to":25600,"badge":"Momentum","big":"This is RSI.","sub":"Near 70 the move is stretched. Near 30 it has been beaten down.","url":"","fine":""},{"from":25600,"to":34200,"badge":"Levels","big":"Where the move is proven wrong, and where it has done its job.","sub":"","url":"","fine":""},{"from":34200,"to":43600,"badge":"","big":"All thirteen of these, on any stock or crypto pair.","sub":"Written out in plain English.","url":"","fine":""},{"from":43600,"to":50200,"badge":"","big":"Nineteen lessons to read it yourself.","sub":"","url":"chartgauge.com","fine":"A study tool. Not financial advice."}],"rsi70":[{"from":0,"to":5100,"badge":"","big":"RSI above 70 means sell.","sub":"That’s the rule everyone repeats.","url":"","fine":""},{"from":5100,"to":8600,"badge":"The signal","big":"This stock crossed 70 right here.","sub":"","url":"","fine":""},{"from":8600,"to":14500,"badge":"","big":"Sell on that rule and you’re out at 106.","sub":"","url":"","fine":""},{"from":14500,"to":19600,"badge":"","big":"It kept going for another seventeen weeks.","sub":"Up 41%.","url":"","fine":""},{"from":19600,"to":24700,"badge":"","big":"RSI never dropped back below 60.","sub":"Not once, the whole way up.","url":"","fine":""},{"from":24700,"to":33400,"badge":"What it actually means","big":"Overbought means the move got stretched.","sub":"In a strong trend it can stay stretched for months.","url":"","fine":""},{"from":33400,"to":40100,"badge":"","big":"Which is why it’s one of thirteen readings.","sub":"Not a signal on its own.","url":"","fine":""},{"from":40100,"to":44800,"badge":"","big":"Nineteen lessons like this one.","sub":"","url":"chartgauge.com","fine":"A study tool. Not financial advice."}],"recovery":[{"from":0,"to":5500,"badge":"","big":"Before your first trade, learn this.","sub":"One piece of arithmetic. It applies to everyone.","url":"","fine":""},{"from":5500,"to":13400,"badge":"Lose 10%","big":"You need 11% to get back to even.","sub":"That sounds fine.","url":"","fine":""},{"from":13400,"to":18100,"badge":"Lose 25%","big":"You need 33%.","sub":"Still sounds manageable.","url":"","fine":""},{"from":18100,"to":24800,"badge":"Lose 50%","big":"You need 100%.","sub":"You have to double what’s left.","url":"","fine":""},{"from":24800,"to":31500,"badge":"Lose 80%","big":"You need 400%.","sub":"Just to be where you started.","url":"","fine":""},{"from":31500,"to":41400,"badge":"","big":"A loss and the gain that undoes it are never the same size.","sub":"The bigger the loss, the further apart they get.","url":"","fine":""},{"from":41400,"to":49300,"badge":"","big":"Which is why how much you risk matters more than how often you’re right.","sub":"","url":"","fine":""},{"from":49300,"to":54000,"badge":"","big":"Lesson four of nineteen.","sub":"","url":"chartgauge.com","fine":"A study tool. Not financial advice."}]};
+
+// ------------------------------------------------------------- scene: 4 ----
+// Five candle patterns — one shape per beat, fast cuts.
+var CP = (function(){
+  var G='#3ddc84', R='#ff5f56', NEU='#9aa5b4';
+  var PATTERNS = {
+    intro:   [{o:38,c:68,h:76,l:30}],
+    basics:  [{o:35,c:70,h:78,l:27,tag:'buyers'},{o:70,c:35,h:78,l:27,tag:'sellers'}],
+    doji:    [{o:50,c:51,h:86,l:14,flat:true}],
+    hammer:  [{o:66,c:73,h:79,l:16}],
+    star:    [{o:34,c:27,h:86,l:21}],
+    bullEng: [{o:62,c:46,h:67,l:41},{o:42,c:78,h:83,l:38}],
+    bearEng: [{o:40,c:58,h:63,l:35},{o:64,c:30,h:69,l:26}],
+    all:     [{o:50,c:51,h:82,l:18,flat:true},{o:62,c:69,h:75,l:22},
+              {o:36,c:29,h:82,l:24},{o:40,c:72,h:78,l:34}]
+  };
+  var CUTS = [{"from": 0, "to": 3200, "pat": "intro", "big": "Every candle shows who won the day.", "sub": "", "url": "", "fine": ""}, {"from": 3200, "to": 10000, "pat": "basics", "big": "Green, buyers won. Red, sellers won.", "sub": "The wicks are how far it got before it came back.", "url": "", "fine": ""}, {"from": 10000, "to": 14300, "pat": "doji", "big": "Doji. Nobody won.", "sub": "Opened and closed in the same place.", "url": "", "fine": ""}, {"from": 14300, "to": 17900, "pat": "hammer", "big": "Hammer.", "sub": "Sellers pushed it down. Buyers took it back.", "url": "", "fine": ""}, {"from": 17900, "to": 21100, "pat": "star", "big": "Shooting star.", "sub": "The same thing, upside down.", "url": "", "fine": ""}, {"from": 21100, "to": 25400, "pat": "bullEng", "big": "Bullish engulfing.", "sub": "One green candle eats the last red one.", "url": "", "fine": ""}, {"from": 25400, "to": 28200, "pat": "bearEng", "big": "Bearish engulfing.", "sub": "Same move, other way.", "url": "", "fine": ""}, {"from": 28200, "to": 35300, "pat": "all", "big": "None of them is a signal on its own.", "sub": "They describe what just happened, not what happens next.", "url": "", "fine": ""}, {"from": 35300, "to": 37400, "pat": "all", "big": "Lesson fourteen of nineteen.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}];
+  function at(ms){
+    for (var i=0;i<CUTS.length;i++) if (ms>=CUTS[i].from && ms<CUTS[i].to) return CUTS[i];
+    return ms>=CUTS[CUTS.length-1].to ? CUTS[CUTS.length-1] : CUTS[0];
+  }
+  return { dur:37400, captions:CUTS,
+    draw:function(ctx,W,H,ms){
+      var cut=at(ms), set=PATTERNS[cut.pat]||PATTERNS.intro;
+      var grow=ease(Math.min(1,(ms-cut.from)/380));
+      var top=H*0.16, bot=H*0.84, span=bot-top;
+      var Y=function(v){ return bot-(v/100)*span; };
+      var n=set.length, slot=W/(n+1), bodyW=Math.min(W*0.19, slot*0.62);
+      for (var i=0;i<n;i++){
+        var k=set[i], x=slot*(i+1);
+        var col = k.flat ? NEU : (k.c>=k.o ? G : R);
+        var mid=(k.h+k.l)/2;
+        var hh=mid+(k.h-mid)*grow, ll=mid+(k.l-mid)*grow;
+        ctx.strokeStyle=col; ctx.lineWidth=Math.max(2,W*0.012); ctx.lineCap='round';
+        ctx.beginPath(); ctx.moveTo(x,Y(hh)); ctx.lineTo(x,Y(ll)); ctx.stroke();
+        var bMid=(k.o+k.c)/2;
+        var bT=bMid+(Math.max(k.o,k.c)-bMid)*grow, bB=bMid+(Math.min(k.o,k.c)-bMid)*grow;
+        ctx.fillStyle=col;
+        var yT=Y(bT), hgt=Math.max(Math.max(3,W*0.012), Y(bB)-yT);
+        ctx.beginPath(); ctx.roundRect(x-bodyW/2, yT, bodyW, hgt, Math.min(W*0.012, hgt/2)); ctx.fill();
+        if (k.tag){
+          ctx.globalAlpha=grow; ctx.fillStyle=col;
+          ctx.font='600 '+(W*0.042)+'px "IBM Plex Mono", monospace';
+          ctx.textAlign='center'; ctx.textBaseline='top';
+          ctx.fillText(k.tag, x, bot+H*0.035);
+          ctx.globalAlpha=1;
+        }
+      }
+    } };
+})();
+
+var SCENES = { readchart:RC, rsi70:OB, recovery:RV, candles:CP };
+var CAPS = {"readchart": [{"from": 0, "to": 5000, "badge": "", "big": "Most people open a stock chart and just see noise.", "sub": "", "url": "", "fine": ""}, {"from": 5000, "to": 8000, "badge": "", "big": "Here\u2019s what\u2019s actually on it.", "sub": "", "url": "", "fine": ""}, {"from": 8000, "to": 18600, "badge": "Trend", "big": "The 50-day average, and the 200.", "sub": "When the fast one crosses above the slow one, the trend has turned up.", "url": "", "fine": ""}, {"from": 18600, "to": 25600, "badge": "Momentum", "big": "This is RSI.", "sub": "Near 70 the move is stretched. Near 30 it has been beaten down.", "url": "", "fine": ""}, {"from": 25600, "to": 34200, "badge": "Levels", "big": "Where the move is proven wrong, and where it has done its job.", "sub": "", "url": "", "fine": ""}, {"from": 34200, "to": 43600, "badge": "", "big": "All thirteen of these, on any stock or crypto pair.", "sub": "Written out in plain English.", "url": "", "fine": ""}, {"from": 43600, "to": 50200, "badge": "", "big": "Nineteen lessons to read it yourself.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "rsi70": [{"from": 0, "to": 5100, "badge": "", "big": "RSI above 70 means sell.", "sub": "That\u2019s the rule everyone repeats.", "url": "", "fine": ""}, {"from": 5100, "to": 8600, "badge": "The signal", "big": "This stock crossed 70 right here.", "sub": "", "url": "", "fine": ""}, {"from": 8600, "to": 14500, "badge": "", "big": "Sell on that rule and you\u2019re out at 106.", "sub": "", "url": "", "fine": ""}, {"from": 14500, "to": 19600, "badge": "", "big": "It kept going for another seventeen weeks.", "sub": "Up 41%.", "url": "", "fine": ""}, {"from": 19600, "to": 24700, "badge": "", "big": "RSI never dropped back below 60.", "sub": "Not once, the whole way up.", "url": "", "fine": ""}, {"from": 24700, "to": 33400, "badge": "What it actually means", "big": "Overbought means the move got stretched.", "sub": "In a strong trend it can stay stretched for months.", "url": "", "fine": ""}, {"from": 33400, "to": 40100, "badge": "", "big": "Which is why it\u2019s one of thirteen readings.", "sub": "Not a signal on its own.", "url": "", "fine": ""}, {"from": 40100, "to": 44800, "badge": "", "big": "Nineteen lessons like this one.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "recovery": [{"from": 0, "to": 5500, "badge": "", "big": "Before your first trade, learn this.", "sub": "One piece of arithmetic. It applies to everyone.", "url": "", "fine": ""}, {"from": 5500, "to": 13400, "badge": "Lose 10%", "big": "You need 11% to get back to even.", "sub": "That sounds fine.", "url": "", "fine": ""}, {"from": 13400, "to": 18100, "badge": "Lose 25%", "big": "You need 33%.", "sub": "Still sounds manageable.", "url": "", "fine": ""}, {"from": 18100, "to": 24800, "badge": "Lose 50%", "big": "You need 100%.", "sub": "You have to double what\u2019s left.", "url": "", "fine": ""}, {"from": 24800, "to": 31500, "badge": "Lose 80%", "big": "You need 400%.", "sub": "Just to be where you started.", "url": "", "fine": ""}, {"from": 31500, "to": 41400, "badge": "", "big": "A loss and the gain that undoes it are never the same size.", "sub": "The bigger the loss, the further apart they get.", "url": "", "fine": ""}, {"from": 41400, "to": 49300, "badge": "", "big": "Which is why how much you risk matters more than how often you\u2019re right.", "sub": "", "url": "", "fine": ""}, {"from": 49300, "to": 54000, "badge": "", "big": "Lesson four of nineteen.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "candles": [{"from": 0, "to": 3200, "pat": "intro", "big": "Every candle shows who won the day.", "sub": "", "url": "", "fine": ""}, {"from": 3200, "to": 10000, "pat": "basics", "big": "Green, buyers won. Red, sellers won.", "sub": "The wicks are how far it got before it came back.", "url": "", "fine": ""}, {"from": 10000, "to": 14300, "pat": "doji", "big": "Doji. Nobody won.", "sub": "Opened and closed in the same place.", "url": "", "fine": ""}, {"from": 14300, "to": 17900, "pat": "hammer", "big": "Hammer.", "sub": "Sellers pushed it down. Buyers took it back.", "url": "", "fine": ""}, {"from": 17900, "to": 21100, "pat": "star", "big": "Shooting star.", "sub": "The same thing, upside down.", "url": "", "fine": ""}, {"from": 21100, "to": 25400, "pat": "bullEng", "big": "Bullish engulfing.", "sub": "One green candle eats the last red one.", "url": "", "fine": ""}, {"from": 25400, "to": 28200, "pat": "bearEng", "big": "Bearish engulfing.", "sub": "Same move, other way.", "url": "", "fine": ""}, {"from": 28200, "to": 35300, "pat": "all", "big": "None of them is a signal on its own.", "sub": "They describe what just happened, not what happens next.", "url": "", "fine": ""}, {"from": 35300, "to": 37400, "pat": "all", "big": "Lesson fourteen of nineteen.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}]};
 
 // ---------------------------------------------------------------- render ----
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d', { alpha:false });
