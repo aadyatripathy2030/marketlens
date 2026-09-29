@@ -509,11 +509,21 @@ async function play(record){
 
   var rec=null, chunks=[];
   if (record){
-    var stream=cv.captureStream(30);
-    var mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
-    rec=new MediaRecorder(stream,{ mimeType:mime, videoBitsPerSecond: 12000000 });
-    rec.ondataavailable=function(e){ if(e.data.size) chunks.push(e.data); };
-    rec.start();
+    // Any failure here used to reject the whole function silently: the buttons
+    // stayed disabled, no file appeared, and nothing said why.
+    try {
+      if (typeof MediaRecorder === 'undefined') throw new Error('this browser has no MediaRecorder');
+      if (!cv.captureStream) throw new Error('this browser cannot capture a canvas stream');
+      var stream=cv.captureStream(30);
+      var mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp9') ? 'video/webm;codecs=vp9' : 'video/webm';
+      rec=new MediaRecorder(stream,{ mimeType:mime, videoBitsPerSecond: 12000000 });
+      rec.ondataavailable=function(e){ if(e.data.size) chunks.push(e.data); };
+      rec.onerror=function(e){ fail('recorder error: '+((e&&e.error&&e.error.name)||'unknown')); };
+      rec.start();
+    } catch (e) {
+      fail(e.message || String(e));
+      return;
+    }
   }
 
   var t0=performance.now();
@@ -530,6 +540,7 @@ async function play(record){
   if (record){
     await new Promise(function(r){ rec.onstop=r; rec.stop(); });
     var blob=new Blob(chunks,{type:'video/webm'});
+    if (!blob.size) { fail('the recorder produced no data \u2014 open this file in Chrome from your Mac, not in a preview pane'); return; }
     var name='chartgauge-'+key+'-'+EXP.w+'x'+EXP.h+'.webm';
     // The automatic save is a convenience and browsers are entitled to refuse
     // it, so the button below is the real one — it stays on the page until
@@ -544,6 +555,11 @@ async function play(record){
   btn.disabled=pv.disabled=false;
 }
 
+function fail(msg){
+  statusEl.innerHTML='<b style="color:#ff5f56">Could not record:</b> '+msg;
+  document.getElementById('go').disabled=false;
+  document.getElementById('preview').disabled=false;
+}
 var lastBlob=null, lastName='', lastUrl=null;
 function saveReady(blob, name){
   if (lastUrl) { try { URL.revokeObjectURL(lastUrl); } catch(e){} }
@@ -562,6 +578,14 @@ document.getElementById('go').addEventListener('click', function(){ play(true); 
 document.getElementById('preview').addEventListener('click', function(){ play(false); });
 
 setup();
+// A static preview pane runs no script at all, so if this line ever shows the
+// page is at least alive; if recording is impossible it says so before you try.
+if (typeof MediaRecorder === 'undefined' || !cv.captureStream) {
+  statusEl.innerHTML='<b style="color:#ff5f56">This browser cannot record.</b> Open the file in Chrome from your Mac.';
+  document.getElementById('go').disabled=true;
+} else {
+  statusEl.textContent='Ready. Press Record — the Download button appears when the take finishes.';
+}
 document.fonts.ready.then(function(){ frame(0); });
 frame(0);
 </script>
