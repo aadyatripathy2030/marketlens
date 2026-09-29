@@ -93,7 +93,7 @@
 
   <div class="note">
     <p><b>1440 &times; 2160 is 2:3, not 9:16.</b> TikTok, Reels and Shorts are all 9:16, so a 2:3 upload gets pillarboxed or centre-cropped. <b>1080 &times; 1920</b> is the native size and the safe default; <b>1440 &times; 2560</b> is the same shape at higher resolution. The 2:3 option is here because you asked for it — the animation letterboxes itself inside it rather than stretching.</p>
-    <p>Output is <code>.mp4</code> where Chrome supports it, falling back to <code>.webm</code>. A webm from MediaRecorder has no duration in its header, so Finder and QuickTime report it as a second or two even when every frame is there — mp4 avoids that. To convert one anyway:<br>
+    <p>Output is <code>.mp4</code> where Chrome supports it, falling back to <code>.webm</code>. A webm from MediaRecorder has no duration in its header, so Finder and QuickTime report it as a second or two even when every frame is there — mp4 avoids that.</p><p><b>For DaVinci Resolve, run the file through <code>tools/for-resolve.command</code> first.</b> MediaRecorder writes a <em>fragmented</em> mp4 and Resolve refuses those without explaining why. That script remuxes it with <code>avconvert</code>, which ships with macOS — nothing to install, no re-encode, about two seconds. Double-click it to convert the newest recording in Downloads. TikTok, Instagram and QuickTime all accept the file as it comes out of here; only Resolve needs the extra step.</p><p>If you would rather use ffmpeg:<br>
     <code>ffmpeg -i in.webm -c:v libx264 -pix_fmt yuv420p -crf 18 out.mp4</code></p>
   </div>
 </div>
