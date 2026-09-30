@@ -460,6 +460,15 @@
   // until a double-click hands it back to auto-fit.
   let yManual = null;       // {lo, hi} in price units, or null for auto-fit
   let lastY = null;         // last drawn {lo, hi, plotH, top} so drags can do maths
+
+  // Watchlist rows live up here because the renderer below reads them to draw
+  // the entry/stop/target lines. They were declared further down, guarded with
+  // `typeof wlRow === 'function'`, which is not the guard it looks like: a
+  // const in its temporal dead zone throws on typeof rather than reporting
+  // undefined, so the guard would have raised the very error it was avoiding.
+  let watchRows = [];            // [{symbol, created, entry, stop, target}]
+  let wlSym = null, wlQuote = null;
+  const wlRow = (sym) => watchRows.find(r => r.symbol === sym) || null;
   // Filled by the renderer each frame: where the watchlist levels landed,
   // so a pointer can be matched to one.
   let wlLevelBands = [];
@@ -909,7 +918,7 @@
     // whichever view the panel is mounted in, and draggable by the handle on
     // the right. wlLevelBands is read by the pointer handlers.
     wlLevelBands = [];
-    const wlR = (typeof wlRow === 'function' && lastData) ? wlRow(lastData.symbol) : null;
+    const wlR = lastData ? wlRow(lastData.symbol) : null;
     if (wlR) {
       [['entry', wlR.entry, col('--muted'), 'entry'],
        ['stop', wlR.stop, col('--bad'), 'stop'],
@@ -1080,7 +1089,12 @@
         const price = lastY.hi - f * (lastY.hi - lastY.lo);
         if (Number.isFinite(price) && price > 0) {
           const row = wlRow(lastData.symbol);
-          if (row) { row[drag.level] = price; wlRenderPl(); drawChart(); }
+          if (row) {
+            row[drag.level] = price;
+            // The P&L readout belongs to the panel's symbol, not the chart's.
+            if (lastData.symbol === wlSym) wlRenderPl();
+            drawChart();
+          }
         }
         return;
       }
@@ -1107,14 +1121,19 @@
     });
     window.addEventListener('mouseup', () => {
       if (drag && drag.level) {
-        const row = wlRow(lastData && lastData.symbol);
+        const sym = lastData && lastData.symbol;
+        const row = wlRow(sym);
         // Round to cents: a dragged level should read like a price.
         if (row && Number.isFinite(row[drag.level])) {
           const v = Math.round(row[drag.level] * 100) / 100;
           row[drag.level] = v;
-          const box = $('wl' + drag.level.charAt(0).toUpperCase() + drag.level.slice(1));
-          if (box) box.value = v;
-          saveWatchLevels({ [drag.level]: v });
+          // The boxes show the panel's symbol, so only write to them when the
+          // line that was dragged is that symbol's.
+          if (sym === wlSym) {
+            const box = $('wl' + drag.level.charAt(0).toUpperCase() + drag.level.slice(1));
+            if (box) box.value = v;
+          }
+          saveWatchLevels({ [drag.level]: v }, sym);
         }
         drag = null;
         return;
@@ -1122,7 +1141,11 @@
     let raf = 0;
     canvas.addEventListener('mousemove', (e) => {
       const z = zoneOf(e);
-      if (!drag) canvas.style.cursor = z === 'price' ? 'ns-resize' : z === 'time' ? 'ew-resize' : 'crosshair';
+      // A level line can be dragged from anywhere along it, which is invisible
+      // unless the cursor says so — and without the cue it just reads as the
+      // chart refusing to pan.
+      if (!drag) canvas.style.cursor = levelAt(e) ? 'grab'
+        : z === 'price' ? 'ns-resize' : z === 'time' ? 'ew-resize' : 'crosshair';
       const r = canvas.getBoundingClientRect();
       hover = drag ? null : { x: e.clientX - r.left, y: e.clientY - r.top };
       if (!raf) raf = requestAnimationFrame(() => { raf = 0; drawChart(); });
@@ -1530,7 +1553,12 @@
       renderPaper();
       if (j.account) {
         const first = (j.account.positions[0] || {}).symbol || chartSym || 'AAPL';
+        // The chart panel is shared, so analyze or the watchlist may have
+        // loaded a different symbol into it since this view was last open.
+        // Without the second branch the header named one stock while the bars
+        // under it belonged to another, and the ticket traded the header's.
         if (!chartSym) selectChart(first);
+        else if (!lastData || lastData.symbol !== chartSym) selectChart(chartSym);
         else refreshQuote();
         startLive();
       }
@@ -1754,11 +1782,20 @@
       + (cost > cash ? ' <span class="over">— more than your cash</span>' : '');
   }
 
+  // The server checks cash against what it read before fetching a quote, so
+  // two trades in flight at once can both pass that check and overdraw the
+  // account. One at a time is enough to stop it, and a double-clicked Buy is
+  // the only way anyone reached it.
+  let tradeBusy = false;
   async function trade(side) {
+    if (tradeBusy) return;
     const symbol = ($('pSym').value || '').trim().toUpperCase();
     const qty = Number($('pQty').value);
     if (!symbol) return paperMsg('Enter a symbol.', true);
     if (!(qty > 0)) return paperMsg('Enter a quantity above zero.', true);
+    tradeBusy = true;
+    if ($('pBuy')) $('pBuy').disabled = true;
+    if ($('pSell')) $('pSell').disabled = true;
     paperMsg('Working…');
     try {
       const res = await fetch('/api/paper/trade', { method: 'POST',
@@ -1772,6 +1809,11 @@
       $('pQty').value = ''; estimate();
       if (f.symbol !== chartSym) selectChart(f.symbol);
     } catch (e) { paperMsg('That did not go through.', true); }
+    finally {
+      tradeBusy = false;
+      if ($('pBuy')) $('pBuy').disabled = false;
+      if ($('pSell')) $('pSell').disabled = false;
+    }
   }
 
   function wirePractice() {
@@ -1790,6 +1832,9 @@
         const res = await fetch('/api/paper/open', { method: 'POST',
           headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ startBalance }) });
         const j = await res.json();
+        // Without this a rejected open just redrew the setup screen, so the
+        // button looked like it had done nothing at all.
+        if (!res.ok || !j.account) return paperMsg(j.message || j.error || 'Could not start the account.', true);
         paperState = { account: j.account, fills: j.fills || [], defaults: paperState && paperState.defaults };
         renderPaper(); paperMsg('');
         selectChart(chartSym || 'AAPL'); startLive();
@@ -1803,7 +1848,10 @@
       const what = n ? n + (n === 1 ? ' open position' : ' open positions') + ' and every fill' : 'every fill';
       if (!window.confirm('Reset the practice account?\n\nThis clears ' + what
         + ', and lets you pick a new starting balance. It cannot be undone.')) return;
-      try { await fetch('/api/paper/reset', { method: 'POST' }); } catch (e) {}
+      try {
+        const res = await fetch('/api/paper/reset', { method: 'POST' });
+        if (!res.ok) return paperMsg('Could not reset the account. Nothing was changed.', true);
+      } catch (e) { return paperMsg('Could not reset the account. Nothing was changed.', true); }
       paperState = { account: null, fills: [], defaults: paperState && paperState.defaults };
       stopLive(); renderPaper();
     });
@@ -1858,10 +1906,7 @@
     }));
 
     // The chart's own controls live on the shared panel, so there is nothing
-    // extra to wire here. Keep the canvas correct when the window changes.
-    window.addEventListener('resize', () => {
-      if (currentView === 'practice') { try { drawChart(); } catch (e) {} }
-    });
+    // extra to wire here, and resize is already handled once for every view.
 
     const live = (id, label) => {
       const el = $(id);
@@ -2180,10 +2225,6 @@
   // A saved symbol behaves like a position you have not funded: the price it
   // was added at, how it has done since, and your own stop and target. The
   // chart is the shared panel, moved in here.
-  let watchRows = [];            // [{symbol, created, entry, stop, target}]
-  let wlSym = null, wlQuote = null;
-
-  const wlRow = (sym) => watchRows.find(r => r.symbol === sym) || null;
 
   async function renderWatchView() {
     const el = $('watchView');
@@ -2297,13 +2338,17 @@
     } else { rr.textContent = ''; rr.className = 'wl-rr muted'; }
   }
 
-  // null clears a level.
-  async function saveWatchLevels(patch) {
-    if (!wlSym) return;
+  // null clears a level. `sym` defaults to the symbol the panel is showing,
+  // but a level dragged on the chart belongs to whatever the chart is showing,
+  // and those are not always the same: analyzing one watchlisted name while
+  // the panel sat on another saved the dragged level onto the panel's symbol.
+  async function saveWatchLevels(patch, sym) {
+    const symbol = String(sym || wlSym || '').toUpperCase();
+    if (!symbol) return;
     try {
       const res = await fetch('/api/watchlist', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({ symbol: wlSym, action: 'levels' }, patch)),
+        body: JSON.stringify(Object.assign({ symbol, action: 'levels' }, patch)),
       });
       const j = await res.json();
       if (j.rows) { watchRows = j.rows; watchSymbols = j.symbols || watchSymbols; }
@@ -2321,7 +2366,13 @@
     };
     const bind = (id, key) => $(id).addEventListener('change', () => {
       const v = read($(id));
-      if (v === undefined) return;
+      if (v === undefined) {
+        // Put back what is actually stored. Leaving the typed text sitting
+        // there made the box disagree with the level on the chart.
+        const cur = wlRow(wlSym);
+        $(id).value = (cur && Number.isFinite(cur[key])) ? cur[key] : '';
+        return;
+      }
       const r = wlRow(wlSym); if (r) r[key] = v;
       saveWatchLevels({ [key]: v });
     });
