@@ -48,6 +48,9 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 
 .topbar { display: flex; align-items: center; justify-content: flex-start; padding: 15px 32px; background: var(--bg2); position: sticky; top: 0; z-index: 30; }
 .brand { display: flex; align-items: center; gap: 10px; flex: none; font-weight: 680; font-size: 17.5px; letter-spacing: -.4px; color: var(--text); text-decoration: none; cursor: pointer; }
+/* The mark carries its own dark plate, so it needs no ring of its own and
+   sits the same on either theme. */
+.brand-mark { width: 26px; height: 26px; border-radius: 7px; flex: none; display: block; }
 .nav { display: flex; gap: 2px; margin-left: 20px; min-width: 0; flex: 1 1 auto; overflow-x: auto; scrollbar-width: none; }
 .nav::-webkit-scrollbar { display: none; }
 .nav-link { font-size: 14px; font-weight: 600; color: var(--muted); padding: 7px 13px; border-radius: 9px; cursor: pointer; text-decoration: none; white-space: nowrap; transition: color .15s, background .15s; }

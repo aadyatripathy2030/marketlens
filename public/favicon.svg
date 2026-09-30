@@ -1,10 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#15171a"/>
-  <!-- Mirrors the in-app score gauge. Deliberately heavy: at a 16px tab icon
-       thin strokes and the needle blur into each other. -->
-  <path d="M10 46a22 22 0 0 1 44 0" fill="none" stroke="#3d454e" stroke-width="9" stroke-linecap="round"/>
-  <path d="M10 46A22 22 0 0 1 47.6 30.4" fill="none" stroke="#6aa3c2" stroke-width="9" stroke-linecap="round"/>
-  <path d="M32 46 45 29" fill="none" stroke="#15171a" stroke-width="12" stroke-linecap="round"/>
-  <path d="M32 46 44.2 30" fill="none" stroke="#f2f0ee" stroke-width="6.5" stroke-linecap="round"/>
-  <circle cx="32" cy="46" r="5" fill="#f2f0ee"/>
+  <!-- Two candles, deliberately blocky. The previous mark was a gauge needle
+       over an arc, which merged into an unreadable blob at 16px: the needle,
+       its knockout and the arc all collapse together. Solid bodies survive the
+       tab. Wide bodies and eased rather than rounded corners keep the shape at
+       small sizes, where a large radius eats most of the body.
+       Colours are the app's own chart red and green on the app background. -->
+  <rect width="64" height="64" rx="14" fill="#0e1014"/>
+  <rect x="19.75" y="15" width="4.5" height="34" rx="1" fill="#ff5f56"/>
+  <rect x="14" y="23" width="16" height="18" rx="2" fill="#ff5f56"/>
+  <rect x="39.75" y="11" width="4.5" height="40" rx="1" fill="#3ddc84"/>
+  <rect x="34" y="17" width="16" height="28" rx="2" fill="#3ddc84"/>
 </svg>
