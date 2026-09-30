@@ -838,3 +838,32 @@ body.drawer-open .drawer { transform: translateX(0); }
 .ptable td.up { color: var(--good); } .ptable td.down { color: var(--bad); }
 .ptable .stale { font-size: 10.5px; color: var(--muted); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; }
 @media (max-width: 560px) { .ptable { font-size: 13px; } .ptable th, .ptable td { padding: 7px 6px; } }
+
+/* ---- Trade ticket ----
+   The fields previously carried .inp and .lbl, which are not classes this
+   stylesheet defines, so they rendered as raw browser inputs. */
+.tk-lbl { display: block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); font-weight: 600; margin: 0 0 6px; }
+.tk-lbl b { color: var(--text); font-family: var(--font-num); letter-spacing: 0; }
+.tk-field { position: relative; margin-bottom: 14px; }
+.tk-field .input { width: 100%; }
+.tk-sym { font-family: var(--font-num); font-size: 19px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; padding: 12px 15px; }
+.tk-qty { font-family: var(--font-num); font-size: 19px; font-weight: 700; text-transform: none;
+  padding: 12px 64px 12px 15px; font-variant-numeric: tabular-nums; }
+/* the stepper arrows fight the mono alignment */
+.tk-qty::-webkit-outer-spin-button, .tk-qty::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.tk-qty { -moz-appearance: textfield; }
+.tk-suffix { position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+  font-size: 12px; color: var(--muted); pointer-events: none; }
+.tk-field .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+.tk-quick { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: -4px 0 12px; }
+.tk-quick button { background: var(--card-hi); border: 1px solid var(--border); color: var(--muted);
+  border-radius: 8px; padding: 7px 0; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  transition: color .15s, border-color .15s; }
+.tk-quick button:hover { color: var(--text); border-color: var(--accent); }
+.tk-quick button:active { background: var(--accent-soft); }
+
+/* the starting-balance field on the setup card */
+.amt-row:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }

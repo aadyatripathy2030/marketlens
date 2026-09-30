@@ -1673,9 +1673,39 @@
     $('pBuy').addEventListener('click', () => trade('buy'));
     $('pSell').addEventListener('click', () => trade('sell'));
     $('pQty').addEventListener('input', estimate);
+    $('pSym').addEventListener('input', () => {
+      const el = $('pSym'), at = el.selectionStart;
+      el.value = el.value.toUpperCase();
+      try { el.setSelectionRange(at, at); } catch (e) {}
+      estimate();
+    });
     $('pQty').addEventListener('keydown', (e) => { if (e.key === 'Enter') trade('buy'); });
     $('pSym').addEventListener('change', () => { selectChart($('pSym').value); });
     $('pSym').addEventListener('keydown', (e) => { if (e.key === 'Enter') selectChart($('pSym').value); });
+
+    // Size by a share of what is actually spendable. When the symbol is one you
+    // already hold, Max means the whole position, because at that point the
+    // useful question is how much of it to close.
+    document.querySelectorAll('#pQuick button').forEach(b => b.addEventListener('click', () => {
+      const f = Number(b.dataset.f) || 0;
+      const sym = ($('pSym').value || '').toUpperCase().trim();
+      const acct = paperState && paperState.account;
+      if (!acct) return;
+      const held = acct.positions.find(p => p.symbol === sym);
+      const px = chartQuote && sym === chartSym ? Number(chartQuote.price) : null;
+      let q;
+      if (held) {
+        q = held.qty * f;
+      } else if (Number.isFinite(px) && px > 0) {
+        q = Math.floor((acct.cash * f) / px * 1e4) / 1e4;
+      } else {
+        return paperMsg('Pick a symbol first so there is a price to size against.', true);
+      }
+      q = Math.floor(q * 1e4) / 1e4;
+      if (!(q > 0)) return paperMsg('Not enough cash for that share of the account.', true);
+      $('pQty').value = q;
+      estimate();
+    }));
 
     document.querySelectorAll('#cRange button').forEach(b => b.addEventListener('click', () => {
       chartRange = b.dataset.r;

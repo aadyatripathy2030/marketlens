@@ -408,7 +408,7 @@
         <p class="muted">You can reset and pick a different one whenever you like.</p>
         <div class="amt-row">
           <span class="amt-cur">$</span>
-          <input id="paperStart" type="number" min="100" max="10000000" step="100" value="10000" />
+          <input id="paperStart" type="number" min="100" max="10000000" step="100" value="10000" inputmode="decimal" />
         </div>
         <div class="amt-presets">
           <button type="button" class="chip paper-preset" data-amt="1000">1,000</button>
@@ -459,10 +459,21 @@
         <div class="side-col">
           <div class="card ticket">
             <h3>Trade</h3>
-            <label class="lbl" for="pSym">Symbol</label>
-            <input id="pSym" class="inp" placeholder="AAPL" maxlength="16" autocomplete="off" />
-            <label class="lbl" for="pQty">Quantity</label>
-            <input id="pQty" class="inp" type="number" min="0" step="any" placeholder="10" />
+            <label class="tk-lbl" for="pSym">Symbol</label>
+            <div class="tk-field">
+              <input id="pSym" class="input tk-sym" placeholder="AAPL" maxlength="16"
+                     autocomplete="off" autocapitalize="characters" spellcheck="false" />
+            </div>
+            <label class="tk-lbl" for="pQty">Quantity</label>
+            <div class="tk-field">
+              <input id="pQty" class="input tk-qty" type="number" min="0" step="any" placeholder="0" inputmode="decimal" />
+              <span class="tk-suffix">shares</span>
+            </div>
+            <div class="tk-quick" id="pQuick">
+              <button type="button" data-f="0.25">25%</button>
+              <button type="button" data-f="0.5">50%</button>
+              <button type="button" data-f="1">Max</button>
+            </div>
             <div class="est" id="pEst">&nbsp;</div>
             <div class="ticket-btns">
               <button type="button" class="btn buy" id="pBuy">Buy</button>
@@ -485,9 +496,9 @@
             <div id="pFlags" class="risk-flags"></div>
             <details class="risk-set">
               <summary>Your limits</summary>
-              <label class="lbl" for="rMaxPos">Most in one position &mdash; <b id="rMaxPosV">20%</b></label>
+              <label class="tk-lbl" for="rMaxPos">Most in one position &mdash; <b id="rMaxPosV">20%</b></label>
               <input id="rMaxPos" type="range" min="1" max="100" value="20" />
-              <label class="lbl" for="rPerTrade">Risk per trade &mdash; <b id="rPerTradeV">2%</b></label>
+              <label class="tk-lbl" for="rPerTrade">Risk per trade &mdash; <b id="rPerTradeV">2%</b></label>
               <input id="rPerTrade" type="range" min="1" max="25" value="2" />
               <p class="muted" style="font-size:12.5px;margin:8px 0 0">
                 Your limits, not a house view. The meter measures against them; nothing is blocked.
