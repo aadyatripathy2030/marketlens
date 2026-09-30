@@ -185,6 +185,7 @@ do {
     var exhausted: Bool = false
     var audioMade: Int = 0
     var videoDone: Bool = false
+    var idle: Int = 0
     var stopReason: String = ""
 
     // Both inputs must be fed together. Writing every video frame first and
@@ -192,6 +193,19 @@ do {
     // starved audio input stops the video input ever reporting ready again.
     while !videoDone || audioMade < totalSamples {
         var moved: Bool = false
+
+        // Once the writer or the reader gives up, neither input will ever
+        // report ready again, `moved` stays false, and the loop below spins
+        // on usleep forever. A truncated recording in the folder did exactly
+        // that and hung a whole batch rather than failing and moving on.
+        if writer.status != AVAssetWriter.Status.writing {
+            stopReason = "writer stopped: \(writer.error?.localizedDescription ?? "unknown")"
+            break
+        }
+        if reader.status == AVAssetReader.Status.failed && current == nil {
+            stopReason = "cannot decode the source: \(reader.error?.localizedDescription ?? "unknown")"
+            break
+        }
 
         if !videoDone && vIn.isReadyForMoreMediaData {
             if written >= totalOut {
@@ -226,12 +240,19 @@ do {
         }
 
         // keep audio half a second ahead of the video so neither input starves
-        let ahead: Double = Double(written) / Double(fps) + 0.5
+        let ahead: Double = idle > 200
+            ? Double(totalSamples) / rate
+            : Double(written) / Double(fps) + 0.5
         let before: Int = audioMade
         _ = pushAudio(upTo: videoDone ? Double(totalSamples) / rate : ahead, made: &audioMade)
         if audioMade != before { moved = true }
 
-        if !moved { usleep(2000) }
+        if !moved {
+            idle += 1
+            // 30s of neither input accepting anything is not slow, it is stuck.
+            if idle > 5000 { stopReason = "stalled with \(written) of \(totalOut) frames written"; break }
+            usleep(2000)
+        } else { idle = 0 }
     }
     if !videoDone { vIn.markAsFinished() }
     aIn.markAsFinished()
@@ -242,7 +263,19 @@ do {
     done.wait()
 
     if writer.status != AVAssetWriter.Status.completed {
-        print("  error: write failed")
+        print("  error: write failed\(stopReason.isEmpty ? "" : " -- " + stopReason)")
+        exit(1)
+    }
+    // An empty or near-empty result means the source was unusable; saying so
+    // beats leaving a file behind that fails later, inside Resolve.
+    if written < 2 {
+        print("  error: no usable frames in the source\(stopReason.isEmpty ? "" : " -- " + stopReason)")
+        exit(1)
+    }
+    if written < totalOut - 2 {
+        print("  error: source ended early -- \(written) of \(totalOut) frames"
+            + "\(stopReason.isEmpty ? "" : " (" + stopReason + ")")")
+        print("          that recording is truncated; record it again.")
         exit(1)
     }
     let secs: Double = Double(written) / Double(fps)
