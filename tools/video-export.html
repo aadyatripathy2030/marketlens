@@ -58,7 +58,9 @@
   #postTitle { flex:1; min-width:0; font-size:14.5px; font-weight:600; color:var(--fg); }
   .descrow { align-items:flex-start; }
   .descrow label { padding-top:2px; }
-  #postDesc { flex:1; min-width:0; font-size:13px; line-height:1.6; color:var(--dim); }
+  .descblock { flex:1; min-width:0; }
+  #postDesc { display:block; font-size:13px; line-height:1.6; color:var(--dim); }
+  #postTags { display:block; margin-top:7px; font-size:12.5px; line-height:1.7; color:var(--accent); }
   .tinybtn { flex:none; font:inherit; font-size:12px; font-weight:600; color:var(--dim);
     background:#12161c; border:1px solid var(--line); border-radius:8px; padding:5px 11px; cursor:pointer; }
   .tinybtn:hover { color:var(--fg); border-color:#3a4353; }
@@ -97,7 +99,10 @@
     <span class="titlebox"><span id="postTitle"></span><button type="button" id="copyTitle" class="tinybtn">Copy</button></span>
   </div>
   <div class="row titlerow descrow"><label>Description</label>
-    <span class="titlebox"><span id="postDesc"></span><button type="button" id="copyDesc" class="tinybtn">Copy</button></span>
+    <span class="titlebox">
+      <span class="descblock" id="descBlock"><span id="postDesc"></span><span id="postTags"></span></span>
+      <button type="button" id="copyDesc" class="tinybtn">Copy</button>
+    </span>
   </div>
 
   <div class="row"><label>Resolution</label>
@@ -1069,6 +1074,28 @@ var DESCS = {
     + 'financial advice.'
 };
 
+// Tags per cut. Deliberately the learning and charting side of the hashtag
+// world rather than the signals-and-gains side: this thing openly says it
+// cannot predict direction, so #stockpicks would pull in exactly the audience
+// it is going to disappoint.
+var TAGS = {
+  readchart:      ['#TechnicalAnalysis','#StockMarket','#Charting','#Candlesticks','#LearnToInvest','#FinTok','#ChartGauge'],
+  rsi70:          ['#RSI','#TechnicalAnalysis','#StockMarket','#TradingMyths','#LearnToInvest','#FinTok','#ChartGauge'],
+  recovery:       ['#RiskManagement','#InvestingForBeginners','#StockMarketBasics','#PositionSizing','#FinTok','#ChartGauge'],
+  aiproduct:      ['#ChartReading','#TechnicalAnalysis','#StockMarket','#Charting','#LearnToInvest','#FinTok','#ChartGauge'],
+  ad_confidence:  ['#StockMarket','#TechnicalAnalysis','#Charting','#StockAlerts','#InvestingForBeginners','#FinTok','#ChartGauge'],
+  ad_beginner:    ['#InvestingForBeginners','#StockMarketBasics','#LearnToInvest','#Candlesticks','#TechnicalAnalysis','#FinTok','#ChartGauge'],
+  ad_overthinker: ['#TechnicalAnalysis','#StockMarket','#Charting','#RiskManagement','#InvestingTips','#FinTok','#ChartGauge'],
+  ad_decoded:     ['#TechnicalAnalysis','#StockMarket','#MarketData','#Charting','#LearnToInvest','#FinTok','#ChartGauge'],
+  ad_busy:        ['#StockAlerts','#Watchlist','#StockMarket','#InvestingForBeginners','#FinTok','#ChartGauge'],
+  ad_honest:      ['#StockMarket','#TechnicalAnalysis','#Backtesting','#RiskManagement','#InvestingForBeginners','#FinTok','#ChartGauge']
+};
+
+// The whole caption, ready to paste: the description, a blank line, the tags.
+function captionFor(k){
+  return (DESCS[k] || '') + '\n\n' + (TAGS[k] || []).join(' ');
+}
+
 var SCENES = { readchart:RC, rsi70:OB, recovery:RV, aiproduct:AIP,
   ad_confidence:ADS.confidence, ad_beginner:ADS.beginner, ad_overthinker:ADS.overthinker,
   ad_decoded:ADS.decoded, ad_busy:ADS.busy, ad_honest:ADS.honest };
@@ -1090,10 +1117,11 @@ function showTitle(){
   var k = document.getElementById('pick').value;
   document.getElementById('postTitle').textContent = TITLES[k] || '';
   document.getElementById('postDesc').textContent = DESCS[k] || '';
+  document.getElementById('postTags').textContent = (TAGS[k] || []).join(' ');
 }
-function wireCopy(btnId, srcId){
+function wireCopy(btnId, srcId, getText){
   document.getElementById(btnId).addEventListener('click', function(){
-  var t = document.getElementById(srcId).textContent, b = this;
+  var t = getText ? getText() : document.getElementById(srcId).textContent, b = this;
   // The clipboard API needs a secure context, which a file:// page is not,
   // so fall back to a selection rather than failing silently.
   function ok(){ b.textContent = 'Copied'; setTimeout(function(){ b.textContent = 'Copy'; }, 1200); }
@@ -1107,7 +1135,9 @@ function wireCopy(btnId, srcId){
   });
 }
 wireCopy('copyTitle', 'postTitle');
-wireCopy('copyDesc', 'postDesc');
+wireCopy('copyDesc', 'descBlock', function(){
+  return captionFor(document.getElementById('pick').value);
+});
 document.getElementById('pick').addEventListener('change', function(){ showTitle(); setup(); frame(0); });
 showTitle();
 
