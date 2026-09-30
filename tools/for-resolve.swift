@@ -185,13 +185,19 @@ do {
     var exhausted: Bool = false
     var audioMade: Int = 0
     var videoDone: Bool = false
+    var audioFinished: Bool = false
     var idle: Int = 0
     var stopReason: String = ""
 
     // Both inputs must be fed together. Writing every video frame first and
     // the audio afterwards stalls the writer: it interleaves tracks, so a
     // starved audio input stops the video input ever reporting ready again.
-    while !videoDone || audioMade < totalSamples {
+    // The audio input is closed the moment it has all its samples rather than
+    // after the loop. The writer interleaves, and while an input is still open
+    // it can hold the other one waiting for more: with audio complete but not
+    // marked finished, the video input stopped reporting ready and the last
+    // half second -- the end card with the address on it -- never got written.
+    while !videoDone || !audioFinished {
         var moved: Bool = false
 
         // Once the writer or the reader gives up, neither input will ever
@@ -246,16 +252,23 @@ do {
         let before: Int = audioMade
         _ = pushAudio(upTo: videoDone ? Double(totalSamples) / rate : ahead, made: &audioMade)
         if audioMade != before { moved = true }
+        if audioMade >= totalSamples && !audioFinished {
+            aIn.markAsFinished(); audioFinished = true; moved = true
+        }
 
         if !moved {
             idle += 1
-            // 30s of neither input accepting anything is not slow, it is stuck.
-            if idle > 5000 { stopReason = "stalled with \(written) of \(totalOut) frames written"; break }
+            // Generous on purpose. This has to be longer than the longest
+            // legitimate pause, and writing a gigabyte of ProRes under a
+            // throttled I/O priority pauses for a good while: at ten seconds
+            // a background job gave up two thirds of the way through a clip
+            // that converts fine in the foreground.
+            if idle > 30000 { stopReason = "stalled with \(written) of \(totalOut) frames written"; break }
             usleep(2000)
         } else { idle = 0 }
     }
     if !videoDone { vIn.markAsFinished() }
-    aIn.markAsFinished()
+    if !audioFinished { aIn.markAsFinished() }
     _ = currentSB      // held only to keep the last pixel buffer alive above
 
     let done: DispatchSemaphore = DispatchSemaphore(value: 0)
