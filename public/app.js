@@ -1262,7 +1262,12 @@
       $('result').classList.remove('hidden');
       try {
         const want = '/stock/' + d.symbol;
-        if (location.pathname !== want) history.replaceState({ view: 'analyze' }, '', want);
+        // Only when analyze is the view on screen. The practice page loads
+        // symbols through this same function, and rewriting the URL to
+        // /stock/XXXX there would send a refresh to the wrong page.
+        if (currentView === 'analyze' && location.pathname !== want) {
+          history.replaceState({ view: 'analyze' }, '', want);
+        }
       } catch (e) {}
       resetView(); drawChart(); tiles(d); renderTech(d.tech); renderBands(d.bands); renderLevels(d);
       setAnalysisPending();
@@ -1429,28 +1434,16 @@
   }
 
   // ---- Practice account ----
-  // Pretend money, real prices. The chart shows the symbol's actual bars and
-  // keeps the last point live off the quotes endpoint while the page is open,
-  // so the line moves as the stock does.
+  // Pretend money, real prices. The chart is the analyze chart, moved into this
+  // view rather than reimplemented, so its layers, colours, intervals and
+  // interactions are the same ones.
   let paperState = null;
-  let chartSym = null, chartBars = [], chartRange = '1mo', chartQuote = null;
-  // Chart preferences, remembered per browser. Wrapped because storage throws
-  // outright in a private window rather than just coming back empty.
-  const CHART_PREF_KEY = 'cg.practice.chart';
-  const chartPrefDefaults = { type: 'candle', wicks: true, volume: false, entry: true, grid: true, hollow: false };
-  let chartPref = (() => {
-    try { return { ...chartPrefDefaults, ...(JSON.parse(localStorage.getItem(CHART_PREF_KEY)) || {}) }; }
-    catch (e) { return { ...chartPrefDefaults }; }
-  })();
-  function saveChartPref() {
-    try { localStorage.setItem(CHART_PREF_KEY, JSON.stringify(chartPref)); } catch (e) {}
-  }
-  let livePoll = null;
+  let chartSym = null, chartQuote = null;
+  let livePoll = null;            // quote poll, only while this view is on screen
 
   const pMoney = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Number(n) || 0)
     .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const pPct = (n) => (Number(n) || 0).toFixed(1) + '%';
-
   async function loadPaper() {
     try {
       const j = await (await fetch('/api/paper')).json();
@@ -1460,6 +1453,7 @@
       if (j.account) {
         const first = (j.account.positions[0] || {}).symbol || chartSym || 'AAPL';
         if (!chartSym) selectChart(first);
+        else refreshQuote();
         startLive();
       }
     } catch (e) {
@@ -1483,7 +1477,18 @@
   }
 
   // ---- the chart ----
-  const RANGE_BARS = { '1mo': 22, '3mo': 66, '6mo': 126, '1y': 252 };
+  // The practice view does not draw its own chart. The analyze chart is moved
+  // into it, so every layer, colour, interval, range and interaction is the
+  // same thing rather than a second implementation that drifts.
+  function mountChart(viewName) {
+    const panel = $('chartPanel');
+    if (!panel) return;
+    const slot = $(viewName === 'practice' ? 'chartSlotPractice' : 'chartSlotAnalyze');
+    if (!slot || panel.parentElement === slot) return;
+    slot.appendChild(panel);
+    // The canvas sizes itself from its parent, which just changed.
+    requestAnimationFrame(() => { try { drawChart(); } catch (e) {} });
+  }
 
   async function selectChart(sym) {
     sym = String(sym || '').toUpperCase().trim();
@@ -1491,23 +1496,13 @@
     chartSym = sym;
     $('cSym').textContent = sym;
     $('cName').textContent = '';
-    $('cNote').textContent = 'Loading…';
-    try {
-      const r = await fetch('/api/stock?symbol=' + encodeURIComponent(sym) + '&interval=1day');
-      const j = await r.json();
-      if (!r.ok || !Array.isArray(j.prices) || !j.prices.length) {
-        chartBars = []; $('cNote').textContent = (j && j.message) || 'No data for ' + sym + '.';
-        drawPracChart(); return;
-      }
-      chartBars = j.prices;
-      $('cName').textContent = j.name || '';
-      $('cNote').textContent = j.source === 'demo'
-        ? 'Demo data — set a market-data key for live prices.' : 'Daily bars';
-      await refreshQuote();
-      drawPracChart();
-    } catch (e) {
-      chartBars = []; $('cNote').textContent = 'Could not load the chart.'; drawPracChart();
+    // run() is the analyze pipeline: it loads the bars, sets lastData and
+    // draws. Reusing it means the practice chart is the analyze chart.
+    try { await run(sym); } catch (e) {}
+    if (lastData && lastData.symbol === sym) {
+      $('cName').textContent = (lastData.name && lastData.name !== sym) ? lastData.name : '';
     }
+    await refreshQuote();
   }
 
   async function refreshQuote() {
@@ -1523,11 +1518,10 @@
         + '  (' + (up ? '+' : '') + Number(q.changePct || 0).toFixed(2) + '%)';
       $('cChg').className = 'chart-chg ' + (up ? 'up' : 'down');
       $('cLive').hidden = false;
-      drawPracChart();
     } catch (e) { /* a missed poll is not worth surfacing */ }
   }
 
-  // Only poll while the view is actually on screen. A timer left running in the
+  // Only poll while the view is on screen. A timer left running in the
   // background would keep hitting the quotes endpoint for nothing.
   function startLive() {
     stopLive();
@@ -1544,149 +1538,6 @@
       const j = await (await fetch('/api/paper')).json();
       if (j && j.account) { paperState = j; renderPaper(); }
     } catch (e) {}
-  }
-
-  function drawPracChart() {
-    const cv = $('pChart');
-    if (!cv) return;
-    const holder = cv.parentElement;
-    const w = Math.max(240, holder.clientWidth), h = Math.max(160, holder.clientHeight);
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    cv.width = w * dpr; cv.height = h * dpr;
-    cv.style.width = w + 'px'; cv.style.height = h + 'px';
-    const g = cv.getContext('2d');
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, w, h);
-
-    const css = getComputedStyle(document.documentElement);
-    // Same colours as the main chart, so a colour the user picked there
-    // applies here too rather than the two charts disagreeing.
-    const cc = candleColors();
-    const good = cc.upBody || css.getPropertyValue('--good').trim() || '#3ddc84';
-    const bad = cc.downBody || css.getPropertyValue('--bad').trim() || '#ff5f56';
-    const upWick = cc.upWick || good, downWick = cc.downWick || bad;
-    const upBorder = cc.upBorder || good, downBorder = cc.downBorder || bad;
-    const line = css.getPropertyValue('--border').trim() || '#29313d';
-    const muted = css.getPropertyValue('--muted').trim() || '#8a94a3';
-    const bgc = css.getPropertyValue('--card').trim() || '#161b22';
-
-    if (!chartBars.length) {
-      g.fillStyle = muted; g.font = '13px system-ui'; g.textAlign = 'center';
-      g.fillText('No chart data', w / 2, h / 2);
-      return;
-    }
-    const n = Math.min(RANGE_BARS[chartRange] || 22, chartBars.length);
-    let bars = chartBars.slice(-n).map(b => ({
-      o: Number(b.open), h: Number(b.high), l: Number(b.low), c: Number(b.close), v: Number(b.volume) || 0,
-    })).filter(b => Number.isFinite(b.c));
-    if (!bars.length) return;
-
-    // The live quote moves the newest candle, the way a real chart does: the
-    // close follows the price and the high and low stretch to contain it.
-    const live = chartQuote && Number(chartQuote.price);
-    if (Number.isFinite(live) && live > 0) {
-      const lastBar = bars[bars.length - 1];
-      lastBar.c = live;
-      lastBar.h = Math.max(lastBar.h, live);
-      lastBar.l = Math.min(lastBar.l, live);
-    }
-
-    const showVol = chartPref.volume;
-    const padL = 8, padR = chartPref.grid ? 62 : 10, padT = 12;
-    const padB = 20, volH = showVol ? Math.round(h * 0.18) : 0;
-    const plotB = h - padB - volH;
-
-    const useWick = chartPref.wicks && chartPref.type === 'candle';
-    let lo = Infinity, hi = -Infinity;
-    bars.forEach(b => {
-      lo = Math.min(lo, useWick ? b.l : Math.min(b.o, b.c));
-      hi = Math.max(hi, useWick ? b.h : Math.max(b.o, b.c));
-    });
-    if (chartPref.type === 'line') { lo = Math.min(...bars.map(b => b.c)); hi = Math.max(...bars.map(b => b.c)); }
-    const span = (hi - lo) || 1;
-    const X = (i) => padL + (i / Math.max(1, bars.length - 1)) * (w - padL - padR);
-    const Y = (v) => padT + (1 - (v - lo) / span) * (plotB - padT);
-
-    if (chartPref.grid) {
-      g.font = '10px ui-monospace, monospace'; g.textBaseline = 'middle';
-      for (let k = 0; k <= 3; k++) {
-        const y = padT + (k / 3) * (plotB - padT);
-        g.strokeStyle = line; g.lineWidth = 1; g.globalAlpha = .6;
-        g.beginPath(); g.moveTo(padL, y); g.lineTo(w - padR, y); g.stroke();
-        g.globalAlpha = 1;
-        g.fillStyle = muted; g.textAlign = 'left';
-        g.fillText('$' + (hi - (k / 3) * span).toFixed(2), w - padR + 6, y);
-      }
-    }
-
-    if (showVol) {
-      const maxV = Math.max.apply(null, bars.map(b => b.v)) || 1;
-      const vw = Math.max(1, ((w - padL - padR) / bars.length) * 0.6);
-      bars.forEach((b, i) => {
-        const bh = (b.v / maxV) * (volH - 6);
-        g.globalAlpha = .35;
-        g.fillStyle = b.c >= b.o ? good : bad;
-        g.fillRect(X(i) - vw / 2, h - padB - bh, vw, bh);
-        g.globalAlpha = 1;
-      });
-    }
-
-    if (chartPref.type === 'line') {
-      const rising = bars[bars.length - 1].c >= bars[0].c;
-      const col = rising ? good : bad;
-      const grad = g.createLinearGradient(0, padT, 0, plotB);
-      grad.addColorStop(0, rising ? 'rgba(61,220,132,.22)' : 'rgba(255,95,86,.22)');
-      grad.addColorStop(1, 'rgba(0,0,0,0)');
-      g.beginPath(); g.moveTo(X(0), Y(bars[0].c));
-      bars.forEach((b, i) => g.lineTo(X(i), Y(b.c)));
-      g.lineTo(X(bars.length - 1), plotB); g.lineTo(X(0), plotB); g.closePath();
-      g.fillStyle = grad; g.fill();
-      g.beginPath(); g.moveTo(X(0), Y(bars[0].c));
-      bars.forEach((b, i) => g.lineTo(X(i), Y(b.c)));
-      g.strokeStyle = col; g.lineWidth = 2; g.lineJoin = 'round'; g.stroke();
-    } else {
-      const slot = (w - padL - padR) / bars.length;
-      const bw = Math.max(1.5, Math.min(14, slot * 0.66));
-      bars.forEach((b, i) => {
-        const up = b.c >= b.o;
-        const col = up ? good : bad;
-        const x = X(i);
-        if (chartPref.wicks) {
-          g.strokeStyle = up ? upWick : downWick;
-          g.lineWidth = Math.max(1, Math.min(2, bw * 0.16));
-          g.beginPath(); g.moveTo(x, Y(b.h)); g.lineTo(x, Y(b.l)); g.stroke();
-        }
-        const yo = Y(b.o), yc = Y(b.c);
-        const top = Math.min(yo, yc);
-        const bodyH = Math.max(1, Math.abs(yc - yo));
-        // A hollow up-candle is the older convention and reads better on a
-        // dark ground when the bars get thin.
-        if (up && chartPref.hollow) {
-          g.fillStyle = bgc; g.fillRect(x - bw / 2, top, bw, bodyH);
-          g.strokeStyle = up ? upBorder : downBorder; g.lineWidth = 1;
-          g.strokeRect(x - bw / 2 + .5, top + .5, bw - 1, Math.max(1, bodyH - 1));
-        } else {
-          g.fillStyle = col; g.fillRect(x - bw / 2, top, bw, bodyH);
-        }
-      });
-    }
-
-    const held = chartPref.entry && paperState && paperState.account
-      && paperState.account.positions.find(p => p.symbol === chartSym);
-    if (held && held.avgPrice >= lo && held.avgPrice <= hi) {
-      const y = Y(held.avgPrice);
-      g.save(); g.setLineDash([4, 4]); g.strokeStyle = muted; g.lineWidth = 1;
-      g.beginPath(); g.moveTo(padL, y); g.lineTo(w - padR, y); g.stroke(); g.restore();
-      g.fillStyle = muted; g.font = '10px ui-monospace, monospace';
-      g.textAlign = 'left'; g.textBaseline = 'bottom';
-      g.fillText('your entry', padL + 3, y - 3);
-    }
-
-    const lastC = bars[bars.length - 1].c;
-    const lx = X(bars.length - 1), ly = Y(lastC);
-    const lcol = bars[bars.length - 1].c >= bars[bars.length - 1].o ? good : bad;
-    g.fillStyle = lcol; g.beginPath(); g.arc(lx, ly, 3.5, 0, Math.PI * 2); g.fill();
-    g.globalAlpha = .25; g.beginPath(); g.arc(lx, ly, 7, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
   }
 
   function renderPaper() {
@@ -1839,7 +1690,7 @@
       const f = j.filled;
       paperMsg((f.side === 'buy' ? 'Bought ' : 'Sold ') + f.qty + ' ' + f.symbol + ' at ' + pMoney(f.price));
       $('pQty').value = ''; estimate();
-      if (f.symbol !== chartSym) selectChart(f.symbol); else drawPracChart();
+      if (f.symbol !== chartSym) selectChart(f.symbol);
     } catch (e) { paperMsg('That did not go through.', true); }
   }
 
@@ -1926,28 +1777,11 @@
       estimate();
     }));
 
-    document.querySelectorAll('#cRange button').forEach(b => b.addEventListener('click', () => {
-      chartRange = b.dataset.r;
-      document.querySelectorAll('#cRange button').forEach(o => o.classList.toggle('on', o === b));
-      drawPracChart();
-    }));
-    document.querySelectorAll('#cType button').forEach(b => b.addEventListener('click', () => {
-      chartPref.type = b.dataset.t; saveChartPref();
-      document.querySelectorAll('#cType button').forEach(o => o.classList.toggle('on', o === b));
-      syncChartOpts(); drawPracChart();
-    }));
-    $('cOpts').addEventListener('click', () => {
-      const open = $('cOptsPanel').classList.toggle('hidden') === false;
-      $('cOpts').setAttribute('aria-expanded', open ? 'true' : 'false');
+    // The chart's own controls live on the shared panel, so there is nothing
+    // extra to wire here. Keep the canvas correct when the window changes.
+    window.addEventListener('resize', () => {
+      if (currentView === 'practice') { try { drawChart(); } catch (e) {} }
     });
-    [['optWicks', 'wicks'], ['optVolume', 'volume'], ['optEntry', 'entry'],
-     ['optGrid', 'grid'], ['optHollow', 'hollow']].forEach(([id, key]) => {
-      $(id).addEventListener('change', () => {
-        chartPref[key] = $(id).checked; saveChartPref(); drawPracChart();
-      });
-    });
-    syncChartOpts();
-    window.addEventListener('resize', () => { if (currentView === 'practice') drawPracChart(); });
 
     const live = (id, label) => {
       const el = $(id);
@@ -1956,24 +1790,6 @@
     };
     live('rMaxPos', 'rMaxPosV');
     live('rPerTrade', 'rPerTradeV');
-  }
-
-  // Wicks and hollow bodies only mean anything on candles, so they are
-  // disabled rather than silently ignored when the line chart is showing.
-  function syncChartOpts() {
-    const c = chartPref;
-    $('optWicks').checked = c.wicks; $('optVolume').checked = c.volume;
-    $('optEntry').checked = c.entry; $('optGrid').checked = c.grid;
-    $('optHollow').checked = c.hollow;
-    const candles = c.type === 'candle';
-    $('optWicks').disabled = !candles;
-    $('optHollow').disabled = !candles;
-    $('optWicks').closest('label').style.opacity = candles ? '1' : '.45';
-    $('optHollow').closest('label').style.opacity = candles ? '1' : '.45';
-    document.querySelectorAll('#cType button').forEach(b =>
-      b.classList.toggle('on', b.dataset.t === c.type));
-    document.querySelectorAll('#cRange button').forEach(b =>
-      b.classList.toggle('on', b.dataset.r === chartRange));
   }
 
   async function saveRiskLimits() {
@@ -2131,6 +1947,9 @@
     if (name === 'compare') { renderCompareChips(); if (compareSymbols.length >= 2 && !$('compareResult').innerHTML) loadCompare(); }
     if (name === 'screener' && !$('screenResult').innerHTML) loadScreen();
     if (name === 'alerts') loadAlerts();
+    // The chart panel is a single element shared by both views, so it moves
+    // to whichever one is on screen.
+    mountChart(name);
     if (name === 'practice') loadPaper();
     if (name === 'admin') loadAdmin();
     if (name === 'pricing') renderPricing();

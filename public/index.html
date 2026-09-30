@@ -166,7 +166,8 @@
           </div>
         </div>
 
-        <div class="card chart-card">
+        <div id="chartSlotAnalyze"></div>
+        <div class="card chart-card" id="chartPanel">
           <div class="chart-top">
             <div class="overlays" id="overlays" aria-label="Toggle chart layers">
               <button type="button" class="ov active" data-k="type" id="ovType">Candles</button>
@@ -464,7 +465,7 @@
       </div>
 
       <div class="prac-main">
-        <div class="card chart-card">
+        <div class="prac-chart">
           <div class="chart-head">
             <div class="chart-id">
               <span class="chart-sym" id="cSym">&mdash;</span>
@@ -476,29 +477,9 @@
               <span class="live-dot" id="cLive" hidden title="Updating while this page is open"></span>
             </div>
           </div>
-          <div class="chart-holder"><canvas id="pChart"></canvas></div>
-          <div class="chart-foot">
-            <div class="range-btns" id="cRange" role="group" aria-label="Range">
-              <button type="button" data-r="1mo" class="on">1M</button>
-              <button type="button" data-r="3mo">3M</button>
-              <button type="button" data-r="6mo">6M</button>
-              <button type="button" data-r="1y">1Y</button>
-            </div>
-            <div class="range-btns" id="cType" role="group" aria-label="Chart type">
-              <button type="button" data-t="candle" class="on" title="Candlesticks">Candles</button>
-              <button type="button" data-t="line" title="Line">Line</button>
-            </div>
-            <button type="button" class="chart-opts" id="cOpts" aria-expanded="false"
-                    aria-controls="cOptsPanel" title="Chart options">Options</button>
-          </div>
-          <div class="chart-optspanel hidden" id="cOptsPanel">
-            <label><input type="checkbox" id="optWicks" checked /> Wicks</label>
-            <label><input type="checkbox" id="optVolume" /> Volume</label>
-            <label><input type="checkbox" id="optEntry" checked /> Your entry price</label>
-            <label><input type="checkbox" id="optGrid" checked /> Grid and prices</label>
-            <label><input type="checkbox" id="optHollow" /> Hollow up-candles</label>
-          </div>
-          <div class="chart-note"><span class="muted" id="cNote"></span></div>
+          <!-- The real chart is moved in here. One renderer, so every layer,
+               colour and interaction the analyze page has works here too. -->
+          <div id="chartSlotPractice"></div>
         </div>
 
         <div class="side-col">
