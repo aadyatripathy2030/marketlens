@@ -67,6 +67,7 @@
   .afterdl { margin:16px 0 0; padding:13px 15px; border-radius:11px; font-size:13.5px; line-height:1.6;
     color:var(--fg); background:rgba(255,138,61,.09); border:1px solid rgba(255,138,61,.4); }
   .afterdl code { background:#12161c; border:1px solid var(--line); border-radius:6px; padding:1px 6px; font-size:12.5px; }
+  .afterdl.bad { background:rgba(255,95,86,.09); border-color:rgba(255,95,86,.45); }
   .warn-line { color:#ffcf5c; border-left:3px solid #ff8a3d; padding-left:11px; margin:14px 0; }
   code { font-family:var(--mono); font-size:12.5px; background:var(--card); padding:2px 5px; border-radius:4px; }
 </style>
@@ -133,8 +134,10 @@
     <p>Recording captures at <b>60fps</b>. Output is <code>.mp4</code> where Chrome supports it, falling back to <code>.webm</code>. A webm from MediaRecorder has no duration in its header, so Finder and QuickTime report it as a second or two even when every frame is there &mdash; mp4 avoids that.</p>
 
     <p class="warn-line"><b>Resolve cannot open the file this page downloads.</b> Convert it first, and import the converted one.</p>
-    <p><b>Double-click</b> <code>tools/for-resolve.command</code> in Finder. It takes the newest recording in your Downloads and writes a <code>-resolve.mov</code> beside it. Import that one. Or from Terminal:<br>
+    <p><b>Double-click <code>tools/start-converter.command</code> once and leave the window open.</b> Every take you record from then on is sent straight to it the moment it finishes: it writes the recording and the Resolve-ready <code>.mov</code> together into <code>~/Movies/ChartGauge</code>, and this page tells you when it is done. Nothing to remember and nothing to run afterwards.</p>
+    <p>Without it, takes download as usual and you convert them yourself: double-click <code>tools/for-resolve.command</code>, which converts every recording in Downloads that is not already done. Or from Terminal:<br>
     <code>bash ~/stock-predictor/tools/for-resolve.command</code></p>
+    <p>The converter is handed each file by name rather than watching a folder, because a background job on macOS is not allowed to list <code>~/Downloads</code> &mdash; it can read and write a path it is given, but <code>ls</code> on that folder returns nothing, so anything watching there always concludes there is nothing new.</p>
     <p>What is wrong with the raw recording, read box by box out of a real one: MediaRecorder writes a <em>fragmented</em> container &mdash; <code>ftyp</code>, an empty <code>moov</code>, then <code>moof</code>/<code>mdat</code> repeating &mdash; whose sample table holds zero entries, so the header claims about a second for a thirty-five second clip. Every frame also carries its own duration (<em>variable frame rate</em>) at a non-standard nominal 29.02fps, and there is no audio track at all. Remuxing cannot fix frame timing, so the script decodes and re-encodes onto an exact 1/60s grid and adds a silent track.</p>
     <p>It writes <b>ProRes 422 in a QuickTime .mov</b>, not H.264 in an mp4. Resolve decodes ProRes on every build and platform; an H.264 mp4 imports on one machine and fails on the next. The cost is disk space &mdash; roughly 640&nbsp;MB for 35 seconds at 1440&times;2560 &mdash; which is the right trade for a file that opens every time. Add <code>h264</code> as the last argument if you need the small one. It uses AVFoundation, which ships with macOS, so there is nothing to install. TikTok, Instagram and QuickTime all take the download as it comes; only Resolve needs this.</p>
     <p>If you would rather use ffmpeg:<br>
@@ -1281,20 +1284,54 @@ function saveReady(blob, name){
   b.textContent='\u2b07 Download ' + (blob.size/1048576).toFixed(1) + ' MB';
   b.title='Save '+name;
 }
-function triggerSave(){
+// If the converter helper is running, hand the take straight to it: it
+// writes the mp4 and the Resolve-ready mov together and there is nothing to
+// convert afterwards. If it is not, fall back to an ordinary download.
+var CONVERTER = 'http://127.0.0.1:47823';
+function note(html, bad){
+  var n = document.getElementById('afterDl');
+  n.hidden = false;
+  n.className = 'afterdl' + (bad ? ' bad' : '');
+  n.innerHTML = html;
+}
+async function sendToConverter(){
+  if (!lastBlob) return false;
+  try {
+    var ping = await fetch(CONVERTER + '/ping', { cache:'no-store' });
+    if (!ping.ok) return false;
+  } catch (e) { return false; }
+  note('<b>Converting ' + lastName + '\u2026</b><br>Sent to the converter. This takes a few seconds.');
+  try {
+    var r = await fetch(CONVERTER + '/convert?name=' + encodeURIComponent(lastName),
+                        { method:'POST', body:lastBlob });
+    var j = await r.json();
+    if (!r.ok || !j.ok) {
+      note('<b>The converter could not finish it.</b><br>' + ((j && (j.error || j.detail)) || 'Unknown error')
+         + '<br>The recording is still here \u2014 press Download to save it and convert it by hand.', true);
+      return true;
+    }
+    note('<b>Done \u2014 ready for Resolve.</b><br>'
+       + '<code>' + j.converted.replace(/^.*\//, '') + '</code> (' + j.mb + ' MB)<br>'
+       + 'Both files are in <code>~/Movies/ChartGauge</code>. Import the <code>-resolve.mov</code>.');
+    return true;
+  } catch (e) {
+    note('<b>Lost contact with the converter.</b><br>Press Download to save the recording instead.', true);
+    return true;
+  }
+}
+async function triggerSave(){
   if (!lastUrl) return;
+  if (await sendToConverter()) return;
   var a=document.getElementById('dl');
   a.href=lastUrl; a.download=lastName; a.click();
   // Say it at the moment it matters. This file goes straight to TikTok or
   // Instagram, but Resolve will refuse it, and a note further down the page
   // is not read at the point someone is dragging the file into Resolve.
-  var n = document.getElementById('afterDl');
-  n.hidden = false;
-  n.innerHTML = '<b>Saved ' + lastName + '</b><br>'
+  note('<b>Saved ' + lastName + '</b><br>'
     + 'That file is ready for TikTok, Reels and Shorts as it is. '
     + '<b>For DaVinci Resolve it is not</b> \u2014 it is a fragmented recording and Resolve will refuse it. '
-    + 'Double-click <code>tools/for-resolve.command</code>: it converts every recording in your Downloads '
-    + 'and writes a <code>-resolve.mov</code> beside each one. Import that, not this.';
+    + 'Double-click <code>tools/start-converter.command</code> once and every future take converts itself, '
+    + 'or <code>tools/for-resolve.command</code> to convert what is already in Downloads.');
 }
 document.getElementById('dlbtn').addEventListener('click', triggerSave);
 document.getElementById('go').addEventListener('click', function(){ play(true); });
