@@ -273,19 +273,37 @@
     ['SPY', 'SPDR S&P 500 ETF'], ['QQQ', 'Invesco QQQ (Nasdaq-100)'], ['DIA', 'SPDR Dow Jones ETF'],
     ['IWM', 'iShares Russell 2000'], ['VTI', 'Vanguard Total Market'], ['VOO', 'Vanguard S&P 500'],
   ];
-  const suggestBox = $('suggest');
-  let sugItems = [], sugIdx = -1;
-
-  function renderSuggest(qRaw) {
+  // One matcher for both pickers, so the hero search and the practice ticket
+  // can never offer different things for the same letters.
+  //
+  // The name is matched on WORD STARTS, not anywhere inside it. Matching
+  // anywhere made "ea" return UnitedHealth, Lam Research and Gilead, and "on"
+  // return Amazon, Johnson, Exxon and Chevron — which reads as the picker
+  // showing random stocks. camelCase counts as a word boundary, so UnitedHealth
+  // is United + Health and "health" still finds it.
+  function nameWords(n) {
+    return n.split(/[^A-Za-z0-9]+/)
+      .flatMap(w => w.split(/(?=[A-Z])/))
+      .filter(Boolean)
+      .map(w => w.toUpperCase());
+  }
+  function matchTickers(qRaw, limit) {
     const q = (qRaw || '').trim().toUpperCase();
-    if (!q) return hideSuggest();
+    if (!q) return [];
     const starts = [], byName = [];
     for (const t of TICKERS.concat(CRYPTO)) {
       // "BTC" should find BTC/USD, so match the base of a pair as well.
       if (t[0].startsWith(q) || t[0].split('/')[0] === q) starts.push(t);
-      else if (t[1].toUpperCase().startsWith(q)) byName.push(t);
+      else if (nameWords(t[1]).some(w => w.startsWith(q))) byName.push(t);
     }
-    sugItems = starts.concat(byName).slice(0, 8);
+    return starts.concat(byName).slice(0, limit || 8);
+  }
+
+  const suggestBox = $('suggest');
+  let sugItems = [], sugIdx = -1;
+
+  function renderSuggest(qRaw) {
+    sugItems = matchTickers(qRaw, 8);
     if (!sugItems.length) return hideSuggest();
     sugIdx = -1;
     suggestBox.innerHTML = sugItems.map(([sym, name], i) =>
@@ -1625,15 +1643,7 @@
   function tkSuggest(raw) {
     const box = $('pSuggest'), input = $('pSym');
     if (!box) return;
-    const q = (raw || '').trim().toUpperCase();
-    if (!q) return tkHide();
-    const starts = [], byName = [];
-    for (const t of TICKERS.concat(CRYPTO)) {
-      // "BTC" should find BTC/USD, so match the base of a pair too.
-      if (t[0].startsWith(q) || t[0].split('/')[0] === q) starts.push(t);
-      else if (t[1].toUpperCase().includes(q)) byName.push(t);
-    }
-    tkItems = starts.concat(byName).slice(0, 7);
+    tkItems = matchTickers(raw, 7);
     if (!tkItems.length) return tkHide();
     tkIdx = -1;
     box.innerHTML = tkItems.map(([sym, name], i) =>
