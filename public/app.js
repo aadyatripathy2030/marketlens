@@ -352,7 +352,10 @@
   // 5-minute bars would otherwise arrive as a wall of them.
   let viewCandles = INTRADAY.has(interval) ? DEFAULT_CANDLES : null;
   let chartType = 'candle'; // 'candle' | 'line'
-  const show = { fast: true, slow: true, proj: true, levels: false, volume: false }; // overlay visibility
+  // Overlay visibility. The chart opens on price alone: the moving averages
+  // and the projection are readings laid over it, and someone learning to
+  // read a chart should see the bars before anything is drawn on them.
+  const show = { fast: false, slow: false, proj: false, levels: false, volume: false };
 
   // Display mode. Simple keeps the chart and the exit levels and hides the rest;
   // it changes what is rendered, never what is computed.
@@ -1878,6 +1881,14 @@
     } catch (e) { /* the slider already shows the intent */ }
   }
 
+  // Drawn rather than an emoji: the emoji renders a different colour and
+  // weight on every platform, and this one has to sit inside a small pill
+  // and take its colour from the text.
+  const FLAME = '<svg class="streak-i" viewBox="0 0 12 14" aria-hidden="true" focusable="false">'
+    + '<path d="M6 0c2.3 2.6 1 4 2.3 4.9.6.4 1.1-.3 1.2-1 1.2 1.5 1.6 2.9 1.6 4.2a5.1 5.1 0 0 1-10.2 0c0-2.7 1.7-4.4 2.9-5.8C4.9 1.6 5.6.7 6 0Z" fill="currentColor"/>'
+    + '<path d="M6 13a2.4 2.4 0 0 1-2.4-2.4c0-1.3 1-2 1.7-3 .5.8 1 1.1 1.5 1.4.9.5 1.6 1 1.6 1.9A2.4 2.4 0 0 1 6 13Z" fill="currentColor" opacity=".38"/>'
+    + '</svg>';
+
   function renderAcct() {
     const el = $('acct');
     if (currentUser) {
@@ -1890,9 +1901,9 @@
       const st = currentStreak;
       const plural = (st && st.count === 1) ? '' : 's';
       const flame = (st && st.count > 0)
-        ? `<span class="streak" title="${st.count} trading day${plural} in a row`
-          + `${st.best > st.count ? ' \u2014 best ' + st.best : ''}.`
-          + ` Weekends and market holidays do not count against it.">\u25B2 ${st.count}</span>`
+        ? `<span class="streak" data-tip="Streak: ${st.count} trading day${plural} in a row`
+          + `${st.best > st.count ? '. Best so far, ' + st.best : ''}.`
+          + ` Weekends and market holidays do not break it.">${FLAME}${st.count}</span>`
         : '';
       el.innerHTML = flame + badge + upgrade + `<span class="email">${esc(currentUser.email)}</span><button class="link-btn" id="logoutBtn">Log out</button>`;
       $('logoutBtn').addEventListener('click', logout);
