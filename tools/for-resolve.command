@@ -12,8 +12,12 @@
 # onto an exact 1/fps grid and adds a silent track. AVFoundation only — nothing
 # to install. The Swift is compiled once and the binary cached beside it.
 #
-#   bash tools/for-resolve.command                 # newest in ~/Downloads
-#   bash tools/for-resolve.command path/to/clip.mp4 [fps]
+# Output is ProRes 422 in a .mov at 60fps. Resolve decodes ProRes on every
+# build; an H.264 mp4 imports on one machine and fails on the next.
+#
+#   double-click this file in Finder            # newest in ~/Downloads
+#   bash tools/for-resolve.command
+#   bash tools/for-resolve.command path/to/clip.mp4 [fps] [prores|h264]
 
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -35,7 +39,8 @@ if [ ! -x "$BIN" ] || [ "$SRC_SWIFT" -nt "$BIN" ]; then
 fi
 
 SRC="${1:-}"
-FPS="${2:-30}"
+FPS="${2:-60}"
+CODEC="${3:-prores}"
 if [ -z "$SRC" ]; then
   SRC=$(ls -t "$HOME/Downloads"/chartgauge-*.mp4 "$HOME/Downloads"/chartgauge-*.webm 2>/dev/null | head -1)
 fi
@@ -51,13 +56,19 @@ case "$SRC" in
     exit 1 ;;
 esac
 
-OUT="${SRC%.*}-resolve.mp4"
+if [ "$CODEC" = "h264" ]; then OUT="${SRC%.*}-resolve.mp4"; else OUT="${SRC%.*}-resolve.mov"; fi
 echo "Converting for Resolve"
 echo "  in  : $(basename "$SRC")"
-if ! "$BIN" "$SRC" "$OUT" "$FPS"; then
+if ! "$BIN" "$SRC" "$OUT" "$FPS" "$CODEC"; then
   echo "  conversion failed."
   exit 1
 fi
 echo "  out : $(basename "$OUT")"
 echo
-echo "Drag that file into Resolve."
+echo "Drag that file into Resolve. Import the -resolve one, not the original:"
+echo "the original is a fragmented recording and Resolve will refuse it."
+# Leave the window showing the result when this was double-clicked from Finder.
+if [ -t 1 ] && [ -z "${1:-}" ]; then
+  echo
+  read -r -p "Press return to close." _ || true
+fi

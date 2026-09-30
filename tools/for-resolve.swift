@@ -1,15 +1,24 @@
 // Re-encode a browser recording into something DaVinci Resolve will accept.
 //
-// MediaRecorder produces four things Resolve dislikes:
-//   - a fragmented container (moof/mdat rather than one moov)
+// A recording straight out of MediaRecorder, inspected box by box, is:
+//   - fragmented: ftyp, an empty moov, then moof/mdat repeating. The sample
+//     table in moov has zero entries, so nothing that reads moov alone finds
+//     any frames, and the header claims about a second for a seven-second clip
 //   - variable frame rate, every frame carrying its own duration
 //   - a non-standard nominal rate (29.02fps, not 24/25/30/50/60)
-//   - no audio track at all
+//   - video only, with no audio track
 //
 // Remuxing cannot fix frame timing, so this decodes and re-encodes, giving
 // every output frame an exact presentation time of i/fps and holding source
 // frames to land on that grid. A silent track is added because some Resolve
 // builds refuse a video-only file.
+//
+// The output is ProRes 422 in a QuickTime .mov, not H.264 in .mp4. Resolve
+// decodes ProRes natively on every build and platform, with none of the
+// codec-licensing gaps that make an H.264 mp4 import on one machine and fail
+// on the next. It costs disk space -- a few hundred MB for a short clip --
+// which is the right trade for a file that opens every time. Pass `h264` as
+// the fourth argument for the small version instead.
 //
 // Every dictionary below carries an explicit type. Without them Swift's type
 // checker takes minutes on these literals instead of milliseconds.
@@ -26,7 +35,9 @@ if args.count < 3 {
 }
 let inURL: URL = URL(fileURLWithPath: args[1])
 let outURL: URL = URL(fileURLWithPath: args[2])
-let fps: Int32 = args.count > 3 ? (Int32(args[3]) ?? 30) : 30
+let fps: Int32 = args.count > 3 ? (Int32(args[3]) ?? 60) : 60
+let codecArg: String = args.count > 4 ? args[4].lowercased() : "prores"
+let useProRes: Bool = codecArg != "h264"
 try? FileManager.default.removeItem(at: outURL)
 
 let asset: AVURLAsset = AVURLAsset(url: inURL)
@@ -51,8 +62,11 @@ guard let track = vTrack, srcSize.width > 0 else {
 let W: Int = Int(srcSize.width.rounded())
 let H: Int = Int(srcSize.height.rounded())
 
+let pixFmt: Int = useProRes
+    ? Int(kCVPixelFormatType_422YpCbCr8)                       // '2vuy', ProRes is 4:2:2
+    : Int(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
 let readerOutSettings: [String: Any] = [
-    kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)
+    kCVPixelBufferPixelFormatTypeKey as String: pixFmt
 ]
 let compression: [String: Any] = [
     AVVideoAverageBitRateKey: Int(12_000_000),
@@ -65,15 +79,17 @@ let colorProps: [String: Any] = [
     AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
     AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
 ]
-let videoSettings: [String: Any] = [
-    AVVideoCodecKey: AVVideoCodecType.h264,
+// ProRes carries no bitrate setting: it is constant-quality, so the
+// compression dictionary is H.264's alone.
+var videoSettings: [String: Any] = [
+    AVVideoCodecKey: useProRes ? AVVideoCodecType.proRes422 : AVVideoCodecType.h264,
     AVVideoWidthKey: W,
     AVVideoHeightKey: H,
-    AVVideoCompressionPropertiesKey: compression,
     AVVideoColorPropertiesKey: colorProps
 ]
+if !useProRes { videoSettings[AVVideoCompressionPropertiesKey] = compression }
 let bufferAttrs: [String: Any] = [
-    kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange),
+    kCVPixelBufferPixelFormatTypeKey as String: pixFmt,
     kCVPixelBufferWidthKey as String: W,
     kCVPixelBufferHeightKey as String: H
 ]
@@ -92,8 +108,10 @@ do {
     rOut.alwaysCopiesSampleData = true
     reader.add(rOut)
 
-    let writer: AVAssetWriter = try AVAssetWriter(outputURL: outURL, fileType: AVFileType.mp4)
-    writer.shouldOptimizeForNetworkUse = true
+    let writer: AVAssetWriter = try AVAssetWriter(outputURL: outURL,
+        fileType: useProRes ? AVFileType.mov : AVFileType.mp4)
+    // Only meaningful for the streaming case; ProRes files are edited locally.
+    writer.shouldOptimizeForNetworkUse = !useProRes
 
     let vIn: AVAssetWriterInput = AVAssetWriterInput(mediaType: AVMediaType.video, outputSettings: videoSettings)
     vIn.expectsMediaDataInRealTime = false
@@ -217,6 +235,7 @@ do {
     }
     if !videoDone { vIn.markAsFinished() }
     aIn.markAsFinished()
+    _ = currentSB      // held only to keep the last pixel buffer alive above
 
     let done: DispatchSemaphore = DispatchSemaphore(value: 0)
     writer.finishWriting { done.signal() }
@@ -227,8 +246,12 @@ do {
         exit(1)
     }
     let secs: Double = Double(written) / Double(fps)
+    let attrs = try? FileManager.default.attributesOfItem(atPath: outURL.path)
+    let bytes: Int = (attrs?[.size] as? NSNumber)?.intValue ?? 0
+    print("  codec   : \(useProRes ? "ProRes 422 in .mov" : "H.264 in .mp4")")
     print("  frames  : \(written) at exactly \(fps)fps (\(held) held to fill the grid)")
     print("  length  : \(String(format: "%.2f", secs))s")
+    if bytes > 0 { print("  size    : \(String(format: "%.0f", Double(bytes) / 1e6)) MB") }
     if !stopReason.isEmpty { print("  note    : \(stopReason)") }
 } catch {
     print("  error: \(error)")

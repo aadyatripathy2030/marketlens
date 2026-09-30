@@ -53,6 +53,7 @@
   canvas { width:270px; max-width:100%; border:1px solid var(--line); border-radius:12px; display:block; background:#0e1014; }
   .note { font-size:13.5px; color:var(--dim); line-height:1.6; border-left:2px solid var(--line); padding-left:12px; margin-top:22px; }
   .note b { color:var(--fg); }
+  .warn-line { color:#ffcf5c; border-left:3px solid #ff8a3d; padding-left:11px; margin:14px 0; }
   code { font-family:var(--mono); font-size:12.5px; background:var(--card); padding:2px 5px; border-radius:4px; }
 </style>
 </head>
@@ -99,8 +100,15 @@
 
   <div class="note">
     <p><b>1440 &times; 2160 is 2:3, not 9:16.</b> TikTok, Reels and Shorts are all 9:16, so a 2:3 upload gets pillarboxed or centre-cropped. <b>1080 &times; 1920</b> is the native size and the safe default; <b>1440 &times; 2560</b> is the same shape at higher resolution. The 2:3 option is here because you asked for it — the animation letterboxes itself inside it rather than stretching.</p>
-    <p>Output is <code>.mp4</code> where Chrome supports it, falling back to <code>.webm</code>. A webm from MediaRecorder has no duration in its header, so Finder and QuickTime report it as a second or two even when every frame is there — mp4 avoids that.</p><p><b>For DaVinci Resolve, convert the file first.</b> In Terminal:<br><code>bash ~/stock-predictor/tools/for-resolve.command</code><br>Resolve rejects this recording on four counts: MediaRecorder writes a <em>fragmented</em> container, gives every frame its own duration (<em>variable frame rate</em>), reports a non-standard 29.02fps, and writes no audio track. Remuxing cannot fix frame timing, so that script re-encodes onto an exact 30fps grid and adds a silent track. It uses AVFoundation, which ships with macOS — nothing to install. TikTok, Instagram and QuickTime all take the file as it comes out of here; only Resolve needs this.</p><p>If you would rather use ffmpeg:<br>
-    <code>ffmpeg -i in.webm -c:v libx264 -pix_fmt yuv420p -crf 18 out.mp4</code></p>
+    <p>Recording captures at <b>60fps</b>. Output is <code>.mp4</code> where Chrome supports it, falling back to <code>.webm</code>. A webm from MediaRecorder has no duration in its header, so Finder and QuickTime report it as a second or two even when every frame is there &mdash; mp4 avoids that.</p>
+
+    <p class="warn-line"><b>Resolve cannot open the file this page downloads.</b> Convert it first, and import the converted one.</p>
+    <p><b>Double-click</b> <code>tools/for-resolve.command</code> in Finder. It takes the newest recording in your Downloads and writes a <code>-resolve.mov</code> beside it. Import that one. Or from Terminal:<br>
+    <code>bash ~/stock-predictor/tools/for-resolve.command</code></p>
+    <p>What is wrong with the raw recording, read box by box out of a real one: MediaRecorder writes a <em>fragmented</em> container &mdash; <code>ftyp</code>, an empty <code>moov</code>, then <code>moof</code>/<code>mdat</code> repeating &mdash; whose sample table holds zero entries, so the header claims about a second for a thirty-five second clip. Every frame also carries its own duration (<em>variable frame rate</em>) at a non-standard nominal 29.02fps, and there is no audio track at all. Remuxing cannot fix frame timing, so the script decodes and re-encodes onto an exact 1/60s grid and adds a silent track.</p>
+    <p>It writes <b>ProRes 422 in a QuickTime .mov</b>, not H.264 in an mp4. Resolve decodes ProRes on every build and platform; an H.264 mp4 imports on one machine and fails on the next. The cost is disk space &mdash; roughly 640&nbsp;MB for 35 seconds at 1440&times;2560 &mdash; which is the right trade for a file that opens every time. Add <code>h264</code> as the last argument if you need the small one. It uses AVFoundation, which ships with macOS, so there is nothing to install. TikTok, Instagram and QuickTime all take the download as it comes; only Resolve needs this.</p>
+    <p>If you would rather use ffmpeg:<br>
+    <code>ffmpeg -i in.mp4 -c:v prores_ks -profile:v 2 -r 60 -vsync cfr out.mov</code></p>
   </div>
 </div>
 
@@ -487,6 +495,23 @@ var AIP = (function(){
   var ctx=null, W=0, H=0;
   function rrect(x,y,w,h,r){ ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(x,y,w,h,r); else ctx.rect(x,y,w,h); }
 
+  // Canvas draws text in one straight line and clips whatever runs past the
+  // edge. The model's reply below is the one place a long string was drawn
+  // raw rather than through the caption renderer, and two of its four lines
+  // were wider than the frame: at 1440 the last ran 297px past the right
+  // edge, so "wrong." was never in the exported video at all. Set the font
+  // before calling this -- it measures with whatever is current.
+  function wrap(s, maxW) {
+    var words = s.split(' '), out = [], cur = '';
+    for (var i = 0; i < words.length; i++) {
+      var next = cur ? cur + ' ' + words[i] : words[i];
+      if (cur && ctx.measureText(next).width > maxW) { out.push(cur); cur = words[i]; }
+      else cur = next;
+    }
+    if (cur) out.push(cur);
+    return out;
+  }
+
   // A candlestick chart inside the given box.
   function candles(x0, y0, bw, bh, count, opt) {
     opt = opt || {};
@@ -562,16 +587,26 @@ var AIP = (function(){
 
     var ty = y0 + bh + H * 0.06, lh = W * 0.072;
     ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+    // Wrap to the card's own column so the text keeps the same margin on both
+    // sides. Each line is wrapped whole, before any of it is revealed, so the
+    // block does not reflow underneath itself as the typing runs on.
+    var row = 0;
     for (var i = 0; i < AILINES.length; i++) {
+      var s = AILINES[i], last = i === AILINES.length - 1;
+      ctx.fillStyle = last ? DIM : FG;
+      ctx.font = (last ? '400 ' : '600 ') + (W * 0.046) + 'px "IBM Plex Mono", monospace';
+      var segs = wrap(s, bw);
       var local = (p - i * 0.2) / 0.3;
-      if (local <= 0) continue;
-      ctx.globalAlpha = Math.min(1, local);
-      var s = AILINES[i];
-      var shown = s.slice(0, Math.max(1, Math.round(s.length * Math.min(1, local))));
-      ctx.fillStyle = i === AILINES.length - 1 ? DIM : FG;
-      ctx.font = (i === AILINES.length - 1 ? '400 ' : '600 ') + (W * 0.046) + 'px "IBM Plex Mono", monospace';
-      ctx.fillText(shown, x0, ty + i * lh);
-      ctx.globalAlpha = 1;
+      if (local > 0) {
+        ctx.globalAlpha = Math.min(1, local);
+        var reveal = Math.max(1, Math.round(s.length * Math.min(1, local)));
+        for (var k = 0, seen = 0; k < segs.length && seen < reveal; k++) {
+          ctx.fillText(segs[k].slice(0, Math.min(segs[k].length, reveal - seen)), x0, ty + (row + k) * lh);
+          seen += segs[k].length + 1;      // + the space the wrap swallowed
+        }
+        ctx.globalAlpha = 1;
+      }
+      row += segs.length;                   // advances even before this line shows
     }
   }
 
@@ -999,7 +1034,12 @@ async function play(record){
     try {
       if (typeof MediaRecorder === 'undefined') throw new Error('this browser has no MediaRecorder');
       if (!cv.captureStream) throw new Error('this browser cannot capture a canvas stream');
-      var stream=cv.captureStream(30);
+      // 60, to match what the converter writes. Capturing at 30 and
+      // converting to 60 only duplicates every frame: the file says 60fps and
+      // the motion is still 30. The animations are driven by
+      // requestAnimationFrame, so they already have 60 distinct frames a
+      // second to give.
+      var stream=cv.captureStream(60);
       // MP4 first. A webm written by MediaRecorder carries no Duration
       // element, so Chrome can scan it and get the real length while
       // QuickTime, Finder preview and most editors read the header and
@@ -1007,8 +1047,11 @@ async function play(record){
       var mime = ['video/mp4;codecs=avc1.42E01E','video/mp4','video/webm;codecs=vp9','video/webm']
         .filter(function(t){ return MediaRecorder.isTypeSupported(t); })[0] || '';
       recMime = mime;
-      rec = mime ? new MediaRecorder(stream,{ mimeType:mime, videoBitsPerSecond: 12000000 })
-                 : new MediaRecorder(stream,{ videoBitsPerSecond: 12000000 });
+      // Twice the frames need roughly twice the bits before the encoder
+      // starts smearing the text, and this file is only ever an intermediate
+      // on the way through the converter.
+      rec = mime ? new MediaRecorder(stream,{ mimeType:mime, videoBitsPerSecond: 24000000 })
+                 : new MediaRecorder(stream,{ videoBitsPerSecond: 24000000 });
       rec.ondataavailable=function(e){ if(e.data.size) chunks.push(e.data); };
       rec.onerror=function(e){ fail('recorder error: '+((e&&e.error&&e.error.name)||'unknown')); };
       rec.start();
