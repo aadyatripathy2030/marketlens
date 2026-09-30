@@ -494,10 +494,14 @@
           <div class="pstat-k">Account value</div>
           <div class="pstat-v" id="pEquity">&mdash;</div>
           <div class="pstat-sub" id="pPnl">&mdash;</div>
+          <div class="pstat-note" id="pStartNote"></div>
         </div>
-        <div class="pstat"><div class="pstat-k">Cash</div><div class="pstat-v sm" id="pCash">&mdash;</div></div>
-        <div class="pstat"><div class="pstat-k">Invested</div><div class="pstat-v sm" id="pInvested">&mdash;</div></div>
-        <div class="pstat"><div class="pstat-k">Positions</div><div class="pstat-v sm" id="pCount">&mdash;</div></div>
+        <div class="pstat"><div class="pstat-k">Cash</div><div class="pstat-v sm" id="pCash">&mdash;</div>
+          <div class="pstat-note" id="pCashNote"></div></div>
+        <div class="pstat"><div class="pstat-k">Invested</div><div class="pstat-v sm" id="pInvested">&mdash;</div>
+          <div class="pstat-note" id="pInvNote"></div></div>
+        <div class="pstat"><div class="pstat-k">Positions</div><div class="pstat-v sm" id="pCount">&mdash;</div>
+          <div class="pstat-note" id="pCountNote"></div></div>
       </div>
 
       <div class="prac-main">
@@ -520,7 +524,10 @@
 
         <div class="side-col">
           <div class="card ticket">
-            <h3>Trade</h3>
+            <div class="ticket-head">
+              <h3>Trade</h3>
+              <span class="ticket-cash">Buying power <b id="tkCash">&mdash;</b></span>
+            </div>
             <label class="tk-lbl" for="pSym">Symbol</label>
             <div class="tk-field">
               <input id="pSym" class="input tk-sym" placeholder="AAPL" maxlength="16"
@@ -572,10 +579,10 @@
         </div>
       </div>
 
-      <h3 class="sec-h">Positions</h3>
+      <h3 class="sec-h">Positions <span class="sec-n" id="pPosN" hidden></span></h3>
       <div id="pPositions"></div>
 
-      <h3 class="sec-h">Recent fills</h3>
+      <h3 class="sec-h">Recent fills <span class="sec-n" id="pFillN" hidden></span></h3>
       <div id="pFills"></div>
 
       <div class="row" style="margin-top:22px;gap:10px;align-items:center;flex-wrap:wrap">

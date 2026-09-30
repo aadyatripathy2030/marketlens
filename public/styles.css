@@ -218,6 +218,13 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .link-btn:hover { text-decoration: underline; }
 .acct .signin { font-weight: 600; color: var(--text); background: var(--card-hi); border: none; border-radius: 999px; padding: 8px 16px; cursor: pointer; font-family: var(--font); font-size: 13px; white-space: nowrap; }
 .acct .signin:hover { background: var(--border-strong); }
+/* On a phone the right-hand group is 381px wide on a 375px screen, so the
+   whole site scrolled sideways. The two items that are informational rather
+   than functional stand down: the address is in the menu, and the demo-data
+   tag only appears on a deployment with no price key. Measured at 375px, the
+   header then lands exactly on the viewport instead of 189px past it. */
+@media (max-width: 620px) { .acct .email { display: none; } }
+@media (max-width: 560px) { .topbar-right #modeTag { display: none; } }
 
 .sym-row { display: flex; align-items: center; gap: 12px; }
 .watch-btn { font-family: var(--font); font-size: 12px; font-weight: 700; color: var(--muted); background: var(--card-hi); border: 1px solid var(--border-strong); border-radius: 999px; padding: 5px 12px; cursor: pointer; white-space: nowrap; }
@@ -313,7 +320,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .ov i.dashed { background: none !important; border-top: 2px dashed var(--forecast); height: 0; }
 .ov.active { color: var(--text); border-color: var(--accent); }
 .ov:not(.active) { opacity: .45; text-decoration: line-through; }
-.chart-time { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; }
+.chart-time { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; min-width: 0; }
 .tf-group { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .tf-label { font-size: 11.5px; font-weight: 500; color: var(--muted); }
 .range { display: flex; gap: 3px; background: var(--card-hi); border-radius: 999px; padding: 4px; max-width: 100%; overflow-x: auto; }
@@ -760,15 +767,40 @@ body.drawer-open .drawer { transform: translateX(0); }
 .amt-presets { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 20px; }
 .btn.wide { width: 100%; justify-content: center; }
 
-.paper-top { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 16px; }
-@media (max-width: 720px) { .paper-top { grid-template-columns: 1fr 1fr; } }
-.pstat { border: 1px solid var(--border); background: var(--card); border-radius: 14px; padding: 15px 17px; min-width: 0; }
-.pstat.hero { background: linear-gradient(160deg, var(--card-hi), var(--card)); }
-.pstat-k { font-size: 11px; color: var(--muted); letter-spacing: .07em; text-transform: uppercase; margin-bottom: 6px; }
-.pstat-v { font-family: var(--font-num); font-size: 27px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
-.pstat-v.sm { font-size: 19px; }
-.pstat-sub { font-family: var(--font-num); font-size: 13.5px; margin-top: 4px; color: var(--muted); font-variant-numeric: tabular-nums; }
-.pstat-sub.up { color: var(--good); } .pstat-sub.down { color: var(--bad); }
+.paper-top { display: grid; grid-template-columns: 1.7fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+@media (max-width: 720px) {
+  .paper-top { grid-template-columns: 1fr 1fr; }
+  /* The total gets the full width rather than being cut off mid-figure:
+     "$10,000.00" at 29px does not fit half a phone. */
+  .pstat.hero { grid-column: 1 / -1; }
+  .pstat-v.sm { font-size: clamp(15px, 4.4vw, 20px); }
+}
+/* height rather than relying on the grid's default stretch: the hero card
+   would not stretch to the row on its own and sat 26px short of its
+   neighbours, and align-self made no difference to it. */
+.pstat { display: flex; flex-direction: column; height: 100%; border: 1px solid var(--border);
+  background: var(--card); border-radius: 15px; padding: 15px 17px 14px; min-width: 0; }
+/* The account total is the one number being watched, so it gets the lit
+   surface and a rule under it; the rest are its parts. */
+.pstat.hero { background: linear-gradient(158deg, var(--card-hi), var(--card) 62%);
+  border-color: var(--border-strong); position: relative; overflow: hidden; }
+.pstat.hero::before { content: ''; position: absolute; inset: 0 0 auto; height: 2px;
+  background: linear-gradient(90deg, var(--accent), rgba(76,158,255,0)); }
+.pstat-k { font-size: 10.5px; color: var(--muted); letter-spacing: .09em; text-transform: uppercase; margin-bottom: 7px; }
+.pstat-v { font-family: var(--font-num); font-size: 29px; font-weight: 750; font-variant-numeric: tabular-nums; letter-spacing: -.7px; line-height: 1.1; }
+.pstat-v.sm { font-size: 20px; letter-spacing: -.3px; }
+.pstat-sub { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start;
+  font-family: var(--font-num); font-size: 13px; font-weight: 650; margin-top: 8px;
+  color: var(--muted); font-variant-numeric: tabular-nums;
+  border-radius: 999px; padding: 3px 9px; background: var(--card-hi); }
+.pstat-sub.up { color: var(--good); background: rgba(61,220,132,.13); }
+.pstat-sub.down { color: var(--bad); background: rgba(255,95,86,.13); }
+/* What the figure above means, so a number is never on its own. */
+/* Sits straight under its figure rather than pinned to the card's floor:
+   pushed to the bottom it read as a separate thing and left a gap whose size
+   depended on how tall the neighbouring card happened to be. */
+.pstat-note { margin-top: 9px; font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+.pstat.hero .pstat-note { margin-top: 10px; }
 
 .prac-main { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr); gap: 14px; align-items: start; }
 @media (max-width: 860px) { .prac-main { grid-template-columns: minmax(0, 1fr); } }
@@ -787,21 +819,35 @@ body.drawer-open .drawer { transform: translateX(0); }
 @keyframes livePulse { 70% { box-shadow: 0 0 0 7px rgba(61,220,132,0); } 100% { box-shadow: 0 0 0 0 rgba(61,220,132,0); } }
 @media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
 
-.ticket h3 { margin: 0 0 12px; font-size: 16px; }
+.ticket { display: flex; flex-direction: column; }
+.ticket-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.ticket-head h3 { margin: 0; font-size: 16px; }
+.ticket-cash { font-family: var(--font-num); font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.ticket-cash b { color: var(--text); font-weight: 650; }
 .ticket .lbl { display: block; margin-bottom: 4px; }
 .ticket .inp { width: 100%; margin-bottom: 12px; }
-.est { font-size: 13px; color: var(--muted); min-height: 19px; margin-bottom: 10px; }
-.est b { color: var(--text); font-family: var(--font-num); }
-.est .over { color: var(--bad); }
-.ticket-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.btn-buy { background: var(--good); border-color: var(--good); color: #06281a; font-weight: 700; }
-.btn-sell { background: var(--bad); border-color: var(--bad); color: #2b0906; font-weight: 700; }
+/* The cost of what is being typed, on its own line so it reads as a total
+   rather than as a hint under the field. */
+.est { display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  font-size: 12.5px; color: var(--muted); min-height: 34px; margin: 4px 0 12px;
+  border-top: 1px solid var(--border); padding-top: 11px; }
+.est b { color: var(--text); font-family: var(--font-num); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.est .over { color: var(--bad); font-weight: 650; }
+.ticket-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.ticket-btns .btn { padding: 12px 10px; font-size: 14.5px; border-radius: 11px; }
+.btn-buy { background: linear-gradient(180deg, #4ce695, var(--good)); border-color: var(--good); color: #06281a; font-weight: 750; }
+.btn-sell { background: linear-gradient(180deg, #ff756d, var(--bad)); border-color: var(--bad); color: #2b0906; font-weight: 750; }
+.btn-buy:hover, .btn-sell:hover { filter: brightness(1.07); }
+/* Trades are sent one at a time, so the pair goes flat while one is away. */
+.btn-buy:disabled, .btn-sell:disabled { filter: none; opacity: .45; cursor: progress; }
 .paper-msg { margin-top: 11px; font-size: 13px; border-radius: 8px; padding: 8px 11px; }
 .paper-msg.ok { background: rgba(61,220,132,.12); color: var(--good); }
 .paper-msg.bad { background: rgba(255,95,86,.12); color: var(--bad); }
 
-.sec-h { margin: 26px 0 11px; font-size: 16px; }
-.pos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 11px; }
+.sec-h { display: flex; align-items: baseline; gap: 9px; margin: 28px 0 12px; font-size: 16px; }
+.sec-h .sec-n { font-family: var(--font-num); font-size: 11.5px; font-weight: 700; color: var(--muted);
+  background: var(--card-hi); border-radius: 999px; padding: 2px 8px; font-variant-numeric: tabular-nums; }
+.pos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 11px; }
 .pos { position: relative; border: 1px solid var(--border); background: var(--card); border-radius: 13px;
   padding: 13px 15px 40px; cursor: pointer; transition: border-color .15s, transform .12s; }
 .pos:hover { border-color: var(--accent); transform: translateY(-1px); }
@@ -814,20 +860,19 @@ body.drawer-open .drawer { transform: translateX(0); }
 .pos-bot { display: flex; justify-content: space-between; margin-top: 7px; font-family: var(--font-num);
   font-size: 13px; font-variant-numeric: tabular-nums; }
 .pos-bot .up { color: var(--good); } .pos-bot .down { color: var(--bad); }
-.pos-close { position: absolute; left: 15px; bottom: 11px; background: none; border: 0; padding: 0;
-  color: var(--muted); font-size: 12.5px; font-weight: 600; cursor: pointer; text-decoration: underline; }
-.pos-close:hover { color: var(--bad); }
+.pos-close { position: absolute; left: 15px; bottom: 11px; background: var(--card-hi); border: 1px solid var(--border);
+  border-radius: 8px; padding: 4px 11px; color: var(--muted); font-size: 12px; font-weight: 650;
+  cursor: pointer; font-family: var(--font); }
+.pos-close:hover { color: var(--bad); border-color: rgba(255,95,86,.5); background: rgba(255,95,86,.1); }
+/* A hairline along the bottom edge, its width the share of the book this
+   position is: the concentration is visible without reading a percentage. */
+.pos-share { position: absolute; left: 0; bottom: 0; height: 2px; border-radius: 0 2px 2px 0;
+  background: var(--accent); opacity: .55; transition: width .25s ease; }
 .stale { font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; }
 .empty { font-size: 14px; border: 1px dashed var(--border); border-radius: 12px; padding: 18px; text-align: center; }
 .scroll-x { overflow-x: auto; }
 
 
-
-.btn-buy { background: var(--good); border-color: var(--good); color: #06281a; font-weight: 700; }
-.btn-sell { background: var(--bad); border-color: var(--bad); color: #2b0906; font-weight: 700; }
-.paper-msg { margin-top: 11px; font-size: 13.5px; border-radius: 8px; padding: 8px 11px; }
-.paper-msg.ok { background: rgba(61, 220, 132, .12); color: var(--good); }
-.paper-msg.bad { background: rgba(255, 95, 86, .12); color: var(--bad); }
 
 /* The meter reads the book against the user's own limits; it never blocks. */
 .risk-bar { height: 9px; border-radius: 999px; background: var(--card-hi); overflow: hidden; }

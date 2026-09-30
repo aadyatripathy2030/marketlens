@@ -1604,6 +1604,11 @@
     chartSym = sym;
     $('cSym').textContent = sym;
     $('cName').textContent = '';
+    // Keep the ticket on the symbol the chart is showing. They were separate,
+    // so the chart opened on a stock while the ticket sat empty: the cost
+    // estimate stayed blank and the 25/50/Max buttons had nothing to size
+    // against until you retyped the symbol that was already on screen.
+    if ($('pSym') && $('pSym').value.trim().toUpperCase() !== sym) $('pSym').value = sym;
     // run() is the analyze pipeline: it loads the bars, sets lastData and
     // draws. Reusing it means the practice chart is the analyze chart.
     try { await run(sym); } catch (e) {}
@@ -1667,9 +1672,23 @@
     $('pInvested').textContent = pMoney(a.invested);
     $('pCount').textContent = a.positions.length;
     const pn = $('pPnl');
-    pn.textContent = (a.pnl >= 0 ? '+' : '−') + pMoney(a.pnl).replace('-', '')
+    const dir = a.pnl > 0 ? '▲ ' : a.pnl < 0 ? '▼ ' : '';
+    pn.textContent = dir + pMoney(Math.abs(a.pnl))
       + '  (' + (a.pnlPct >= 0 ? '+' : '−') + pPct(Math.abs(a.pnlPct)) + ')';
     pn.className = 'pstat-sub ' + (a.pnl > 0 ? 'up' : a.pnl < 0 ? 'down' : '');
+
+    // Every figure says what it is a share of. A balance on its own tells you
+    // nothing about whether the account is overcommitted.
+    const start = Number(a.startBalance);
+    $('pStartNote').textContent = Number.isFinite(start)
+      ? 'Started at ' + pMoney(start) : '';
+    const shareOf = (v) => a.equity > 0 ? pPct((v / a.equity) * 100) + ' of the account' : '';
+    $('pCashNote').textContent = shareOf(a.cash);
+    $('pInvNote').textContent = a.invested > 0 ? shareOf(a.invested) : 'Nothing at risk';
+    $('pCountNote').textContent = a.positions.length
+      ? 'Largest is ' + pPct(r.largestPct)
+      : 'Nothing open';
+    $('tkCash').textContent = pMoney(a.cash);
 
     $('pBand').textContent = r.band;
     $('pBand').className = 'risk-band ' + r.band;
@@ -1698,10 +1717,18 @@
           + '<span class="' + (p.pnlPct > 0 ? 'up' : p.pnlPct < 0 ? 'down' : '') + '">'
           + (p.pnlPct >= 0 ? '+' : '−') + pPct(Math.abs(p.pnlPct)) + '</span></div>'
           + '<button type="button" class="pos-close p-close" data-sym="' + esc(p.symbol) + '" data-qty="' + p.qty + '">Close</button>'
+          + '<i class="pos-share" style="width:' + (a.equity > 0 ? Math.max(2, Math.min(100, (p.value / a.equity) * 100)) : 0) + '%"></i>'
           + '</div>').join('') + '</div>'
       : '<p class="muted empty">Nothing open. Buy something to start.</p>';
 
+    const posN = $('pPosN');
+    posN.hidden = !a.positions.length;
+    posN.textContent = a.positions.length;
+
     const fills = paperState.fills || [];
+    const fillN = $('pFillN');
+    fillN.hidden = !fills.length;
+    fillN.textContent = fills.length;
     $('pFills').innerHTML = fills.length
       ? '<div class="scroll-x"><table class="ptable"><thead><tr><th>When</th><th>Symbol</th><th>Side</th>'
         + '<th>Qty</th><th>Price</th><th>Realized</th></tr></thead><tbody>'
