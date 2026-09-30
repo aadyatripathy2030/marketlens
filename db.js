@@ -70,6 +70,12 @@ async function init() {
       await pool.query(`CREATE TABLE IF NOT EXISTS watchlist (
         uid TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, symbol TEXT NOT NULL, created BIGINT NOT NULL,
         PRIMARY KEY (uid, symbol))`);
+      // A watched symbol can carry the price it was added at and the levels
+      // the user set on it. Nullable: an entry only exists if a price was
+      // available, and levels only once they are drawn.
+      await pool.query('ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS entry DOUBLE PRECISION');
+      await pool.query('ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS stop DOUBLE PRECISION');
+      await pool.query('ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS target DOUBLE PRECISION');
       await pool.query(`CREATE TABLE IF NOT EXISTS alerts (
         id TEXT PRIMARY KEY, uid TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         symbol TEXT NOT NULL, direction TEXT NOT NULL, target DOUBLE PRECISION NOT NULL,
@@ -327,14 +333,63 @@ async function purgeExpiredSessions() {
 
 // ---- watchlist ----
 async function listWatch(uid) {
-  if (mode === 'postgres') { const r = await pool.query('SELECT symbol FROM watchlist WHERE uid=$1 ORDER BY created DESC', [uid]); return r.rows.map(x => x.symbol); }
-  return [...(mem.watch.get(uid) || new Map()).entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+  return (await listWatchFull(uid)).map(r => r.symbol);
 }
-async function addWatch(uid, symbol) {
+// The same rows with the entry price and the user's levels attached.
+async function listWatchFull(uid) {
+  if (mode === 'postgres') {
+    const r = await pool.query('SELECT symbol, created, entry, stop, target FROM watchlist WHERE uid=$1 ORDER BY created DESC', [uid]);
+    return r.rows.map(x => ({
+      symbol: x.symbol, created: Number(x.created),
+      entry: x.entry == null ? null : Number(x.entry),
+      stop: x.stop == null ? null : Number(x.stop),
+      target: x.target == null ? null : Number(x.target),
+    }));
+  }
+  return [...(mem.watch.get(uid) || new Map()).values()]
+    .sort((a, b) => b.created - a.created)
+    .map(r => ({ symbol: r.symbol, created: r.created,
+      entry: r.entry == null ? null : Number(r.entry),
+      stop: r.stop == null ? null : Number(r.stop),
+      target: r.target == null ? null : Number(r.target) }));
+}
+async function addWatch(uid, symbol, entry) {
   symbol = String(symbol).toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
   if (!symbol) return;
-  if (mode === 'postgres') await pool.query('INSERT INTO watchlist (uid, symbol, created) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING', [uid, symbol, Date.now()]);
-  else { if (!mem.watch.has(uid)) mem.watch.set(uid, new Map()); mem.watch.get(uid).set(symbol, Date.now()); }
+  const e = Number.isFinite(Number(entry)) && Number(entry) > 0 ? Number(entry) : null;
+  if (mode === 'postgres') {
+    await pool.query('INSERT INTO watchlist (uid, symbol, created, entry) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
+      [uid, symbol, Date.now(), e]);
+  } else {
+    if (!mem.watch.has(uid)) mem.watch.set(uid, new Map());
+    const m = mem.watch.get(uid);
+    if (!m.has(symbol)) m.set(symbol, { symbol, created: Date.now(), entry: e, stop: null, target: null });
+  }
+}
+// null clears a level; undefined leaves it alone.
+async function setWatchLevels(uid, symbol, patch) {
+  symbol = String(symbol).toUpperCase();
+  const clean = (v) => {
+    if (v === null) return null;
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  };
+  const entry = clean(patch.entry), stop = clean(patch.stop), target = clean(patch.target);
+  if (mode === 'postgres') {
+    const sets = [], vals = [uid, symbol];
+    if (entry !== undefined) { vals.push(entry); sets.push('entry=$' + vals.length); }
+    if (stop !== undefined) { vals.push(stop); sets.push('stop=$' + vals.length); }
+    if (target !== undefined) { vals.push(target); sets.push('target=$' + vals.length); }
+    if (!sets.length) return;
+    await pool.query('UPDATE watchlist SET ' + sets.join(', ') + ' WHERE uid=$1 AND symbol=$2', vals);
+  } else {
+    const m = mem.watch.get(uid);
+    if (!m || !m.has(symbol)) return;
+    const row = m.get(symbol);
+    if (entry !== undefined) row.entry = entry;
+    if (stop !== undefined) row.stop = stop;
+    if (target !== undefined) row.target = target;
+  }
 }
 async function removeWatch(uid, symbol) {
   symbol = String(symbol).toUpperCase();
@@ -520,7 +575,7 @@ module.exports = {
   getStreak, saveStreak,
   getRisk, saveRisk, RISK_DEFAULTS,
   getPaper, openPaper, clearPaper, setCash, listPositions, savePosition, dropPosition, addFill, listFills,
-  listWatch, addWatch, removeWatch,
+  listWatch, listWatchFull, addWatch, removeWatch, setWatchLevels,
   listAlerts, addAlert, removeAlert, markTriggered,
   listUsers, counts,
   setPro, setFree, findByStripeSub,

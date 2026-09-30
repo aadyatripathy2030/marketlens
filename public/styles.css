@@ -904,3 +904,31 @@ body.drawer-open .drawer { transform: translateX(0); }
 .paper-preset.on { border-color: var(--accent); background: var(--accent-soft); }
 .paper-preset.on span { color: var(--accent); }
 @media (max-width: 420px) { .amt-presets { grid-template-columns: repeat(2, 1fr); } }
+
+/* ---- Watchlist ---- */
+.wl-chart { margin-bottom: 20px; }
+.wl-full { background: none; border: 0; color: var(--accent); font-size: 12.5px; font-weight: 600;
+  cursor: pointer; padding: 0 0 0 6px; }
+.wl-full:hover { text-decoration: underline; }
+.wl-levels { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+@media (max-width: 680px) { .wl-levels { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.wl-lvl .tk-field { margin-bottom: 0; }
+.wl-lvl .input { font-size: 16px; padding: 10px 12px; }
+.wl-pl { display: flex; flex-direction: column; justify-content: center; }
+.wl-pl-v { font-family: var(--font-num); font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.wl-pl-v.up { color: var(--good); } .wl-pl-v.down { color: var(--bad); }
+.wl-rr { font-size: 11.5px; margin-top: 3px; }
+.wl-hint { font-size: 12.5px; margin: 12px 0 0; }
+
+.wl-card { border: 1px solid var(--border); background: var(--card); border-radius: 12px;
+  padding: 13px 15px; cursor: pointer; transition: border-color .14s, transform .1s; min-width: 0; }
+.wl-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.wl-card.on { border-color: var(--accent); background: var(--card-hi); }
+.wl-card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.wl-card-top b { font-size: 15px; }
+.wl-flag { font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 5px; padding: 1px 5px; }
+.wl-card-px { font-family: var(--font-num); font-size: 17px; font-variant-numeric: tabular-nums; }
+.wl-card-chg { font-size: 12.5px; margin-top: 3px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.wl-card-chg.up { color: var(--good); } .wl-card-chg.down { color: var(--bad); }
+.wl-rr.warn { color: var(--warn); }

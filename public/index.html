@@ -305,6 +305,42 @@
   <!-- WATCHLIST -->
   <section class="view hidden" id="view-watchlist">
     <h1 class="view-h">Your watchlist</h1>
+    <!-- The same chart panel the analyze and practice views use is moved in
+         here, so a saved ticker can be looked at without leaving the list. -->
+    <div class="wl-chart hidden" id="wlChartWrap">
+      <div class="chart-head">
+        <div class="chart-id">
+          <span class="chart-sym" id="wlSym">&mdash;</span>
+          <span class="chart-name muted" id="wlName"></span>
+        </div>
+        <div class="chart-px">
+          <span class="chart-last" id="wlLast">&mdash;</span>
+          <span class="chart-chg" id="wlChg"></span>
+          <button type="button" class="wl-full" id="wlFull">Full analysis &rarr;</button>
+        </div>
+      </div>
+      <div id="chartSlotWatchlist"></div>
+      <div class="wl-levels" id="wlLevels">
+        <div class="wl-lvl">
+          <label class="tk-lbl" for="wlEntry">Your entry</label>
+          <div class="tk-field"><input id="wlEntry" class="input tk-qty" type="number" step="any" placeholder="—" inputmode="decimal" /></div>
+        </div>
+        <div class="wl-lvl">
+          <label class="tk-lbl" for="wlStop">Stop loss</label>
+          <div class="tk-field"><input id="wlStop" class="input tk-qty" type="number" step="any" placeholder="none" inputmode="decimal" /></div>
+        </div>
+        <div class="wl-lvl">
+          <label class="tk-lbl" for="wlTarget">Take profit</label>
+          <div class="tk-field"><input id="wlTarget" class="input tk-qty" type="number" step="any" placeholder="none" inputmode="decimal" /></div>
+        </div>
+        <div class="wl-lvl wl-pl">
+          <span class="tk-lbl">Since your entry</span>
+          <div class="wl-pl-v" id="wlPl">&mdash;</div>
+          <div class="wl-rr muted" id="wlRr"></div>
+        </div>
+      </div>
+      <p class="muted wl-hint">Drag the dashed lines on the chart to move your stop or target, or type a price. Saved to your account.</p>
+    </div>
     <div id="watchView"></div>
   </section>
 

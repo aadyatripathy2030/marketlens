@@ -456,7 +456,10 @@
   // vertically; from then on it holds an explicit window, like TradingView,
   // until a double-click hands it back to auto-fit.
   let yManual = null;       // {lo, hi} in price units, or null for auto-fit
-  let lastY = null;         // last drawn {lo, hi, plotH} so drags can do maths
+  let lastY = null;         // last drawn {lo, hi, plotH, top} so drags can do maths
+  // Filled by the renderer each frame: where the watchlist levels landed,
+  // so a pointer can be matched to one.
+  let wlLevelBands = [];
   let hover = null;         // {x, y} in CSS px for the crosshair, or null
   let liveBar = null;       // index of the bar currently being formed by ticks
 
@@ -745,7 +748,7 @@
     // The time axis belongs under everything, not under the price plot:
     // with a volume pane between them, axY is the top of the volume.
     const timeY = axY + volH + volGap;
-    lastY = { lo, hi, plotH };
+    lastY = { lo, hi, plotH, top: padT };
 
     const AXF = '11px ui-sans-serif, system-ui, -apple-system, sans-serif';
     const NUMF = '11.5px ui-sans-serif, system-ui, -apple-system, sans-serif';
@@ -899,6 +902,37 @@
     }
 
     // Crosshair + OHLC readout for the bar under the cursor.
+    // The levels the user set on this symbol from the watchlist. Drawn on
+    // whichever view the panel is mounted in, and draggable by the handle on
+    // the right. wlLevelBands is read by the pointer handlers.
+    wlLevelBands = [];
+    const wlR = (typeof wlRow === 'function' && lastData) ? wlRow(lastData.symbol) : null;
+    if (wlR) {
+      [['entry', wlR.entry, col('--muted'), 'entry'],
+       ['stop', wlR.stop, col('--bad'), 'stop'],
+       ['target', wlR.target, col('--good'), 'target']].forEach(([key, v, c, label]) => {
+        if (!Number.isFinite(v) || v < lo || v > hi) return;
+        const y = Y(v);
+        ctx.save();
+        ctx.setLineDash([6, 4]); ctx.strokeStyle = c; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(padL, Math.round(y) + .5); ctx.lineTo(axX, Math.round(y) + .5); ctx.stroke();
+        ctx.restore();
+        ctx.font = '10px ui-monospace, SFMono-Regular, monospace';
+        const t = label + ' ' + v.toFixed(2);
+        const tw = ctx.measureText(t).width;
+        ctx.fillStyle = c; ctx.globalAlpha = .16;
+        roundRect(padL + 4, y - 8, tw + 10, 16, 4); ctx.fill();
+        ctx.globalAlpha = 1; ctx.fillStyle = c;
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.fillText(t, padL + 9, y);
+        // a grab handle on the price gutter
+        ctx.fillStyle = c; ctx.globalAlpha = .9;
+        roundRect(axX + 2, y - 6, 10, 12, 3); ctx.fill();
+        ctx.globalAlpha = 1;
+        wlLevelBands.push({ key, y, price: v });
+      });
+    }
+
     if (hover && hover.x > padL && hover.x < axX && hover.y > padT && hover.y < axY) {
       const j = Math.max(0, Math.min(bars.length - 1, Math.round((hover.x - padL) / plotW * (total - 1))));
       const b = bars[j], hx = X(j);
@@ -1011,14 +1045,42 @@
     }, { passive: false });
 
     let drag = null;
+    // Grabbing a level takes priority over panning: the handles sit in the
+    // price gutter, which is also the zoom zone.
+    function levelAt(e) {
+      if (!wlLevelBands.length) return null;
+      const r = canvas.getBoundingClientRect();
+      const y = e.clientY - r.top;
+      let best = null;
+      wlLevelBands.forEach(b => {
+        const d = Math.abs(b.y - y);
+        if (d <= 7 && (!best || d < best.d)) best = { key: b.key, d };
+      });
+      return best;
+    }
     canvas.addEventListener('mousedown', (e) => {
       if (!lastData || !view) return;
       e.preventDefault();
+      const lv = levelAt(e);
+      if (lv && lastY) { drag = { level: lv.key }; return; }
       drag = { zone: zoneOf(e), x: e.clientX, y: e.clientY, span: view.end - view.start,
                man: yManual ? { lo: yManual.lo, hi: yManual.hi } : null };
     });
     window.addEventListener('mousemove', (e) => {
       if (!drag || !lastData || !view) return;
+      if (drag.level) {
+        // Convert the pointer back into a price using the same mapping the
+        // renderer used for this frame.
+        const r0 = canvas.getBoundingClientRect();
+        const y = e.clientY - r0.top;
+        const f = (y - lastY.top) / lastY.plotH;
+        const price = lastY.hi - f * (lastY.hi - lastY.lo);
+        if (Number.isFinite(price) && price > 0) {
+          const row = wlRow(lastData.symbol);
+          if (row) { row[drag.level] = price; wlRenderPl(); drawChart(); }
+        }
+        return;
+      }
       const len = lastData.prices.length, r = canvas.getBoundingClientRect();
       if (drag.zone === 'price') {                    // drag down = zoom out
         if (!drag.man) { ensureManual(); drag.man = yManual ? { lo: yManual.lo, hi: yManual.hi } : null; }
@@ -1040,7 +1102,20 @@
       drag.x = e.clientX; drag.y = e.clientY;
       drawChart();
     });
-    window.addEventListener('mouseup', () => { drag = null; });
+    window.addEventListener('mouseup', () => {
+      if (drag && drag.level) {
+        const row = wlRow(lastData && lastData.symbol);
+        // Round to cents: a dragged level should read like a price.
+        if (row && Number.isFinite(row[drag.level])) {
+          const v = Math.round(row[drag.level] * 100) / 100;
+          row[drag.level] = v;
+          const box = $('wl' + drag.level.charAt(0).toUpperCase() + drag.level.slice(1));
+          if (box) box.value = v;
+          saveWatchLevels({ [drag.level]: v });
+        }
+        drag = null;
+        return;
+      } drag = null; });
     let raf = 0;
     canvas.addEventListener('mousemove', (e) => {
       const z = zoneOf(e);
@@ -1483,7 +1558,9 @@
   function mountChart(viewName) {
     const panel = $('chartPanel');
     if (!panel) return;
-    const slot = $(viewName === 'practice' ? 'chartSlotPractice' : 'chartSlotAnalyze');
+    const slotId = viewName === 'practice' ? 'chartSlotPractice'
+      : viewName === 'watchlist' ? 'chartSlotWatchlist' : 'chartSlotAnalyze';
+    const slot = $(slotId);
     if (!slot || panel.parentElement === slot) return;
     slot.appendChild(panel);
     // The canvas sizes itself from its parent, which just changed.
@@ -1876,9 +1953,19 @@
     currentUser = null; watchSymbols = []; renderAcct(); renderWatchStrip();
     $('watchBtn').classList.add('hidden');
   }
+  function absorbWatch(j) {
+    if (!j) return;
+    if (Array.isArray(j.rows)) watchRows = j.rows;
+    if (Array.isArray(j.symbols)) watchSymbols = j.symbols;
+  }
   async function loadWatchlist() {
-    try { const j = await (await fetch('/api/watchlist')).json(); watchSymbols = j.symbols || []; } catch { watchSymbols = []; }
+    try { absorbWatch(await (await fetch('/api/watchlist')).json()); }
+    catch { watchSymbols = []; watchRows = []; }
     renderWatchStrip();
+    // showView can run before this resolves — at boot the route is decided
+    // while auth is still settling — so the list redraws itself once the
+    // symbols actually arrive, instead of sitting on "No stocks saved yet".
+    if (currentView === 'watchlist') renderWatchView();
     if (lastData) updateWatchBtn(lastData.symbol);
   }
   function renderWatchStrip() {
@@ -1901,12 +1988,17 @@
     if (!currentUser) return openAuth('login');
     symbol = (symbol || '').toUpperCase();
     const remove = forceRemove || watchSymbols.includes(symbol);
-    try { const j = await (await fetch('/api/watchlist', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol, action: remove ? 'remove' : 'add' }) })).json(); watchSymbols = j.symbols || watchSymbols; } catch {}
+    try {
+      absorbWatch(await (await fetch('/api/watchlist', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol, action: remove ? 'remove' : 'add' }) })).json());
+    } catch {}
     renderWatchStrip();
     if (lastData) updateWatchBtn(lastData.symbol);
   }
   $('watchBtn').addEventListener('click', () => { if (lastData) toggleWatch(lastData.symbol); });
   wirePractice();
+  wireWatchlist();
   checkAuth();
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
@@ -2073,14 +2165,157 @@
     if (idx.length) { $('homeSnapshot').innerHTML = idx.map(quoteCard).join(''); bindQuoteCards($('homeSnapshot')); $('homeSnapshot').dataset.loaded = '1'; }
     else $('homeSnapshot').innerHTML = '<div class="quote-loading">—</div>';
   }
+  // ---- Watchlist ----
+  // A saved symbol behaves like a position you have not funded: the price it
+  // was added at, how it has done since, and your own stop and target. The
+  // chart is the shared panel, moved in here.
+  let watchRows = [];            // [{symbol, created, entry, stop, target}]
+  let wlSym = null, wlQuote = null;
+
+  const wlRow = (sym) => watchRows.find(r => r.symbol === sym) || null;
+
   async function renderWatchView() {
     const el = $('watchView');
-    if (!currentUser) { el.innerHTML = `<div class="view-empty">Sign in to build a watchlist that syncs across your devices.<br><button class="btn btn-primary" id="wvSignin">Sign in</button></div>`; $('wvSignin').addEventListener('click', () => openAuth('login')); return; }
-    if (!watchSymbols.length) { el.innerHTML = `<div class="view-empty">No stocks saved yet.<br>Analyze a stock and tap <b>☆ Watch</b> to add it here.</div>`; return; }
+    if (!currentUser) {
+      $('wlChartWrap').classList.add('hidden');
+      el.innerHTML = `<div class="view-empty">Sign in to build a watchlist that syncs across your devices.<br><button class="btn btn-primary" id="wvSignin">Sign in</button></div>`;
+      $('wvSignin').addEventListener('click', () => openAuth('login'));
+      return;
+    }
+    if (!watchSymbols.length) {
+      $('wlChartWrap').classList.add('hidden');
+      el.innerHTML = `<div class="view-empty">No stocks saved yet.<br>Analyze a stock and tap <b>☆ Watch</b> to add it here.</div>`;
+      return;
+    }
     el.innerHTML = `<div class="quote-grid" id="wvGrid"><div class="quote-loading">Loading…</div></div>`;
     const q = await getQuotes(watchSymbols);
-    $('wvGrid').innerHTML = (q.length ? q.map(quoteCard).join('') : watchSymbols.map(s => `<div class="quote-card" data-s="${esc(s)}"><div class="quote-sym">${esc(s)}</div></div>`));
-    bindQuoteCards($('wvGrid'));
+    const byS = {};
+    q.forEach(x => { byS[String(x.symbol).toUpperCase()] = x; });
+
+    $('wvGrid').innerHTML = watchSymbols.map(sym => {
+      const r = wlRow(sym) || {};
+      const quote = byS[sym];
+      const px = quote && Number(quote.price);
+      const hasEntry = Number.isFinite(r.entry) && r.entry > 0 && Number.isFinite(px);
+      const chg = hasEntry ? ((px - r.entry) / r.entry) * 100 : null;
+      const cls = chg == null ? '' : chg > 0 ? 'up' : chg < 0 ? 'down' : '';
+      return '<div class="wl-card' + (sym === wlSym ? ' on' : '') + '" data-s="' + esc(sym) + '">'
+        + '<div class="wl-card-top"><b>' + esc(sym) + '</b>'
+        + ((r.stop || r.target) ? '<span class="wl-flag" title="You have levels set">levels</span>' : '')
+        + '</div>'
+        + '<div class="wl-card-px">' + (Number.isFinite(px) ? pMoney(px) : '—') + '</div>'
+        + '<div class="wl-card-chg ' + cls + '">'
+        + (chg == null ? '<span class="muted">no entry recorded</span>'
+            : (chg >= 0 ? '+' : '−') + Math.abs(chg).toFixed(2) + '% since entry')
+        + '</div></div>';
+    }).join('');
+
+    document.querySelectorAll('#wvGrid .wl-card').forEach(c =>
+      c.addEventListener('click', () => selectWatch(c.dataset.s)));
+
+    if (!wlSym || !watchSymbols.includes(wlSym)) wlSym = watchSymbols[0];
+    selectWatch(wlSym);
+  }
+
+  async function selectWatch(sym) {
+    sym = String(sym || '').toUpperCase();
+    if (!sym) return;
+    wlSym = sym;
+    $('wlChartWrap').classList.remove('hidden');
+    $('wlSym').textContent = sym;
+    $('wlName').textContent = '';
+    document.querySelectorAll('#wvGrid .wl-card').forEach(c =>
+      c.classList.toggle('on', c.dataset.s === sym));
+    const r = wlRow(sym) || {};
+    $('wlEntry').value = Number.isFinite(r.entry) ? r.entry : '';
+    $('wlStop').value = Number.isFinite(r.stop) ? r.stop : '';
+    $('wlTarget').value = Number.isFinite(r.target) ? r.target : '';
+    // run() is the analyze pipeline, so the chart here is the analyze chart.
+    try { await run(sym); } catch (e) {}
+    if (lastData && lastData.symbol === sym) {
+      $('wlName').textContent = (lastData.name && lastData.name !== sym) ? lastData.name : '';
+    }
+    await wlRefreshQuote();
+    drawChart();
+  }
+
+  async function wlRefreshQuote() {
+    if (!wlSym) return;
+    try {
+      const j = await (await fetch('/api/quotes?symbols=' + encodeURIComponent(wlSym))).json();
+      const q = (j.quotes || [])[0];
+      if (q && Number.isFinite(Number(q.price))) {
+        wlQuote = q;
+        $('wlLast').textContent = pMoney(q.price);
+        const up = Number(q.changePct) >= 0;
+        $('wlChg').textContent = (up ? '+' : '') + Number(q.change || 0).toFixed(2)
+          + '  (' + (up ? '+' : '') + Number(q.changePct || 0).toFixed(2) + '%)';
+        $('wlChg').className = 'chart-chg ' + (up ? 'up' : 'down');
+      }
+    } catch (e) {}
+    wlRenderPl();
+  }
+
+  function wlRenderPl() {
+    const r = wlRow(wlSym) || {};
+    const px = wlQuote && Number(wlQuote.price);
+    const el = $('wlPl'), rr = $('wlRr');
+    if (!el) return;
+    if (!Number.isFinite(r.entry) || !Number.isFinite(px)) {
+      el.textContent = '—'; el.className = 'wl-pl-v'; rr.textContent = '';
+      return;
+    }
+    const diff = px - r.entry, pct = (diff / r.entry) * 100;
+    el.textContent = (diff >= 0 ? '+' : '−') + pMoney(Math.abs(diff))
+      + '  (' + (pct >= 0 ? '+' : '−') + Math.abs(pct).toFixed(2) + '%)';
+    el.className = 'wl-pl-v ' + (diff > 0 ? 'up' : diff < 0 ? 'down' : '');
+    // Reward against risk, which is the number that decides whether the trade
+    // was worth taking at all.
+    if (Number.isFinite(r.stop) && Number.isFinite(r.target) && r.stop < r.entry && r.target > r.entry) {
+      const risk = r.entry - r.stop, reward = r.target - r.entry;
+      rr.textContent = 'Risking ' + pMoney(risk) + ' to make ' + pMoney(reward)
+        + ' — ' + (reward / risk).toFixed(2) + ':1';
+      rr.className = 'wl-rr muted';
+    } else if (Number.isFinite(r.stop) && r.stop >= r.entry) {
+      // Easy to do by dragging, and the ratio just vanishing explains nothing.
+      rr.textContent = 'Your stop is at or above your entry, so there is no risk to measure.';
+      rr.className = 'wl-rr warn';
+    } else if (Number.isFinite(r.target) && r.target <= r.entry) {
+      rr.textContent = 'Your target is at or below your entry.';
+      rr.className = 'wl-rr warn';
+    } else { rr.textContent = ''; rr.className = 'wl-rr muted'; }
+  }
+
+  // null clears a level.
+  async function saveWatchLevels(patch) {
+    if (!wlSym) return;
+    try {
+      const res = await fetch('/api/watchlist', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ symbol: wlSym, action: 'levels' }, patch)),
+      });
+      const j = await res.json();
+      if (j.rows) { watchRows = j.rows; watchSymbols = j.symbols || watchSymbols; }
+      wlRenderPl();
+      drawChart();
+    } catch (e) {}
+  }
+
+  function wireWatchlist() {
+    if (!$('wlStop')) return;
+    const read = (el) => {
+      if (el.value === '') return null;                  // cleared
+      const n = Number(el.value);
+      return Number.isFinite(n) && n > 0 ? n : undefined; // nonsense: ignore
+    };
+    const bind = (id, key) => $(id).addEventListener('change', () => {
+      const v = read($(id));
+      if (v === undefined) return;
+      const r = wlRow(wlSym); if (r) r[key] = v;
+      saveWatchLevels({ [key]: v });
+    });
+    bind('wlEntry', 'entry'); bind('wlStop', 'stop'); bind('wlTarget', 'target');
+    $('wlFull').addEventListener('click', () => { if (wlSym) goAnalyze(wlSym); });
   }
 
   // ---- Compare ----

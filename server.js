@@ -1328,10 +1328,23 @@ async function handleAdmin(req, res) {
 async function handleWatchlist(req, res) {
   const user = await currentUser(req);
   if (!user) return json(res, 401, { error: 'Please sign in.' });
-  if (req.method === 'GET') return json(res, 200, { symbols: await db.listWatch(user.id) });
+  if (req.method === 'GET') {
+    const rows = await db.listWatchFull(user.id);
+    // symbols stays for everything that already reads it; rows adds the
+    // entry price and the levels.
+    return json(res, 200, { symbols: rows.map(r => r.symbol), rows });
+  }
   const b = await readBody(req);
   const symbol = String(b.symbol || '').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
   if (!symbol) return json(res, 400, { error: 'No symbol.' });
+  if (b.action === 'levels') {
+    // A number sets a level, null clears it, omitted leaves it alone.
+    const pick = (k) => (k in b ? b[k] : undefined);
+    await db.setWatchLevels(user.id, symbol,
+      { entry: pick('entry'), stop: pick('stop'), target: pick('target') });
+    const rows = await db.listWatchFull(user.id);
+    return json(res, 200, { symbols: rows.map(r => r.symbol), rows });
+  }
   if (b.action === 'remove') { await db.removeWatch(user.id, symbol); }
   else {
     if (!(await symbolResolves(symbol))) return json(res, 404, noSuchTicker(symbol));
@@ -1342,9 +1355,18 @@ async function handleWatchlist(req, res) {
       return json(res, 402, { error: 'pro_required', feature: 'watchlist',
         message: `A free watchlist holds ${FREE_WATCH_MAX} symbols. Pro removes the limit.`, symbols: cur });
     }
-    await db.addWatch(user.id, symbol);
+    // Record the price it was added at, so the list can show how it has done
+    // since. Best effort: no quote just means no entry yet.
+    let entryPx = null;
+    try {
+      const qs = await fetchQuotes([symbol]);
+      const p = qs && qs[0] && Number(qs[0].price);
+      if (Number.isFinite(p) && p > 0) entryPx = p;
+    } catch (e) { logError(e); }
+    await db.addWatch(user.id, symbol, entryPx);
   }
-  return json(res, 200, { symbols: await db.listWatch(user.id) });
+  const outRows = await db.listWatchFull(user.id);
+  return json(res, 200, { symbols: outRows.map(r => r.symbol), rows: outRows });
 }
 
 // ---- Fundamentals + news (Financial Modeling Prep) ----
