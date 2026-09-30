@@ -14,6 +14,14 @@ to a basename of known characters, and the body is capped.
 """
 import http.server, json, os, re, socketserver, subprocess, sys, threading, urllib.parse
 
+# Requests are served on threads, so two posts naming the same file would both
+# write it and then convert it underneath each other -- seen in the log as a
+# 500 next to a 200 for one recording. One conversion at a time, and a second
+# request for a name already in flight is turned away rather than joining in.
+_gate = threading.Lock()
+_inflight = set()
+_inflight_lock = threading.Lock()
+
 PORT = 47823
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEST = os.path.expanduser('~/Movies/ChartGauge')
@@ -72,6 +80,17 @@ class H(http.server.BaseHTTPRequestHandler):
         if n <= 0 or n > MAX_BYTES:
             return self._json(400, {'error': 'bad length'})
 
+        with _inflight_lock:
+            if name in _inflight:
+                return self._json(409, {'error': 'that recording is already being converted'})
+            _inflight.add(name)
+        try:
+            self._handle(name, n)
+        finally:
+            with _inflight_lock:
+                _inflight.discard(name)
+
+    def _handle(self, name, n):
         os.makedirs(DEST, exist_ok=True)
         src = os.path.join(DEST, name)
         got, left = 0, n
@@ -87,8 +106,12 @@ class H(http.server.BaseHTTPRequestHandler):
 
         out = os.path.splitext(src)[0] + '-resolve.mov'
         try:
-            r = subprocess.run(['/bin/bash', CONVERTER, src, '60', 'prores'],
-                               capture_output=True, text=True, timeout=1800)
+            # Serialised: two ProRes writes at once only fight over the disk,
+            # and the converter takes its own lock anyway and would fail the
+            # second one.
+            with _gate:
+                r = subprocess.run(['/bin/bash', CONVERTER, src, '60', 'prores'],
+                                   capture_output=True, text=True, timeout=1800)
         except subprocess.TimeoutExpired:
             return self._json(500, {'error': 'conversion timed out', 'saved': src})
         if r.returncode != 0 or not os.path.exists(out):
