@@ -596,6 +596,7 @@
     { v: 'accuracy',  t: 'Accuracy',  d: 'The measured record of how this site\u2019s own readings have performed, published whether or not it flatters them.' },
     { v: 'watchlist', t: 'Watchlist', d: 'The tickers you follow, with live prices and one-click analysis.' },
     { v: 'alerts',    t: 'Alerts',    d: 'Set a target above or below the current price and get flagged when a stock crosses it.', badge: 'alertBadge' },
+    { v: 'practice',  t: 'Practice',  d: 'A practice account with pretend money, so you can rehearse position sizing against your own risk limits. Nothing here touches a broker.' },
     { v: 'learn',     t: 'Learn',     d: 'Nineteen plain-English lessons with quizzes, split by whether they apply to day trading or long-term investing.' },
     { v: 'pricing',   t: 'Billing',   d: 'What a free account includes, what Pro adds, and what each billing period works out to per month.' },
     { v: 'settings',  t: 'Settings',  d: 'Turn any part of the analysis on or off \u2014 the score, the indicators, the projection, the summary.' },
@@ -1368,6 +1369,161 @@
     } catch (e) { /* the badge is decoration */ }
   }
 
+  // ---- Practice account ----
+  // Pretend money. Fills use the live price, so the arithmetic is honest even
+  // though none of it is real. The risk meter measures the book against the
+  // user's own limits rather than any house view.
+  let paperState = null;
+
+  const pMoney = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Number(n) || 0).toLocaleString('en-US',
+    { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const pPct = (n) => (Number(n) || 0).toFixed(1) + '%';
+
+  async function loadPaper() {
+    try {
+      const j = await (await fetch('/api/paper')).json();
+      paperState = j;
+      renderPaper();
+    } catch (e) { paperMsg('Could not load the practice account.', true); }
+  }
+
+  function paperMsg(text, bad) {
+    const el = $('pMsg');
+    if (!el) return;
+    if (!text) { el.hidden = true; el.textContent = ''; return; }
+    el.hidden = false;
+    el.textContent = text;
+    el.className = 'paper-msg' + (bad ? ' bad' : ' ok');
+  }
+
+  function renderPaper() {
+    const has = !!(paperState && paperState.account);
+    const setup = $('paperSetup'), book = $('paperBook');
+    if (!setup || !book) return;
+    setup.classList.toggle('hidden', has);
+    book.classList.toggle('hidden', !has);
+    if (!has) {
+      const d = (paperState && paperState.defaults) || {};
+      if (d.startBalance) $('paperStart').value = d.startBalance;
+      return;
+    }
+    const a = paperState.account, r = a.risk, lim = a.limits || { maxPosition: 20, perTrade: 2 };
+
+    $('pEquity').textContent = pMoney(a.equity);
+    $('pCash').textContent = pMoney(a.cash);
+    $('pInvested').textContent = pMoney(a.invested);
+    const pn = $('pPnl');
+    pn.textContent = (a.pnl >= 0 ? '+' : '') + pMoney(a.pnl).replace('-', '') + '  (' + (a.pnlPct >= 0 ? '+' : '') + pPct(a.pnlPct) + ')';
+    pn.className = 'pstat-v ' + (a.pnl > 0 ? 'up' : a.pnl < 0 ? 'down' : '');
+
+    $('pBand').textContent = r.band;
+    $('pBand').className = 'risk-band ' + r.band;
+    $('pRiskFill').style.width = Math.max(2, r.score) + '%';
+    $('pRiskFill').className = r.band;
+    $('pInvPct').textContent = pPct(r.investedPct);
+    $('pLargest').textContent = pPct(r.largestPct);
+    $('pCashPct').textContent = pPct(r.cashPct);
+    $('pFlags').innerHTML = (r.flags || []).map(f =>
+      '<div class="risk-flag ' + esc(f.level) + '">' + esc(f.text) + '</div>').join('');
+
+    $('rMaxPos').value = lim.maxPosition;
+    $('rPerTrade').value = lim.perTrade;
+    $('rMaxPosV').textContent = lim.maxPosition + '%';
+    $('rPerTradeV').textContent = lim.perTrade + '%';
+
+    $('pPositions').innerHTML = a.positions.length
+      ? '<table class="ptable"><thead><tr><th>Symbol</th><th>Qty</th><th>Average</th><th>Price</th>'
+        + '<th>Value</th><th>P&amp;L</th><th></th></tr></thead><tbody>'
+        + a.positions.map(p =>
+          '<tr><td><b>' + esc(p.symbol) + '</b>' + (p.stale ? ' <span class="stale" title="No live quote; valued at your entry price">stale</span>' : '') + '</td>'
+          + '<td>' + p.qty + '</td><td>' + pMoney(p.avgPrice) + '</td><td>' + pMoney(p.mark) + '</td>'
+          + '<td>' + pMoney(p.value) + '</td>'
+          + '<td class="' + (p.pnl > 0 ? 'up' : p.pnl < 0 ? 'down' : '') + '">'
+          + (p.pnl >= 0 ? '+' : '') + pMoney(p.pnl).replace('-', '') + ' (' + (p.pnlPct >= 0 ? '+' : '') + pPct(p.pnlPct) + ')</td>'
+          + '<td><button type="button" class="link-btn p-close" data-sym="' + esc(p.symbol) + '" data-qty="' + p.qty + '">Close</button></td></tr>'
+        ).join('') + '</tbody></table>'
+      : '<p class="muted" style="font-size:14px">Nothing open. Buy something above to start.</p>';
+
+    const fills = paperState.fills || [];
+    $('pFills').innerHTML = fills.length
+      ? '<table class="ptable"><thead><tr><th>When</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Price</th><th>Realised</th></tr></thead><tbody>'
+        + fills.map(f =>
+          '<tr><td class="muted">' + new Date(f.ts).toLocaleString() + '</td><td><b>' + esc(f.symbol) + '</b></td>'
+          + '<td class="' + (f.side === 'buy' ? 'up' : 'down') + '">' + esc(f.side) + '</td>'
+          + '<td>' + f.qty + '</td><td>' + pMoney(f.price) + '</td>'
+          + '<td class="' + (f.realized > 0 ? 'up' : f.realized < 0 ? 'down' : '') + '">'
+          + (f.realized == null ? '—' : (f.realized >= 0 ? '+' : '') + pMoney(f.realized).replace('-', '')) + '</td></tr>'
+        ).join('') + '</tbody></table>'
+      : '<p class="muted" style="font-size:14px">No fills yet.</p>';
+
+    document.querySelectorAll('.p-close').forEach(b => b.addEventListener('click', () => {
+      $('pSym').value = b.dataset.sym; $('pQty').value = b.dataset.qty; trade('sell');
+    }));
+  }
+
+  async function trade(side) {
+    const symbol = ($('pSym').value || '').trim().toUpperCase();
+    const qty = Number($('pQty').value);
+    if (!symbol) return paperMsg('Enter a symbol.', true);
+    if (!(qty > 0)) return paperMsg('Enter a quantity above zero.', true);
+    paperMsg('Working…');
+    try {
+      const res = await fetch('/api/paper/trade', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol, side, qty }) });
+      const j = await res.json();
+      if (!res.ok) return paperMsg(j.error || 'That did not go through.', true);
+      paperState = { account: j.account, fills: j.fills, defaults: paperState && paperState.defaults };
+      renderPaper();
+      const f = j.filled;
+      paperMsg(f.side === 'buy' ? 'Bought ' + f.qty + ' ' + f.symbol + ' at ' + pMoney(f.price)
+                                : 'Sold ' + f.qty + ' ' + f.symbol + ' at ' + pMoney(f.price));
+      $('pQty').value = '';
+    } catch (e) { paperMsg('That did not go through.', true); }
+  }
+
+  function wirePractice() {
+    if (!$('paperOpen')) return;
+    document.querySelectorAll('.paper-preset').forEach(b =>
+      b.addEventListener('click', () => { $('paperStart').value = b.dataset.amt; }));
+    $('paperOpen').addEventListener('click', async () => {
+      const startBalance = Number($('paperStart').value);
+      try {
+        const res = await fetch('/api/paper/open', { method: 'POST',
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ startBalance }) });
+        const j = await res.json();
+        paperState = { account: j.account, fills: j.fills || [], defaults: paperState && paperState.defaults };
+        renderPaper();
+        paperMsg('');
+      } catch (e) { paperMsg('Could not start the account.', true); }
+    });
+    $('paperReset').addEventListener('click', () => {
+      // Straight back to the setup card, so the balance is chosen again rather
+      // than silently reused.
+      paperState = { account: null, fills: [], defaults: paperState && paperState.defaults };
+      renderPaper();
+    });
+    $('pBuy').addEventListener('click', () => trade('buy'));
+    $('pSell').addEventListener('click', () => trade('sell'));
+    $('pQty').addEventListener('keydown', (e) => { if (e.key === 'Enter') trade('buy'); });
+
+    const live = (id, label) => {
+      const el = $(id);
+      el.addEventListener('input', () => { $(label).textContent = el.value + '%'; });
+      el.addEventListener('change', saveRisk);
+    };
+    live('rMaxPos', 'rMaxPosV');
+    live('rPerTrade', 'rPerTradeV');
+  }
+
+  async function saveRisk() {
+    try {
+      const res = await fetch('/api/risk', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ maxPosition: Number($('rMaxPos').value), perTrade: Number($('rPerTrade').value) }) });
+      if (res.ok) loadPaper();     // the meter is measured against these, so refresh it
+    } catch (e) { /* the slider already shows the intent */ }
+  }
+
   function renderAcct() {
     const el = $('acct');
     if (currentUser) {
@@ -1473,11 +1629,12 @@
     if (lastData) updateWatchBtn(lastData.symbol);
   }
   $('watchBtn').addEventListener('click', () => { if (lastData) toggleWatch(lastData.symbol); });
+  wirePractice();
   checkAuth();
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
   let currentView = 'home';
-  const VIEWS = ['home', 'analyze', 'compare', 'screener', 'markets', 'movers', 'accuracy', 'watchlist', 'alerts', 'learn', 'settings', 'pricing', 'admin', 'legal'];
+  const VIEWS = ['home', 'analyze', 'compare', 'screener', 'markets', 'movers', 'accuracy', 'watchlist', 'alerts', 'practice', 'learn', 'settings', 'pricing', 'admin', 'legal'];
   const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact'];
   // Each view has a real URL now, so navigation updates the address bar and
   // the back button works. pushUrl is skipped when we are *reacting* to a URL
@@ -1513,6 +1670,7 @@
     if (name === 'compare') { renderCompareChips(); if (compareSymbols.length >= 2 && !$('compareResult').innerHTML) loadCompare(); }
     if (name === 'screener' && !$('screenResult').innerHTML) loadScreen();
     if (name === 'alerts') loadAlerts();
+    if (name === 'practice') loadPaper();
     if (name === 'admin') loadAdmin();
     if (name === 'pricing') renderPricing();
   }

@@ -390,6 +390,90 @@
   </section>
 
   <!-- SETTINGS -->
+  <section class="view hidden" id="view-practice">
+    <div class="view-h">Practice</div>
+    <p class="muted" style="margin:-10px 0 20px;max-width:64ch">
+      A practice account with pretend money, so you can rehearse position sizing against your own
+      limits without any of it being real. Fills use the live price. Nothing here touches a broker.
+    </p>
+
+    <div id="paperSetup" class="card hidden" style="max-width:480px">
+      <h3 style="margin:0 0 6px">Start a practice account</h3>
+      <p class="muted" style="margin:0 0 16px;font-size:14px">Pick the balance you want to practise with.</p>
+      <label class="lbl" for="paperStart">Starting balance</label>
+      <div class="row" style="gap:8px;align-items:center;margin-bottom:12px">
+        <span class="muted" style="font-size:18px">$</span>
+        <input id="paperStart" type="number" min="100" max="10000000" step="100" value="10000" class="inp" style="max-width:180px" />
+      </div>
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:16px">
+        <button type="button" class="chip paper-preset" data-amt="1000">1,000</button>
+        <button type="button" class="chip paper-preset" data-amt="10000">10,000</button>
+        <button type="button" class="chip paper-preset" data-amt="25000">25,000</button>
+        <button type="button" class="chip paper-preset" data-amt="100000">100,000</button>
+      </div>
+      <button type="button" class="btn primary" id="paperOpen">Start practising</button>
+    </div>
+
+    <div id="paperBook" class="hidden">
+      <div class="paper-top">
+        <div class="pstat"><div class="pstat-k">Account value</div><div class="pstat-v" id="pEquity">&mdash;</div></div>
+        <div class="pstat"><div class="pstat-k">Cash</div><div class="pstat-v" id="pCash">&mdash;</div></div>
+        <div class="pstat"><div class="pstat-k">Invested</div><div class="pstat-v" id="pInvested">&mdash;</div></div>
+        <div class="pstat"><div class="pstat-k">Profit &amp; loss</div><div class="pstat-v" id="pPnl">&mdash;</div></div>
+      </div>
+
+      <div class="paper-grid">
+        <div class="card">
+          <h3 style="margin:0 0 12px">Place a practice trade</h3>
+          <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
+            <div style="flex:1 1 130px">
+              <label class="lbl" for="pSym">Symbol</label>
+              <input id="pSym" class="inp" placeholder="AAPL" maxlength="16" />
+            </div>
+            <div style="flex:0 1 110px">
+              <label class="lbl" for="pQty">Quantity</label>
+              <input id="pQty" class="inp" type="number" min="0" step="any" placeholder="10" />
+            </div>
+            <button type="button" class="btn buy" id="pBuy">Buy</button>
+            <button type="button" class="btn sell" id="pSell">Sell</button>
+          </div>
+          <div id="pMsg" class="paper-msg" hidden></div>
+        </div>
+
+        <div class="card">
+          <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:10px">
+            <h3 style="margin:0">Risk</h3>
+            <span class="risk-band" id="pBand">&mdash;</span>
+          </div>
+          <div class="risk-bar"><i id="pRiskFill"></i></div>
+          <div class="risk-legend"><span>Invested <b id="pInvPct">&mdash;</b></span><span>Largest <b id="pLargest">&mdash;</b></span><span>Cash <b id="pCashPct">&mdash;</b></span></div>
+          <div id="pFlags" class="risk-flags"></div>
+          <details class="risk-set">
+            <summary>Your limits</summary>
+            <label class="lbl" for="rMaxPos">Most in one position &mdash; <b id="rMaxPosV">20%</b></label>
+            <input id="rMaxPos" type="range" min="1" max="100" value="20" />
+            <label class="lbl" for="rPerTrade">Risk per trade &mdash; <b id="rPerTradeV">2%</b></label>
+            <input id="rPerTrade" type="range" min="1" max="25" value="2" />
+            <p class="muted" style="font-size:12.5px;margin:8px 0 0">
+              These are your own limits. The meter measures the account against them; nothing is blocked.
+            </p>
+          </details>
+        </div>
+      </div>
+
+      <h3 style="margin:22px 0 10px">Positions</h3>
+      <div id="pPositions"></div>
+
+      <h3 style="margin:22px 0 10px">Recent fills</h3>
+      <div id="pFills"></div>
+
+      <div class="row" style="margin-top:20px;gap:10px;align-items:center;flex-wrap:wrap">
+        <button type="button" class="btn ghost" id="paperReset">Reset the account</button>
+        <span class="muted" style="font-size:13px">Clears every position and fill, and lets you pick a new starting balance.</span>
+      </div>
+    </div>
+  </section>
+
   <section class="view hidden" id="view-settings">
     <h1 class="view-h">Settings</h1>
     <p class="learn-lead">Turn any part of the analysis on or off. This only changes what is shown &mdash; the numbers behind it are computed the same either way, and nothing here is sent to the server.</p>

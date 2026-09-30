@@ -10,7 +10,9 @@ const SESSION_TTL = 30 * DAY;
 let pool = null;
 let mode = 'memory';
 let lastErr = null;
-const mem = { users: new Map(), byEmail: new Map(), sessions: new Map(), watch: new Map(), alerts: new Map(), usage: new Map(), preds: new Map() };
+const mem = { users: new Map(), byEmail: new Map(), sessions: new Map(), watch: new Map(),
+  alerts: new Map(), usage: new Map(), preds: new Map(),
+  paper: new Map(), pos: new Map(), fills: new Map() };
 
 // Render's INTERNAL Postgres host has no dot (e.g. dpg-xxxx-a) and speaks plain
 // TCP; hosted/external hosts (Neon, Render external) are dotted and need SSL.
@@ -40,6 +42,28 @@ async function init() {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_count INTEGER NOT NULL DEFAULT 0');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_best INTEGER NOT NULL DEFAULT 0');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_day TEXT');
+
+      // Risk limits the user sets, applied to paper trades and shown against
+      // real positions. Percentages of account value.
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS risk_max_position INTEGER NOT NULL DEFAULT 20');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS risk_per_trade INTEGER NOT NULL DEFAULT 2');
+
+      // Paper trading. Cash and positions are separate rows so a position can
+      // be closed without rewriting the account, and every fill is kept in
+      // paper_trades so the history survives a position being flattened.
+      await pool.query(`CREATE TABLE IF NOT EXISTS paper_accounts (
+        uid TEXT PRIMARY KEY, cash DOUBLE PRECISION NOT NULL,
+        start_balance DOUBLE PRECISION NOT NULL, created BIGINT NOT NULL)`);
+      await pool.query(`CREATE TABLE IF NOT EXISTS paper_positions (
+        uid TEXT NOT NULL, symbol TEXT NOT NULL,
+        qty DOUBLE PRECISION NOT NULL, avg_price DOUBLE PRECISION NOT NULL,
+        opened BIGINT NOT NULL, PRIMARY KEY (uid, symbol))`);
+      await pool.query(`CREATE TABLE IF NOT EXISTS paper_trades (
+        id TEXT PRIMARY KEY, uid TEXT NOT NULL, symbol TEXT NOT NULL,
+        side TEXT NOT NULL, qty DOUBLE PRECISION NOT NULL,
+        price DOUBLE PRECISION NOT NULL, realized DOUBLE PRECISION,
+        ts BIGINT NOT NULL)`);
+      await pool.query('CREATE INDEX IF NOT EXISTS paper_trades_uid_idx ON paper_trades (uid, ts DESC)');
       await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS users_google_id_idx ON users (google_id) WHERE google_id IS NOT NULL');
       await pool.query(`CREATE TABLE IF NOT EXISTS sessions (
         token TEXT PRIMARY KEY, uid TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires BIGINT NOT NULL)`);
@@ -93,6 +117,92 @@ function verifyPw(pw, stored) {
 }
 
 const pub = (u) => u && { id: u.id, email: u.email, plan: u.plan };
+
+// ---- risk limits ----
+const RISK_DEFAULTS = { maxPosition: 20, perTrade: 2 };
+async function getRisk(uid) {
+  const u = await getUserById(uid);
+  if (!u) return { ...RISK_DEFAULTS };
+  return {
+    maxPosition: Number.isFinite(u.risk_max_position) ? u.risk_max_position : RISK_DEFAULTS.maxPosition,
+    perTrade: Number.isFinite(u.risk_per_trade) ? u.risk_per_trade : RISK_DEFAULTS.perTrade,
+  };
+}
+async function saveRisk(uid, maxPosition, perTrade) {
+  if (mode === 'postgres') {
+    await pool.query('UPDATE users SET risk_max_position=$2, risk_per_trade=$3 WHERE id=$1', [uid, maxPosition, perTrade]);
+  } else {
+    const u = mem.users.get(uid);
+    if (u) { u.risk_max_position = maxPosition; u.risk_per_trade = perTrade; }
+  }
+}
+
+// ---- paper trading ----
+async function getPaper(uid) {
+  if (mode === 'postgres') {
+    const r = await pool.query('SELECT cash, start_balance, created FROM paper_accounts WHERE uid=$1', [uid]);
+    if (!r.rows[0]) return null;
+    return { cash: Number(r.rows[0].cash), startBalance: Number(r.rows[0].start_balance), created: Number(r.rows[0].created) };
+  }
+  return mem.paper.get(uid) || null;
+}
+async function openPaper(uid, startBalance) {
+  const rec = { cash: startBalance, startBalance, created: Date.now() };
+  if (mode === 'postgres') {
+    await pool.query(`INSERT INTO paper_accounts (uid, cash, start_balance, created) VALUES ($1,$2,$3,$4)
+      ON CONFLICT (uid) DO UPDATE SET cash=$2, start_balance=$3, created=$4`,
+      [uid, rec.cash, rec.startBalance, rec.created]);
+    await pool.query('DELETE FROM paper_positions WHERE uid=$1', [uid]);
+    await pool.query('DELETE FROM paper_trades WHERE uid=$1', [uid]);
+  } else {
+    mem.paper.set(uid, rec); mem.pos.set(uid, new Map()); mem.fills.set(uid, []);
+  }
+  return rec;
+}
+async function setCash(uid, cash) {
+  if (mode === 'postgres') await pool.query('UPDATE paper_accounts SET cash=$2 WHERE uid=$1', [uid, cash]);
+  else { const a = mem.paper.get(uid); if (a) a.cash = cash; }
+}
+async function listPositions(uid) {
+  if (mode === 'postgres') {
+    const r = await pool.query('SELECT symbol, qty, avg_price, opened FROM paper_positions WHERE uid=$1 ORDER BY opened', [uid]);
+    return r.rows.map(x => ({ symbol: x.symbol, qty: Number(x.qty), avgPrice: Number(x.avg_price), opened: Number(x.opened) }));
+  }
+  return [...(mem.pos.get(uid) || new Map()).values()];
+}
+async function savePosition(uid, p) {
+  if (mode === 'postgres') {
+    await pool.query(`INSERT INTO paper_positions (uid, symbol, qty, avg_price, opened) VALUES ($1,$2,$3,$4,$5)
+      ON CONFLICT (uid, symbol) DO UPDATE SET qty=$3, avg_price=$4`, [uid, p.symbol, p.qty, p.avgPrice, p.opened]);
+  } else {
+    if (!mem.pos.has(uid)) mem.pos.set(uid, new Map());
+    mem.pos.get(uid).set(p.symbol, p);
+  }
+}
+async function dropPosition(uid, symbol) {
+  if (mode === 'postgres') await pool.query('DELETE FROM paper_positions WHERE uid=$1 AND symbol=$2', [uid, symbol]);
+  else if (mem.pos.has(uid)) mem.pos.get(uid).delete(symbol);
+}
+async function addFill(uid, f) {
+  const row = { id: crypto.randomUUID(), uid, ...f, ts: Date.now() };
+  if (mode === 'postgres') {
+    await pool.query('INSERT INTO paper_trades (id, uid, symbol, side, qty, price, realized, ts) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [row.id, uid, row.symbol, row.side, row.qty, row.price, row.realized == null ? null : row.realized, row.ts]);
+  } else {
+    if (!mem.fills.has(uid)) mem.fills.set(uid, []);
+    mem.fills.get(uid).unshift(row);
+  }
+  return row;
+}
+async function listFills(uid, limit) {
+  limit = Math.min(200, Math.max(1, limit || 50));
+  if (mode === 'postgres') {
+    const r = await pool.query('SELECT symbol, side, qty, price, realized, ts FROM paper_trades WHERE uid=$1 ORDER BY ts DESC LIMIT $2', [uid, limit]);
+    return r.rows.map(x => ({ symbol: x.symbol, side: x.side, qty: Number(x.qty), price: Number(x.price),
+      realized: x.realized == null ? null : Number(x.realized), ts: Number(x.ts) }));
+  }
+  return (mem.fills.get(uid) || []).slice(0, limit);
+}
 
 // ---- streak ----
 async function getStreak(uid) {
@@ -399,6 +509,8 @@ module.exports = {
   createUser, getUserByEmail, getUserById,
   createSession, getSessionUser, deleteSession, purgeExpiredSessions,
   getStreak, saveStreak,
+  getRisk, saveRisk, RISK_DEFAULTS,
+  getPaper, openPaper, setCash, listPositions, savePosition, dropPosition, addFill, listFills,
   listWatch, addWatch, removeWatch,
   listAlerts, addAlert, removeAlert, markTriggered,
   listUsers, counts,

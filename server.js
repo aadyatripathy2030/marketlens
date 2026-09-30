@@ -77,6 +77,9 @@ const KNOWN_API = new Set([
   '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
   '/api/auth/delete', '/api/auth/google', '/api/auth/google/callback',
   '/api/billing/webhook', '/api/billing/checkout', '/api/billing/portal',
+  // practice account, the risk limits it is measured against, and the
+  // sentiment read over the headlines that were already being fetched
+  '/api/paper', '/api/paper/open', '/api/paper/trade', '/api/risk', '/api/sentiment',
 ]);
 const errorLog = [];                   // recent server errors (ring buffer)
 function logError(e) { errorLog.push({ t: Date.now(), msg: String((e && e.message) || e).slice(0, 200) }); if (errorLog.length > 60) errorLog.shift(); }
@@ -729,6 +732,232 @@ function streakView(st) {
   const gap = MKT.tradingDaysBetween(st.day, day);
   const alive = gap <= 1;
   return { count: alive ? st.count : 0, best: st.best || 0, alive, day: st.day };
+}
+
+// ---- News sentiment ----
+// Reads the headlines Finnhub already supplies for the symbol and classifies
+// each one. With a Claude key it is the model doing the reading; without one
+// it falls back to a word list, and says which was used, because "AI
+// sentiment" that is secretly a keyword count is the sort of claim this site
+// exists to avoid making.
+const SENT_POS = ['beat', 'beats', 'surge', 'surges', 'rally', 'rallies', 'upgrade', 'upgraded', 'record',
+  'jump', 'jumps', 'soar', 'soars', 'gain', 'gains', 'growth', 'profit', 'outperform', 'raises', 'strong', 'wins'];
+const SENT_NEG = ['miss', 'misses', 'plunge', 'plunges', 'fall', 'falls', 'drop', 'drops', 'downgrade', 'downgraded',
+  'slump', 'cut', 'cuts', 'loss', 'losses', 'lawsuit', 'probe', 'recall', 'warns', 'weak', 'layoff', 'layoffs', 'slide'];
+
+function sentimentByWords(items) {
+  return items.map(n => {
+    const t = String(n.title || '').toLowerCase();
+    let sc = 0;
+    SENT_POS.forEach(w => { if (t.includes(w)) sc += 1; });
+    SENT_NEG.forEach(w => { if (t.includes(w)) sc -= 1; });
+    return { ...n, tone: sc > 0 ? 'positive' : sc < 0 ? 'negative' : 'neutral' };
+  });
+}
+
+async function sentimentByClaude(items, symbol) {
+  const list = items.map((n, i) => (i + 1) + '. ' + n.title).join('\n');
+  const system = 'You classify stock news headlines. For each numbered headline, answer with its number, a colon, '
+    + 'and exactly one of: positive, negative, neutral — judged only by what the headline says about the company\'s '
+    + 'prospects. One per line, nothing else. Do not predict the share price.';
+  const user = 'Company: ' + symbol + '\n\n' + list;
+  const body = JSON.stringify({ model: AI_MODEL_FREE, max_tokens: 400, system,
+    messages: [{ role: 'user', content: user }] });
+  const { json: j } = await httpsJson({ method: 'POST', hostname: 'api.anthropic.com', path: '/v1/messages',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01', 'Content-Length': Buffer.byteLength(body) } }, body);
+  const text = j && j.content && j.content[0] && j.content[0].text;
+  if (!text) throw new Error('no sentiment response');
+  const tones = {};
+  String(text).split('\n').forEach(line => {
+    const m = line.match(/^\s*(\d+)\s*[:.\)-]\s*(positive|negative|neutral)/i);
+    if (m) tones[Number(m[1])] = m[2].toLowerCase();
+  });
+  return items.map((n, i) => ({ ...n, tone: tones[i + 1] || 'neutral' }));
+}
+
+async function handleSentiment(req, res, symbolRaw) {
+  const symbol = String(symbolRaw || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
+  if (!symbol) return json(res, 400, { error: 'No symbol.' });
+  if (!FINNHUB_API_KEY) {
+    return json(res, 200, { symbol, available: false,
+      message: 'News is not configured on this deployment, so there is nothing to read.' });
+  }
+  let items = [];
+  try { items = (await fetchFinnhubNews(symbol)) || []; } catch (e) { logError(e); }
+  if (!items.length) {
+    return json(res, 200, { symbol, available: true, items: [], counts: { positive: 0, negative: 0, neutral: 0 },
+      message: 'No headlines for ' + symbol + ' in the last two weeks.' });
+  }
+  items = items.slice(0, 10);
+  let scored, method = 'rules';
+  if (ANTHROPIC_API_KEY) {
+    try { scored = await sentimentByClaude(items, symbol); method = 'claude'; }
+    catch (e) { logError(e); }
+  }
+  if (!scored) scored = sentimentByWords(items);
+  const counts = { positive: 0, negative: 0, neutral: 0 };
+  scored.forEach(n => { counts[n.tone] = (counts[n.tone] || 0) + 1; });
+  const lean = counts.positive === counts.negative ? 'mixed'
+    : counts.positive > counts.negative ? 'positive' : 'negative';
+  return json(res, 200, { symbol, available: true, method, items: scored, counts, lean,
+    note: 'How the last ' + scored.length + ' headlines read. It describes coverage, not what the price will do.' });
+}
+
+// ---- Paper trading ----
+// Practice with fake money. The point is to let someone rehearse position
+// sizing against their own risk limits without any of it being real, which is
+// the only kind of "trading" this site has any business offering.
+const PAPER_MIN = 100, PAPER_MAX = 10000000, PAPER_DEFAULT = 10000;
+
+function cleanQty(q) {
+  q = Number(q);
+  if (!Number.isFinite(q) || q <= 0) return 0;
+  return Math.floor(q * 1e4) / 1e4;          // fractional shares, bounded precision
+}
+
+// Value the book at the latest prices. Falls back to the entry price when a
+// quote is missing, so a provider outage shows a flat position rather than
+// wiping the account to zero.
+async function valueBook(uid) {
+  const [acct, positions, risk] = await Promise.all([
+    db.getPaper(uid), db.listPositions(uid), db.getRisk(uid),
+  ]);
+  if (!acct) return null;
+  const symbols = positions.map(p => p.symbol);
+  let quotes = [];
+  if (symbols.length) { try { quotes = await fetchQuotes(symbols); } catch (e) { logError(e); } }
+  const priceOf = (sym) => {
+    const q = quotes.find(x => x && String(x.symbol).toUpperCase() === sym);
+    const p = q && Number(q.price);
+    return Number.isFinite(p) && p > 0 ? p : null;
+  };
+  const rows = positions.map(p => {
+    const last = priceOf(p.symbol);
+    const mark = last == null ? p.avgPrice : last;
+    const value = mark * p.qty;
+    const cost = p.avgPrice * p.qty;
+    return { ...p, last, mark, value, cost, pnl: value - cost,
+      pnlPct: cost > 0 ? ((value - cost) / cost) * 100 : 0, stale: last == null };
+  });
+  const invested = rows.reduce((a, r) => a + r.value, 0);
+  const equity = acct.cash + invested;
+  const largest = rows.reduce((a, r) => Math.max(a, r.value), 0);
+  return {
+    cash: acct.cash, startBalance: acct.startBalance, created: acct.created,
+    positions: rows, invested, equity,
+    pnl: equity - acct.startBalance,
+    pnlPct: acct.startBalance > 0 ? ((equity - acct.startBalance) / acct.startBalance) * 100 : 0,
+    risk: riskMeter({ equity, cash: acct.cash, invested, largest, count: rows.length, rows }, risk),
+    limits: risk,
+  };
+}
+
+// A plain reading of how exposed the book is, measured against the user's own
+// limits rather than an invented house view. Every number here is arithmetic
+// on the positions — nothing is predicted.
+function riskMeter(b, limits) {
+  const pct = (n) => b.equity > 0 ? (n / b.equity) * 100 : 0;
+  const investedPct = pct(b.invested);
+  const largestPct = pct(b.largest);
+  const flags = [];
+  if (largestPct > limits.maxPosition) {
+    flags.push({ level: 'warn', text: 'One position is ' + largestPct.toFixed(0) +
+      '% of the account, over your ' + limits.maxPosition + '% limit.' });
+  }
+  if (investedPct > 95) flags.push({ level: 'warn', text: 'Almost nothing is in cash.' });
+  if (b.count === 1 && b.invested > 0) flags.push({ level: 'note', text: 'Everything is in one name.' });
+  if (b.count === 0) flags.push({ level: 'note', text: 'No open positions.' });
+  // 0 when flat, 100 when fully invested in a single name well past the limit
+  const conc = b.invested > 0 ? (b.largest / b.invested) * 100 : 0;
+  const score = Math.round(Math.min(100, investedPct * 0.6 + conc * 0.4));
+  return {
+    score,
+    band: score >= 75 ? 'high' : score >= 45 ? 'moderate' : 'low',
+    investedPct, cashPct: pct(b.cash), largestPct, concentration: conc,
+    positions: b.count, flags,
+  };
+}
+
+async function handlePaperGet(req, res, user) {
+  let book = await valueBook(user.id);
+  if (!book) return json(res, 200, { account: null, defaults: { startBalance: PAPER_DEFAULT, min: PAPER_MIN, max: PAPER_MAX } });
+  const fills = await db.listFills(user.id, 50);
+  return json(res, 200, { account: book, fills, defaults: { startBalance: PAPER_DEFAULT, min: PAPER_MIN, max: PAPER_MAX } });
+}
+
+// Open or reset the practice account at a balance the user picks.
+async function handlePaperOpen(req, res, user, body) {
+  let start = Number(body && body.startBalance);
+  if (!Number.isFinite(start)) start = PAPER_DEFAULT;
+  start = Math.round(Math.min(PAPER_MAX, Math.max(PAPER_MIN, start)) * 100) / 100;
+  await db.openPaper(user.id, start);
+  const book = await valueBook(user.id);
+  return json(res, 200, { account: book, fills: [] });
+}
+
+async function handlePaperTrade(req, res, user, body) {
+  const symbol = String((body && body.symbol) || '').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
+  const side = String((body && body.side) || '').toLowerCase();
+  const qty = cleanQty(body && body.qty);
+  if (!symbol) return json(res, 400, { error: 'Pick a symbol.' });
+  if (side !== 'buy' && side !== 'sell') return json(res, 400, { error: 'Side must be buy or sell.' });
+  if (!qty) return json(res, 400, { error: 'Enter a quantity above zero.' });
+
+  const acct = await db.getPaper(user.id);
+  if (!acct) return json(res, 400, { error: 'Start a practice account first.' });
+
+  let quotes = [];
+  try { quotes = await fetchQuotes([symbol]); } catch (e) { logError(e); }
+  const q = quotes && quotes[0];
+  const price = q && Number(q.price);
+  if (!Number.isFinite(price) || price <= 0) {
+    return json(res, 502, { error: 'No price for ' + symbol + ' right now, so the fill would be invented. Try again shortly.' });
+  }
+
+  const positions = await db.listPositions(user.id);
+  const held = positions.find(p => p.symbol === symbol);
+  const cost = price * qty;
+
+  if (side === 'buy') {
+    if (cost > acct.cash + 1e-9) {
+      return json(res, 400, { error: 'That costs ' + cost.toFixed(2) + ' and you have ' + acct.cash.toFixed(2) + ' in cash.' });
+    }
+    const newQty = (held ? held.qty : 0) + qty;
+    const newAvg = held ? ((held.avgPrice * held.qty) + cost) / newQty : price;
+    await db.savePosition(user.id, { symbol, qty: newQty, avgPrice: newAvg, opened: held ? held.opened : Date.now() });
+    await db.setCash(user.id, acct.cash - cost);
+    await db.addFill(user.id, { symbol, side, qty, price, realized: null });
+  } else {
+    if (!held || held.qty + 1e-9 < qty) {
+      return json(res, 400, { error: 'You hold ' + (held ? held.qty : 0) + ' ' + symbol + '.' });
+    }
+    const realized = (price - held.avgPrice) * qty;
+    const left = Math.round((held.qty - qty) * 1e4) / 1e4;
+    if (left <= 0) await db.dropPosition(user.id, symbol);
+    else await db.savePosition(user.id, { ...held, qty: left });
+    await db.setCash(user.id, acct.cash + price * qty);
+    await db.addFill(user.id, { symbol, side, qty, price, realized });
+  }
+
+  const book = await valueBook(user.id);
+  const fills = await db.listFills(user.id, 50);
+  return json(res, 200, { account: book, fills, filled: { symbol, side, qty, price } });
+}
+
+// ---- Risk limits ----
+async function handleRiskGet(req, res, user) {
+  return json(res, 200, { risk: await db.getRisk(user.id), defaults: db.RISK_DEFAULTS });
+}
+async function handleRiskSet(req, res, user, body) {
+  const clamp = (v, lo, hi, d) => {
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d;
+  };
+  const maxPosition = clamp(body && body.maxPosition, 1, 100, db.RISK_DEFAULTS.maxPosition);
+  const perTrade = clamp(body && body.perTrade, 1, 25, db.RISK_DEFAULTS.perTrade);
+  await db.saveRisk(user.id, maxPosition, perTrade);
+  return json(res, 200, { risk: { maxPosition, perTrade } });
 }
 
 // ---- Abuse throttling ----
@@ -1722,6 +1951,8 @@ const VIEW_SEO = {
     desc: 'Keep the tickers you follow in one place, with live prices and one-click analysis.' },
   'learn': { view: 'learn', title: 'Learn investing — free plain-English lessons — ChartGauge',
     desc: 'Nineteen short lessons covering market basics, technical and fundamental analysis, valuation, financial statements, risk management, order types, candlesticks, volume, trading psychology, costs and index funds — each with a quiz.' },
+  'practice': { view: 'practice', title: 'Paper trading — practise with pretend money — ChartGauge',
+    desc: 'A practice account with a starting balance you choose. Fills use the live price, positions are valued in real time, and a risk meter measures the book against limits you set. None of it is real money.' },
   'settings': { view: 'settings', title: 'Settings — choose what the analysis shows — ChartGauge',
     desc: 'Turn any part of the analysis on or off: the indicator score, the measured base rate, exit levels, the thirteen technical readings, the projection, fundamentals, news and the written summary.' },
   'accuracy': { view: 'accuracy', title: 'How accurate is ChartGauge? — the measured record',
@@ -1880,7 +2111,7 @@ const GA_SNIPPET = (GA_ID ? `<meta name="ga-id" content="${esc(GA_ID)}">` : '')
 // 'admin' is routable so the operator can open /admin directly, but it is
 // absent from VIEW_SEO, so it never reaches the sitemap, and robots.txt
 // disallows it. The page itself is guarded server-side regardless.
-const APP_PATH = /^\/(analyze|markets|movers|accuracy|compare|screener|alerts|watchlist|learn|settings|pricing|terms|privacy|refunds|contact|admin)(\/|$)|^\/stock\//;
+const APP_PATH = /^\/(analyze|markets|movers|accuracy|compare|screener|alerts|watchlist|practice|learn|settings|pricing|terms|privacy|refunds|contact|admin)(\/|$)|^\/stock\//;
 
 // A mistyped URL used to return the two words "Not found" as plain text on a
 // blank white page, with no styling, no way back and no branding. Cheap to do
@@ -2107,6 +2338,18 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/auth/delete' && req.method === 'POST') return await handleDeleteAccount(req, res);
     if (url === '/api/auth/me' && req.method === 'GET') return await handleMe(req, res);
     if (url === '/api/watchlist') return await handleWatchlist(req, res);
+    if (url === '/api/sentiment' && req.method === 'GET')
+      return await handleSentiment(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbol'));
+    if (url === '/api/paper' || url === '/api/paper/open' || url === '/api/paper/trade' || url === '/api/risk') {
+      const u = await currentUser(req);
+      if (!u) return json(res, 401, { error: 'Please sign in.' });
+      if (url === '/api/paper' && req.method === 'GET') return await handlePaperGet(req, res, u);
+      if (url === '/api/paper/open' && req.method === 'POST') return await handlePaperOpen(req, res, u, await readBody(req));
+      if (url === '/api/paper/trade' && req.method === 'POST') return await handlePaperTrade(req, res, u, await readBody(req));
+      if (url === '/api/risk' && req.method === 'GET') return await handleRiskGet(req, res, u);
+      if (url === '/api/risk' && req.method === 'POST') return await handleRiskSet(req, res, u, await readBody(req));
+      return json(res, 405, { error: 'Method not allowed.' });
+    }
     if (url === '/api/quotes' && req.method === 'GET') return await handleQuotes(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));
     if (url === '/api/movers' && req.method === 'GET') return await handleMovers(req, res);
     if (url === '/api/ranked' && req.method === 'GET') return await handleRanked(req, res);
