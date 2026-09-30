@@ -68,6 +68,12 @@
       <option value="rsi70" selected>Overbought isn't sell — 45s</option>
       <option value="recovery">The recovery curve — 54s</option>
       <option value="aiproduct">AI reads your chart — 35s</option>
+      <option value="ad_confidence">Ad: Smarter, not harder — 34s</option>
+      <option value="ad_beginner">Ad: Finally explained — 28s</option>
+      <option value="ad_overthinker">Ad: Less overthinking — 26s</option>
+      <option value="ad_decoded">Ad: The data, decoded — 26s</option>
+      <option value="ad_busy">Ad: Better things to do — 24s</option>
+      <option value="ad_honest">Ad: No crystal ball — 28s</option>
     </select>
   </div>
 
@@ -668,8 +674,276 @@ var AIP = (function(){
     } };
 })();
 
-var SCENES = { readchart:RC, rsi70:OB, recovery:RV, aiproduct:AIP };
-var CAPS = {"readchart": [{"from": 0, "to": 5000, "badge": "", "big": "Most people open a stock chart and just see noise.", "sub": "", "url": "", "fine": ""}, {"from": 5000, "to": 8000, "badge": "", "big": "Here\u2019s what\u2019s actually on it.", "sub": "", "url": "", "fine": ""}, {"from": 8000, "to": 18600, "badge": "Trend", "big": "The 50-day average, and the 200.", "sub": "When the fast one crosses above the slow one, the trend has turned up.", "url": "", "fine": ""}, {"from": 18600, "to": 25600, "badge": "Momentum", "big": "This is RSI.", "sub": "Near 70 the move is stretched. Near 30 it has been beaten down.", "url": "", "fine": ""}, {"from": 25600, "to": 34200, "badge": "Levels", "big": "Where the move is proven wrong, and where it has done its job.", "sub": "", "url": "", "fine": ""}, {"from": 34200, "to": 43600, "badge": "", "big": "All thirteen of these, on any stock or crypto pair.", "sub": "Written out in plain English.", "url": "", "fine": ""}, {"from": 43600, "to": 50200, "badge": "", "big": "Nineteen lessons to read it yourself.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "rsi70": [{"from": 0, "to": 5100, "badge": "", "big": "RSI above 70 means sell.", "sub": "That\u2019s the rule everyone repeats.", "url": "", "fine": ""}, {"from": 5100, "to": 8600, "badge": "The signal", "big": "This stock crossed 70 right here.", "sub": "", "url": "", "fine": ""}, {"from": 8600, "to": 14500, "badge": "", "big": "Sell on that rule and you\u2019re out at 106.", "sub": "", "url": "", "fine": ""}, {"from": 14500, "to": 19600, "badge": "", "big": "It kept going for another seventeen weeks.", "sub": "Up 41%.", "url": "", "fine": ""}, {"from": 19600, "to": 24700, "badge": "", "big": "RSI never dropped back below 60.", "sub": "Not once, the whole way up.", "url": "", "fine": ""}, {"from": 24700, "to": 33400, "badge": "What it actually means", "big": "Overbought means the move got stretched.", "sub": "In a strong trend it can stay stretched for months.", "url": "", "fine": ""}, {"from": 33400, "to": 40100, "badge": "", "big": "Which is why it\u2019s one of thirteen readings.", "sub": "Not a signal on its own.", "url": "", "fine": ""}, {"from": 40100, "to": 44800, "badge": "", "big": "Nineteen lessons like this one.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "recovery": [{"from": 0, "to": 5500, "badge": "", "big": "Before your first trade, learn this.", "sub": "One piece of arithmetic. It applies to everyone.", "url": "", "fine": ""}, {"from": 5500, "to": 13400, "badge": "Lose 10%", "big": "You need 11% to get back to even.", "sub": "That sounds fine.", "url": "", "fine": ""}, {"from": 13400, "to": 18100, "badge": "Lose 25%", "big": "You need 33%.", "sub": "Still sounds manageable.", "url": "", "fine": ""}, {"from": 18100, "to": 24800, "badge": "Lose 50%", "big": "You need 100%.", "sub": "You have to double what\u2019s left.", "url": "", "fine": ""}, {"from": 24800, "to": 31500, "badge": "Lose 80%", "big": "You need 400%.", "sub": "Just to be where you started.", "url": "", "fine": ""}, {"from": 31500, "to": 41400, "badge": "", "big": "A loss and the gain that undoes it are never the same size.", "sub": "The bigger the loss, the further apart they get.", "url": "", "fine": ""}, {"from": 41400, "to": 49300, "badge": "", "big": "Which is why how much you risk matters more than how often you\u2019re right.", "sub": "", "url": "", "fine": ""}, {"from": 49300, "to": 54000, "badge": "", "big": "Lesson four of nineteen.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "aiproduct": [{"from": 0, "to": 4271, "pat": "vision", "big": "Screenshot any chart you don\u2019t understand.", "sub": "Drop it in here.", "url": "", "fine": ""}, {"from": 4271, "to": 11757, "pat": "aitext", "big": "Claude looks at the picture and tells you the trend, the levels, and whether it looks bullish or bearish.", "sub": "", "url": "", "fine": ""}, {"from": 11757, "to": 17100, "pat": "ticker", "big": "Or just type a ticker and it pulls the real price data instead.", "sub": "", "url": "", "fine": ""}, {"from": 17100, "to": 21729, "pat": "indics", "big": "Thirteen indicators computed on those bars, written out in plain English.", "sub": "", "url": "", "fine": ""}, {"from": 21729, "to": 26000, "pat": "levels", "big": "With the stop and the target marked on the chart.", "sub": "", "url": "", "fine": ""}, {"from": 26000, "to": 31700, "pat": "graded", "big": "And it tells you when it was wrong.", "sub": "Every reading is graded in public.", "url": "", "fine": ""}, {"from": 31700, "to": 34543, "pat": "end", "big": "Try it on your own chart.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}]};
+// ------------------------------------------------------------- scene: 5-10 --
+// The six ad cuts. Renderer lifted from the artifact rather than retyped, so
+// the tool and the page cannot drift; it draws through module-level ctx/W/H,
+// which each scene's draw sets before delegating.
+var ADS = (function(){
+  var G='#3ddc84', R='#ff5f56', BLUE='#4c9eff', DIM='#8a94a3', LINE='#29313d', FG='#edf0f4', BG='#0e1014';
+  var SERIES=(function(){ var r=mulberry(5),o=[],p=100;
+    for(var i=0;i<26;i++){ p=Math.max(5,p*(1+0.003+(r()-0.5)*0.022)); o.push(p);} return o; })();
+  var WOB=(function(){ var r=mulberry(19),a=[]; for(var i=0;i<26;i++) a.push(r()); return a; })();
+  var GRADES=[1,0,1,1,0,1,0,1];
+  var CHIPS=[['RSI','42.7'],['MACD','bearish'],['SMA 200','above'],['Bollinger','mid'],['ATR','2.1%'],['VWAP','under']];
+  var JARGON=['P/E','RSI','MACD','ATR','VWAP','EMA','ADX','OBV'];
+  var LESSONS=['Basics','Technical','Risk','Orders','Levels','Candles','Volume','Psychology','Costs'];
+  var ctx=null, W=0, H=0;
+  function rr(x,y,w,h,r){ ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(x,y,w,h,r); else ctx.rect(x,y,w,h); }
+
+function candles(x0,y0,bw,bh,opt){
+  opt=opt||{}; var n=SERIES.length;
+  var lo=Math.min.apply(null,SERIES), hi=Math.max.apply(null,SERIES);
+  var last=SERIES[n-1], atr=(hi-lo)*0.09, stop=last-atr*1.5, target=last+atr*2.1;
+  if(opt.levels){ lo=Math.min(lo,stop); hi=Math.max(hi,target); }
+  lo*=0.995; hi*=1.005;
+  var X=function(i){ return x0+(i/(n-1))*bw; }, Y=function(v){ return y0+bh-((v-lo)/(hi-lo))*bh; };
+  var shown=Math.max(1,Math.round(n*ease(opt.grow==null?1:opt.grow))), cw=Math.max(2,(bw/n)*0.6);
+  for(var i=0;i<shown;i++){
+    var c=SERIES[i], o=i>0?SERIES[i-1]:c, w=WOB[i];
+    var hp=Math.max(o,c)*(1+0.004+w*0.007), lp=Math.min(o,c)*(1-0.004-(1-w)*0.007);
+    var col=c>=o?G:R; ctx.strokeStyle=col; ctx.fillStyle=col;
+    ctx.lineWidth=Math.max(1,bw*0.005); ctx.lineCap='butt';
+    ctx.beginPath(); ctx.moveTo(X(i),Y(hp)); ctx.lineTo(X(i),Y(lp)); ctx.stroke();
+    var yo=Y(o), yc=Y(c); ctx.fillRect(X(i)-cw/2,Math.min(yo,yc),cw,Math.max(1.5,Math.abs(yc-yo)));
+  }
+  if(opt.levels){
+    ctx.save(); ctx.setLineDash([bw*0.018,bw*0.018]); ctx.lineWidth=Math.max(1.4,bw*0.007);
+    ctx.font='600 '+Math.max(8,bw*0.045)+'px "IBM Plex Mono", monospace';
+    ctx.textAlign='left'; ctx.textBaseline='bottom';
+    [[target,G,'target'],[stop,R,'stop']].forEach(function(L){
+      var y=Y(L[0]); ctx.strokeStyle=L[1];
+      ctx.beginPath(); ctx.moveTo(x0,y); ctx.lineTo(x0+bw,y); ctx.stroke();
+      ctx.fillStyle=L[1]; ctx.fillText(L[2],x0+bw*0.01,y-bw*0.018); });
+    ctx.restore();
+  }
+}
+
+// ---- visual modes ----
+var MODES = {
+  // a wall of restless charts
+  noise: function(p){
+    var r=mulberry(3);
+    for(var row=0;row<4;row++) for(var col=0;col<3;col++){
+      var x=W*0.06+col*(W*0.30), y=H*0.10+row*(H*0.20);
+      var w=W*0.26, h=H*0.15;
+      ctx.globalAlpha=0.20+0.55*Math.abs(Math.sin(p*7+row*1.7+col*2.3));
+      ctx.strokeStyle=LINE; ctx.lineWidth=1; rr(x,y,w,h,W*0.012); ctx.stroke();
+      ctx.beginPath();
+      for(var i=0;i<12;i++){ var px=x+ (i/11)*w, py=y+h*0.2+ r()*h*0.6;
+        if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py); }
+      ctx.strokeStyle = (row+col)%2 ? G : R; ctx.lineWidth=Math.max(1,W*0.004); ctx.stroke();
+    }
+    ctx.globalAlpha=1;
+  },
+  // the product, calm
+  app: function(p){ candles(W*0.08,H*0.20,W*0.84,H*0.50,{grow:Math.min(1,p*1.6)}); },
+  levels: function(p){ candles(W*0.08,H*0.18,W*0.84,H*0.54,{levels:true,grow:Math.min(1,p*1.6)}); },
+  // the written read arriving
+  plain: function(p){
+    candles(W*0.10,H*0.08,W*0.80,H*0.26,{});
+    var lines=['Uptrend intact on the daily.','Support around 246.','Momentum softening.','Mixed — a mechanical read.'];
+    var ty=H*0.44, lh=W*0.075;
+    ctx.textAlign='left'; ctx.textBaseline='top';
+    for(var i=0;i<lines.length;i++){
+      var local=(p-i*0.16)/0.28; if(local<=0) continue;
+      ctx.globalAlpha=Math.min(1,local);
+      var s=lines[i], shown=s.slice(0,Math.max(1,Math.round(s.length*Math.min(1,local))));
+      ctx.fillStyle = i===lines.length-1 ? DIM : FG;
+      ctx.font=(i===lines.length-1?'400 ':'600 ')+(W*0.047)+'px "IBM Plex Mono", monospace';
+      ctx.fillText(shown, W*0.10, ty+i*lh); ctx.globalAlpha=1;
+    }
+  },
+  // an alert card
+  alerts: function(p){
+    candles(W*0.10,H*0.08,W*0.80,H*0.28,{});
+    var a=ease(Math.min(1,p*2.2));
+    var bw=W*0.80, bh=H*0.16, x=W*0.10, y=H*0.46+(1-a)*H*0.05;
+    ctx.globalAlpha=a;
+    ctx.fillStyle='#161b22'; ctx.strokeStyle=BLUE; ctx.lineWidth=Math.max(1.4,W*0.004);
+    rr(x,y,bw,bh,W*0.03); ctx.fill(); ctx.stroke();
+    ctx.fillStyle=BLUE; ctx.font='600 '+(W*0.032)+'px "IBM Plex Mono", monospace';
+    ctx.textAlign='left'; ctx.textBaseline='top';
+    ctx.fillText('ALERT', x+W*0.05, y+bh*0.22);
+    ctx.fillStyle=FG; ctx.font='600 '+(W*0.052)+'px "Archivo", sans-serif';
+    ctx.fillText('NVDA crossed 250', x+W*0.05, y+bh*0.50);
+    ctx.globalAlpha=1;
+  },
+  // jargon that means nothing yet
+  jargon: function(p){
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    for(var i=0;i<JARGON.length;i++){
+      var col=i%2, row=Math.floor(i/2);
+      var x=W*(col?0.70:0.30), y=H*0.18+row*H*0.17;
+      ctx.globalAlpha=0.25+0.7*Math.abs(Math.sin(p*5+i));
+      ctx.fillStyle=DIM; ctx.font='600 '+(W*0.085)+'px "IBM Plex Mono", monospace';
+      ctx.fillText(JARGON[i],x,y);
+    }
+    ctx.globalAlpha=1;
+  },
+  // the lessons
+  lessons: function(p){
+    var cols=2, cw=W*0.40, ch=W*0.115, gx=W*0.04, gy=W*0.032;
+    var x0=(W-(cols*cw+gx))/2, y0=H*0.13;
+    ctx.textAlign='left'; ctx.textBaseline='middle';
+    for(var i=0;i<LESSONS.length;i++){
+      var local=Math.min(1,Math.max(0,(p-i*0.06)/0.2)); if(local<=0) continue;
+      var c=i%cols, r2=Math.floor(i/cols);
+      var x=x0+c*(cw+gx), y=y0+r2*(ch+gy);
+      ctx.globalAlpha=local;
+      ctx.fillStyle='#161b22'; ctx.strokeStyle=LINE; ctx.lineWidth=Math.max(1,W*0.0025);
+      rr(x,y,cw,ch,W*0.02); ctx.fill(); ctx.stroke();
+      ctx.fillStyle=FG; ctx.font='600 '+(W*0.036)+'px "Archivo", sans-serif';
+      ctx.fillText(LESSONS[i], x+cw*0.10, y+ch/2);
+      ctx.globalAlpha=1;
+    }
+  },
+  // too many tabs, collapsing
+  tabs: function(p){
+    var k=ease(Math.min(1,p*1.3));
+    for(var i=0;i<12;i++){
+      var a=1-k*(i/12+0.25); if(a<=0) continue;
+      var x=W*0.08+(i%4)*(W*0.22), y=H*0.12+Math.floor(i/4)*(H*0.14);
+      ctx.globalAlpha=Math.max(0,a)*0.9;
+      ctx.fillStyle='#161b22'; ctx.strokeStyle=LINE; ctx.lineWidth=1;
+      rr(x,y,W*0.19,H*0.10,W*0.012); ctx.fill(); ctx.stroke();
+      ctx.fillStyle=DIM; ctx.font='600 '+(W*0.022)+'px "IBM Plex Mono", monospace';
+      ctx.textAlign='left'; ctx.textBaseline='top';
+      ctx.fillText('tab '+(i+1), x+W*0.02, y+H*0.02);
+    }
+    ctx.globalAlpha=1;
+    if(k>0.55){ ctx.globalAlpha=(k-0.55)/0.45; candles(W*0.14,H*0.30,W*0.72,H*0.30,{}); ctx.globalAlpha=1; }
+  },
+  // data pouring in
+  stream: function(p){
+    var r=mulberry(11);
+    ctx.font='600 '+(W*0.030)+'px "IBM Plex Mono", monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    for(var i=0;i<28;i++){
+      var lane=r(), speed=0.4+r()*0.9;
+      var y=((p*speed*1.4+r())%1)*H*0.66+H*0.06;
+      ctx.globalAlpha=0.20+0.5*r();
+      ctx.fillStyle=i%3===0?G:(i%3===1?R:DIM);
+      ctx.fillText((100+Math.floor(r()*900))/10+'', W*0.10+lane*W*0.80, y);
+    }
+    ctx.globalAlpha=1;
+    var a=ease(Math.min(1,Math.max(0,(p-0.35)/0.5)));
+    if(a>0){ ctx.globalAlpha=a; candles(W*0.14,H*0.40,W*0.72,H*0.28,{}); ctx.globalAlpha=1; }
+  },
+  // thirteen indicators
+  indics: function(p){
+    candles(W*0.08,H*0.06,W*0.84,H*0.26,{});
+    var cols=2, cw=W*0.40, ch=W*0.105, gx=W*0.04, gy=W*0.028;
+    var x0=(W-(cols*cw+gx))/2, sy=H*0.40;
+    for(var i=0;i<CHIPS.length;i++){
+      var local=Math.min(1,Math.max(0,(p-i*0.08)/0.2)); if(local<=0) continue;
+      var c=i%cols, r2=Math.floor(i/cols);
+      var x=x0+c*(cw+gx), y=sy+r2*(ch+gy);
+      ctx.globalAlpha=local;
+      ctx.fillStyle='#161b22'; ctx.strokeStyle=LINE; ctx.lineWidth=Math.max(1,W*0.0025);
+      rr(x,y,cw,ch,W*0.018); ctx.fill(); ctx.stroke();
+      ctx.fillStyle=DIM; ctx.font='600 '+(W*0.028)+'px "IBM Plex Mono", monospace';
+      ctx.textAlign='left'; ctx.textBaseline='middle';
+      ctx.fillText(CHIPS[i][0], x+cw*0.08, y+ch*0.34);
+      ctx.fillStyle=FG; ctx.font='600 '+(W*0.036)+'px "IBM Plex Mono", monospace';
+      ctx.fillText(CHIPS[i][1], x+cw*0.08, y+ch*0.70);
+      ctx.globalAlpha=1;
+    }
+  },
+  // the public record
+  graded: function(p){
+    var gw=W*0.082, gap=W*0.028;
+    var total=GRADES.length*gw+(GRADES.length-1)*gap, gx0=(W-total)/2, gy=H*0.14;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    for(var i=0;i<GRADES.length;i++){
+      var local=Math.min(1,Math.max(0,(p-i*0.07)/0.2)); if(local<=0) continue;
+      var x=gx0+i*(gw+gap)+gw/2, col=GRADES[i]?G:R;
+      ctx.globalAlpha=local*0.18; ctx.fillStyle=col;
+      rr(x-gw/2,gy-gw/2,gw,gw,gw*0.28); ctx.fill();
+      ctx.globalAlpha=local; ctx.fillStyle=col;
+      ctx.font='600 '+(gw*0.62)+'px "IBM Plex Mono", monospace';
+      ctx.fillText(GRADES[i]?'✓':'✗', x, gy+gw*0.03);
+      ctx.globalAlpha=1;
+    }
+    ctx.fillStyle=DIM; ctx.font='600 '+(W*0.028)+'px "IBM Plex Mono", monospace';
+    ctx.textAlign='center'; ctx.textBaseline='top';
+    ctx.fillText('GRADED 20 TRADING DAYS LATER', W/2, gy+gw*0.9);
+    candles(W*0.08,H*0.30,W*0.84,H*0.40,{levels:true});
+  },
+  // the crystal ball, crossed out
+  crystal: function(p){
+    var cx=W*0.5, cy=H*0.38, r0=W*0.22;
+    ctx.strokeStyle=LINE; ctx.lineWidth=Math.max(3,W*0.016);
+    ctx.beginPath(); ctx.arc(cx,cy,r0,0,Math.PI*2); ctx.stroke();
+    ctx.fillStyle='rgba(138,148,163,.07)'; ctx.beginPath(); ctx.arc(cx,cy,r0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=DIM; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.font='600 '+(W*0.042)+'px "IBM Plex Mono", monospace';
+    ctx.fillText('GUARANTEED', cx, cy-W*0.03);
+    ctx.fillText('GAINS', cx, cy+W*0.035);
+    var a=ease(Math.min(1,Math.max(0,(p-0.25)/0.35)));
+    if(a>0){
+      ctx.strokeStyle=R; ctx.lineWidth=Math.max(5,W*0.026); ctx.lineCap='round';
+      ctx.beginPath();
+      ctx.moveTo(cx-r0*0.95, cy-r0*0.95);
+      ctx.lineTo(cx-r0*0.95+(r0*1.9)*a, cy-r0*0.95+(r0*1.9)*a);
+      ctx.stroke();
+    }
+  },
+  // the measured result
+  result: function(p){
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    var n=Math.round(36524*ease(Math.min(1,p*1.5)));
+    ctx.fillStyle=FG; ctx.font='600 '+(W*0.155)+'px "IBM Plex Mono", monospace';
+    ctx.fillText(n.toLocaleString('en-US'), W/2, H*0.30);
+    ctx.fillStyle=DIM; ctx.font='400 '+(W*0.040)+'px "Archivo", sans-serif';
+    ctx.fillText('past setups measured', W/2, H*0.42);
+    var a=ease(Math.min(1,Math.max(0,(p-0.45)/0.4)));
+    if(a>0){ ctx.globalAlpha=a;
+      ctx.fillStyle=R; ctx.font='600 '+(W*0.115)+'px "IBM Plex Mono", monospace';
+      ctx.fillText('≈ 0.00', W/2, H*0.58);
+      ctx.fillStyle=DIM; ctx.font='400 '+(W*0.034)+'px "Archivo", sans-serif';
+      ctx.fillText('correlation with what happened next', W/2, H*0.68);
+      ctx.globalAlpha=1; }
+  },
+  // end card
+  logo: function(p){
+    var a=ease(Math.min(1,p*2)), s=W*0.30;
+    ctx.globalAlpha=a;
+    var x=(W-s)/2, y=H*0.30;
+    ctx.fillStyle='#0e1014'; rr(x,y,s,s,s*0.22); ctx.fill();
+    ctx.strokeStyle=LINE; ctx.lineWidth=Math.max(1,W*0.003); rr(x,y,s,s,s*0.22); ctx.stroke();
+    var u=s/64;
+    ctx.fillStyle=R; ctx.fillRect(x+19.75*u, y+15*u, 4.5*u, 34*u);
+    rr(x+14*u, y+23*u, 16*u, 18*u, 2*u); ctx.fill();
+    ctx.fillStyle=G; ctx.fillRect(x+39.75*u, y+11*u, 4.5*u, 40*u);
+    rr(x+34*u, y+17*u, 16*u, 28*u, 2*u); ctx.fill();
+    ctx.globalAlpha=1;
+  }
+};
+
+
+  var DATA = {"confidence": {"name": "Smarter, not harder", "rows": [{"mode": "noise", "role": "Hook", "big": "The market never sleeps. But you do.", "sub": "", "from": 0, "to": 3592}, {"mode": "app", "role": "The tool", "big": "ChartGauge reads a chart in seconds, so you do not have to squint at thirteen indicators yourself.", "sub": "", "from": 3592, "to": 11030}, {"mode": "plain", "role": "Plain English", "big": "Real readings. Plain explanations. Stop and target levels you can see on the chart.", "sub": "", "from": 11030, "to": 17315}, {"mode": "alerts", "role": "Alerts", "big": "Set an alert and it watches the ticker while you get on with your day.", "sub": "", "from": 17315, "to": 23984}, {"mode": "graded", "role": "Honest", "big": "And every reading is graded in public afterwards, including the wrong ones.", "sub": "", "from": 23984, "to": 29499}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 29499, "to": 33861}], "end": 33861}, "beginner": {"name": "Finally explained", "rows": [{"mode": "jargon", "role": "Hook", "big": "Want to start investing but have no idea what any of this means?", "sub": "", "from": 0, "to": 5900}, {"mode": "plain", "role": "Translate", "big": "ChartGauge turns the jargon into plain English, on any stock or crypto pair.", "sub": "", "from": 5900, "to": 11800}, {"mode": "lessons", "role": "Learn", "big": "Nineteen short lessons with quizzes, from market basics to candlesticks and risk.", "sub": "", "from": 11800, "to": 17315}, {"mode": "graded", "role": "Honest", "big": "And it shows you its own record, including where it got things wrong.", "sub": "", "from": 17315, "to": 23215}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 23215, "to": 27577}], "end": 27577}, "overthinker": {"name": "Less overthinking", "rows": [{"mode": "tabs", "role": "Hook", "big": "Fourteen tabs, three spreadsheets, and six weeks on one stock.", "sub": "", "from": 0, "to": 4746}, {"mode": "app", "role": "The tool", "big": "ChartGauge computes thirteen indicators on the real bars and writes out what they say.", "sub": "", "from": 4746, "to": 11031}, {"mode": "plain", "role": "Snapshot", "big": "One snapshot, in seconds, instead of an evening.", "sub": "", "from": 11031, "to": 15008}, {"mode": "levels", "role": "Levels", "big": "With the stop and the target marked, so you know what would prove you wrong.", "sub": "", "from": 15008, "to": 21677}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 21677, "to": 26039}], "end": 26039}, "decoded": {"name": "The data, decoded", "rows": [{"mode": "stream", "role": "Hook", "big": "Every second, the market produces more numbers than anyone can read.", "sub": "", "from": 0, "to": 5131}, {"mode": "indics", "role": "The work", "big": "Thirteen indicators computed on real price data, not vibes.", "sub": "", "from": 5131, "to": 9493}, {"mode": "plain", "role": "Why", "big": "Each one explained in plain English, so you can see why the read says what it says.", "sub": "", "from": 9493, "to": 16931}, {"mode": "graded", "role": "Honest", "big": "Then graded against what the price actually did, in public.", "sub": "", "from": 16931, "to": 21677}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk. Analysis does not guarantee results.", "from": 21677, "to": 26039}], "end": 26039}, "busy": {"name": "Better things to do", "rows": [{"mode": "noise", "role": "Hook", "big": "You have a job, a family, a life. You cannot watch the market all day.", "sub": "", "from": 0, "to": 6669}, {"mode": "alerts", "role": "Alerts", "big": "Put a ticker on your watchlist and set an alert. It tells you when your level is hit.", "sub": "", "from": 6669, "to": 14492}, {"mode": "plain", "role": "Quick", "big": "Open it, read the plain-English summary, and get on with your day.", "sub": "", "from": 14492, "to": 20007}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 20007, "to": 24369}], "end": 24369}, "honest": {"name": "No crystal ball", "rows": [{"mode": "crystal", "role": "Hook", "big": "Let us be honest. No app can predict the market.", "sub": "", "from": 0, "to": 4746}, {"mode": "result", "role": "Proof", "big": "We tested our own score over thirty six thousand past setups. It did not predict direction.", "sub": "", "from": 4746, "to": 11800}, {"mode": "plain", "role": "What it does", "big": "What it does do is read the chart for you and explain it, clearly.", "sub": "", "from": 11800, "to": 18085}, {"mode": "graded", "role": "Record", "big": "And publish every reading afterwards, graded, including the wrong ones.", "sub": "", "from": 18085, "to": 22831}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "No hype. Investing involves risk, including possible loss of principal.", "from": 22831, "to": 27962}], "end": 27962}};
+  function make(key){
+    var sc = DATA[key];
+    function at(ms){
+      for(var i=0;i<sc.rows.length;i++) if(ms>=sc.rows[i].from && ms<sc.rows[i].to) return sc.rows[i];
+      return ms>=sc.end ? sc.rows[sc.rows.length-1] : sc.rows[0];
+    }
+    return { dur: sc.end, captions: sc.rows, name: sc.name,
+      draw:function(c,w,h,ms){
+        ctx=c; W=w; H=h;
+        var cut=at(ms);
+        var p=Math.min(1,Math.max(0,(ms-cut.from)/Math.max(1,cut.to-cut.from)));
+        (MODES[cut.mode]||MODES.app)(p);
+      } };
+  }
+  var out={};
+  Object.keys(DATA).forEach(function(k){ out[k]=make(k); });
+  return out;
+})();
+
+var SCENES = { readchart:RC, rsi70:OB, recovery:RV, aiproduct:AIP,
+  ad_confidence:ADS.confidence, ad_beginner:ADS.beginner, ad_overthinker:ADS.overthinker,
+  ad_decoded:ADS.decoded, ad_busy:ADS.busy, ad_honest:ADS.honest };
+var CAPS = {"readchart": [{"from": 0, "to": 5000, "badge": "", "big": "Most people open a stock chart and just see noise.", "sub": "", "url": "", "fine": ""}, {"from": 5000, "to": 8000, "badge": "", "big": "Here\u2019s what\u2019s actually on it.", "sub": "", "url": "", "fine": ""}, {"from": 8000, "to": 18600, "badge": "Trend", "big": "The 50-day average, and the 200.", "sub": "When the fast one crosses above the slow one, the trend has turned up.", "url": "", "fine": ""}, {"from": 18600, "to": 25600, "badge": "Momentum", "big": "This is RSI.", "sub": "Near 70 the move is stretched. Near 30 it has been beaten down.", "url": "", "fine": ""}, {"from": 25600, "to": 34200, "badge": "Levels", "big": "Where the move is proven wrong, and where it has done its job.", "sub": "", "url": "", "fine": ""}, {"from": 34200, "to": 43600, "badge": "", "big": "All thirteen of these, on any stock or crypto pair.", "sub": "Written out in plain English.", "url": "", "fine": ""}, {"from": 43600, "to": 50200, "badge": "", "big": "Nineteen lessons to read it yourself.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "rsi70": [{"from": 0, "to": 5100, "badge": "", "big": "RSI above 70 means sell.", "sub": "That\u2019s the rule everyone repeats.", "url": "", "fine": ""}, {"from": 5100, "to": 8600, "badge": "The signal", "big": "This stock crossed 70 right here.", "sub": "", "url": "", "fine": ""}, {"from": 8600, "to": 14500, "badge": "", "big": "Sell on that rule and you\u2019re out at 106.", "sub": "", "url": "", "fine": ""}, {"from": 14500, "to": 19600, "badge": "", "big": "It kept going for another seventeen weeks.", "sub": "Up 41%.", "url": "", "fine": ""}, {"from": 19600, "to": 24700, "badge": "", "big": "RSI never dropped back below 60.", "sub": "Not once, the whole way up.", "url": "", "fine": ""}, {"from": 24700, "to": 33400, "badge": "What it actually means", "big": "Overbought means the move got stretched.", "sub": "In a strong trend it can stay stretched for months.", "url": "", "fine": ""}, {"from": 33400, "to": 40100, "badge": "", "big": "Which is why it\u2019s one of thirteen readings.", "sub": "Not a signal on its own.", "url": "", "fine": ""}, {"from": 40100, "to": 44800, "badge": "", "big": "Nineteen lessons like this one.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "recovery": [{"from": 0, "to": 5500, "badge": "", "big": "Before your first trade, learn this.", "sub": "One piece of arithmetic. It applies to everyone.", "url": "", "fine": ""}, {"from": 5500, "to": 13400, "badge": "Lose 10%", "big": "You need 11% to get back to even.", "sub": "That sounds fine.", "url": "", "fine": ""}, {"from": 13400, "to": 18100, "badge": "Lose 25%", "big": "You need 33%.", "sub": "Still sounds manageable.", "url": "", "fine": ""}, {"from": 18100, "to": 24800, "badge": "Lose 50%", "big": "You need 100%.", "sub": "You have to double what\u2019s left.", "url": "", "fine": ""}, {"from": 24800, "to": 31500, "badge": "Lose 80%", "big": "You need 400%.", "sub": "Just to be where you started.", "url": "", "fine": ""}, {"from": 31500, "to": 41400, "badge": "", "big": "A loss and the gain that undoes it are never the same size.", "sub": "The bigger the loss, the further apart they get.", "url": "", "fine": ""}, {"from": 41400, "to": 49300, "badge": "", "big": "Which is why how much you risk matters more than how often you\u2019re right.", "sub": "", "url": "", "fine": ""}, {"from": 49300, "to": 54000, "badge": "", "big": "Lesson four of nineteen.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "aiproduct": [{"from": 0, "to": 4271, "pat": "vision", "big": "Screenshot any chart you don\u2019t understand.", "sub": "Drop it in here.", "url": "", "fine": ""}, {"from": 4271, "to": 11757, "pat": "aitext", "big": "Claude looks at the picture and tells you the trend, the levels, and whether it looks bullish or bearish.", "sub": "", "url": "", "fine": ""}, {"from": 11757, "to": 17100, "pat": "ticker", "big": "Or just type a ticker and it pulls the real price data instead.", "sub": "", "url": "", "fine": ""}, {"from": 17100, "to": 21729, "pat": "indics", "big": "Thirteen indicators computed on those bars, written out in plain English.", "sub": "", "url": "", "fine": ""}, {"from": 21729, "to": 26000, "pat": "levels", "big": "With the stop and the target marked on the chart.", "sub": "", "url": "", "fine": ""}, {"from": 26000, "to": 31700, "pat": "graded", "big": "And it tells you when it was wrong.", "sub": "Every reading is graded in public.", "url": "", "fine": ""}, {"from": 31700, "to": 34543, "pat": "end", "big": "Try it on your own chart.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "ad_confidence": [{"mode": "noise", "role": "Hook", "big": "The market never sleeps. But you do.", "sub": "", "from": 0, "to": 3592}, {"mode": "app", "role": "The tool", "big": "ChartGauge reads a chart in seconds, so you do not have to squint at thirteen indicators yourself.", "sub": "", "from": 3592, "to": 11030}, {"mode": "plain", "role": "Plain English", "big": "Real readings. Plain explanations. Stop and target levels you can see on the chart.", "sub": "", "from": 11030, "to": 17315}, {"mode": "alerts", "role": "Alerts", "big": "Set an alert and it watches the ticker while you get on with your day.", "sub": "", "from": 17315, "to": 23984}, {"mode": "graded", "role": "Honest", "big": "And every reading is graded in public afterwards, including the wrong ones.", "sub": "", "from": 23984, "to": 29499}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 29499, "to": 33861}], "ad_beginner": [{"mode": "jargon", "role": "Hook", "big": "Want to start investing but have no idea what any of this means?", "sub": "", "from": 0, "to": 5900}, {"mode": "plain", "role": "Translate", "big": "ChartGauge turns the jargon into plain English, on any stock or crypto pair.", "sub": "", "from": 5900, "to": 11800}, {"mode": "lessons", "role": "Learn", "big": "Nineteen short lessons with quizzes, from market basics to candlesticks and risk.", "sub": "", "from": 11800, "to": 17315}, {"mode": "graded", "role": "Honest", "big": "And it shows you its own record, including where it got things wrong.", "sub": "", "from": 17315, "to": 23215}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 23215, "to": 27577}], "ad_overthinker": [{"mode": "tabs", "role": "Hook", "big": "Fourteen tabs, three spreadsheets, and six weeks on one stock.", "sub": "", "from": 0, "to": 4746}, {"mode": "app", "role": "The tool", "big": "ChartGauge computes thirteen indicators on the real bars and writes out what they say.", "sub": "", "from": 4746, "to": 11031}, {"mode": "plain", "role": "Snapshot", "big": "One snapshot, in seconds, instead of an evening.", "sub": "", "from": 11031, "to": 15008}, {"mode": "levels", "role": "Levels", "big": "With the stop and the target marked, so you know what would prove you wrong.", "sub": "", "from": 15008, "to": 21677}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 21677, "to": 26039}], "ad_decoded": [{"mode": "stream", "role": "Hook", "big": "Every second, the market produces more numbers than anyone can read.", "sub": "", "from": 0, "to": 5131}, {"mode": "indics", "role": "The work", "big": "Thirteen indicators computed on real price data, not vibes.", "sub": "", "from": 5131, "to": 9493}, {"mode": "plain", "role": "Why", "big": "Each one explained in plain English, so you can see why the read says what it says.", "sub": "", "from": 9493, "to": 16931}, {"mode": "graded", "role": "Honest", "big": "Then graded against what the price actually did, in public.", "sub": "", "from": 16931, "to": 21677}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk. Analysis does not guarantee results.", "from": 21677, "to": 26039}], "ad_busy": [{"mode": "noise", "role": "Hook", "big": "You have a job, a family, a life. You cannot watch the market all day.", "sub": "", "from": 0, "to": 6669}, {"mode": "alerts", "role": "Alerts", "big": "Put a ticker on your watchlist and set an alert. It tells you when your level is hit.", "sub": "", "from": 6669, "to": 14492}, {"mode": "plain", "role": "Quick", "big": "Open it, read the plain-English summary, and get on with your day.", "sub": "", "from": 14492, "to": 20007}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 20007, "to": 24369}], "ad_honest": [{"mode": "crystal", "role": "Hook", "big": "Let us be honest. No app can predict the market.", "sub": "", "from": 0, "to": 4746}, {"mode": "result", "role": "Proof", "big": "We tested our own score over thirty six thousand past setups. It did not predict direction.", "sub": "", "from": 4746, "to": 11800}, {"mode": "plain", "role": "What it does", "big": "What it does do is read the chart for you and explain it, clearly.", "sub": "", "from": 11800, "to": 18085}, {"mode": "graded", "role": "Record", "big": "And publish every reading afterwards, graded, including the wrong ones.", "sub": "", "from": 18085, "to": 22831}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "No hype. Investing involves risk, including possible loss of principal.", "from": 22831, "to": 27962}]};
 
 // ---------------------------------------------------------------- render ----
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d', { alpha:false });
