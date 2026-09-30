@@ -56,6 +56,9 @@
   .titlerow { align-items:center; }
   .titlebox { display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
   #postTitle { flex:1; min-width:0; font-size:14.5px; font-weight:600; color:var(--fg); }
+  .descrow { align-items:flex-start; }
+  .descrow label { padding-top:2px; }
+  #postDesc { flex:1; min-width:0; font-size:13px; line-height:1.6; color:var(--dim); }
   .tinybtn { flex:none; font:inherit; font-size:12px; font-weight:600; color:var(--dim);
     background:#12161c; border:1px solid var(--line); border-radius:8px; padding:5px 11px; cursor:pointer; }
   .tinybtn:hover { color:var(--fg); border-color:#3a4353; }
@@ -92,6 +95,9 @@
        it with a second, different promise. -->
   <div class="row titlerow"><label>Title</label>
     <span class="titlebox"><span id="postTitle"></span><button type="button" id="copyTitle" class="tinybtn">Copy</button></span>
+  </div>
+  <div class="row titlerow descrow"><label>Description</label>
+    <span class="titlebox"><span id="postDesc"></span><button type="button" id="copyDesc" class="tinybtn">Copy</button></span>
   </div>
 
   <div class="row"><label>Resolution</label>
@@ -1009,6 +1015,60 @@ var TITLES = {
   ad_honest:       'No app can predict the market. Including ours.'
 };
 
+// What to post under the title. Each one only claims what its own cut
+// claims, ends on the same disclaimer the clips end on, and says nothing
+// about predicting anything -- the score was measured against 36,524 past
+// setups and did not predict direction, which ad_honest is built on.
+var DESCS = {
+  readchart:
+    'A chart is four numbers a bar plus whatever you draw on top of them. This walks '
+    + 'through the moving averages, what RSI is actually measuring, and where a move is '
+    + 'proven wrong \u2014 the same thirteen readings computed on any stock or crypto pair. '
+    + 'Nineteen short lessons go further. A study tool, not financial advice.',
+  rsi70:
+    'Overbought means the move got stretched, not that it is about to turn. This one stayed '
+    + 'above 70 for another seventeen weeks and ran 41% further. That is why RSI is one of '
+    + 'thirteen readings here and not a signal on its own. A study tool, not financial advice.',
+  recovery:
+    'Lose 10% and you need 11% to get back. Lose 50% and you need 100%. A loss and the gain '
+    + 'that undoes it are never the same size, and they grow further apart the bigger the loss '
+    + '\u2014 which is why how much you risk matters more than how often you are right. '
+    + 'Lesson four of nineteen. A study tool, not financial advice.',
+  aiproduct:
+    'Screenshot a chart you do not understand and Claude reads the picture: the trend, the '
+    + 'levels, and whether it looks bullish or bearish. Or type a ticker and it pulls the real '
+    + 'price data and computes thirteen indicators on those bars instead. Every reading is '
+    + 'graded in public afterwards. A study tool, not financial advice.',
+  ad_confidence:
+    'Thirteen indicators computed on the real bars and written out in plain English, with the '
+    + 'stop and the target marked on the chart. Set an alert and it watches the ticker while you '
+    + 'get on with your day. Every reading is graded in public afterwards, including the ones it '
+    + 'got wrong. A study tool, not financial advice.',
+  ad_beginner:
+    'Candlesticks, RSI, moving averages \u2014 all of it turned into plain English, on any stock '
+    + 'or crypto pair. Nineteen short lessons with quizzes take you from what a market is to '
+    + 'reading a chart yourself. And it shows its own record, including where it got things '
+    + 'wrong. A study tool, not financial advice.',
+  ad_overthinker:
+    'Thirteen indicators computed on the real bars and written out in plain English, so one '
+    + 'screen does what you were going to give an evening to. The stop and the target are '
+    + 'marked, so you can see what would prove the idea wrong before you take it. A study tool, '
+    + 'not financial advice.',
+  ad_decoded:
+    'Thirteen indicators computed on real price data, each one explained in plain English so you '
+    + 'can see why the read says what it says, rather than a score handed down with no reasoning. '
+    + 'Then graded against what the price actually did, in public. A study tool, not financial advice.',
+  ad_busy:
+    'Put a ticker on your watchlist, set the level you care about, and get on with your day \u2014 '
+    + 'it tells you when that level is hit. When you do open it, the read is already written out '
+    + 'in plain English. A study tool, not financial advice.',
+  ad_honest:
+    'We measured our own score against 36,524 past setups and it did not predict direction, so we '
+    + 'do not claim it does. What it does is read the chart for you and explain it clearly, then '
+    + 'publish every reading afterwards, graded, including the wrong ones. A study tool, not '
+    + 'financial advice.'
+};
+
 var SCENES = { readchart:RC, rsi70:OB, recovery:RV, aiproduct:AIP,
   ad_confidence:ADS.confidence, ad_beginner:ADS.beginner, ad_overthinker:ADS.overthinker,
   ad_decoded:ADS.decoded, ad_busy:ADS.busy, ad_honest:ADS.honest };
@@ -1029,20 +1089,25 @@ document.querySelectorAll('#res button').forEach(function(b){
 function showTitle(){
   var k = document.getElementById('pick').value;
   document.getElementById('postTitle').textContent = TITLES[k] || '';
+  document.getElementById('postDesc').textContent = DESCS[k] || '';
 }
-document.getElementById('copyTitle').addEventListener('click', function(){
-  var t = document.getElementById('postTitle').textContent, b = this;
+function wireCopy(btnId, srcId){
+  document.getElementById(btnId).addEventListener('click', function(){
+  var t = document.getElementById(srcId).textContent, b = this;
   // The clipboard API needs a secure context, which a file:// page is not,
   // so fall back to a selection rather than failing silently.
   function ok(){ b.textContent = 'Copied'; setTimeout(function(){ b.textContent = 'Copy'; }, 1200); }
   if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(t).then(ok, pick); }
   else pick();
   function pick(){
-    var r = document.createRange(); r.selectNodeContents(document.getElementById('postTitle'));
+    var r = document.createRange(); r.selectNodeContents(document.getElementById(srcId));
     var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
     try { document.execCommand('copy'); ok(); } catch (e) { b.textContent = 'Select & copy'; }
   }
-});
+  });
+}
+wireCopy('copyTitle', 'postTitle');
+wireCopy('copyDesc', 'postDesc');
 document.getElementById('pick').addEventListener('change', function(){ showTitle(); setup(); frame(0); });
 showTitle();
 
