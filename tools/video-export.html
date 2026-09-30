@@ -53,6 +53,15 @@
   canvas { width:270px; max-width:100%; border:1px solid var(--line); border-radius:12px; display:block; background:#0e1014; }
   .note { font-size:13.5px; color:var(--dim); line-height:1.6; border-left:2px solid var(--line); padding-left:12px; margin-top:22px; }
   .note b { color:var(--fg); }
+  .titlerow { align-items:center; }
+  .titlebox { display:flex; align-items:center; gap:10px; flex:1; min-width:0; }
+  #postTitle { flex:1; min-width:0; font-size:14.5px; font-weight:600; color:var(--fg); }
+  .tinybtn { flex:none; font:inherit; font-size:12px; font-weight:600; color:var(--dim);
+    background:#12161c; border:1px solid var(--line); border-radius:8px; padding:5px 11px; cursor:pointer; }
+  .tinybtn:hover { color:var(--fg); border-color:#3a4353; }
+  .afterdl { margin:16px 0 0; padding:13px 15px; border-radius:11px; font-size:13.5px; line-height:1.6;
+    color:var(--fg); background:rgba(255,138,61,.09); border:1px solid rgba(255,138,61,.4); }
+  .afterdl code { background:#12161c; border:1px solid var(--line); border-radius:6px; padding:1px 6px; font-size:12.5px; }
   .warn-line { color:#ffcf5c; border-left:3px solid #ff8a3d; padding-left:11px; margin:14px 0; }
   code { font-family:var(--mono); font-size:12.5px; background:var(--card); padding:2px 5px; border-radius:4px; }
 </style>
@@ -78,6 +87,13 @@
     </select>
   </div>
 
+  <!-- The title to post the clip under. Each one is that cut's own opening
+       line: the hook already earned the view, so the title should not fight
+       it with a second, different promise. -->
+  <div class="row titlerow"><label>Title</label>
+    <span class="titlebox"><span id="postTitle"></span><button type="button" id="copyTitle" class="tinybtn">Copy</button></span>
+  </div>
+
   <div class="row"><label>Resolution</label>
     <span class="seg" id="res">
       <button data-w="1080" data-h="1920" class="on">1080 &times; 1920</button>
@@ -90,6 +106,9 @@
     <button class="primary" id="go">Record</button>
     <button id="preview">Preview only</button>
     <button id="dlbtn" disabled title="Record a take first — this turns on when it finishes">⬇ Download — record first</button>
+  </div>
+  <div class="afterdl" id="afterDl" hidden></div>
+  <div style="display:none">
     <a id="dl" hidden></a>
   </div>
 
@@ -975,6 +994,21 @@ var MODES = {
   return out;
 })();
 
+// What to post each clip under. Every one of these is the cut's own first
+// line, so the title and the opening frame say the same thing.
+var TITLES = {
+  readchart:       'Most people open a stock chart and just see noise.',
+  rsi70:           '"RSI above 70 means sell." That is the rule everyone repeats.',
+  recovery:        'Lose 50%, and you need 100% just to get back to even.',
+  aiproduct:       'Screenshot any chart you do not understand.',
+  ad_confidence:   'The market never sleeps. But you do.',
+  ad_beginner:     'No idea what any of this means? Start here.',
+  ad_overthinker:  'Fourteen tabs. Three spreadsheets. One stock.',
+  ad_decoded:      'More numbers than anyone can read.',
+  ad_busy:         'You cannot watch the market all day.',
+  ad_honest:       'No app can predict the market. Including ours.'
+};
+
 var SCENES = { readchart:RC, rsi70:OB, recovery:RV, aiproduct:AIP,
   ad_confidence:ADS.confidence, ad_beginner:ADS.beginner, ad_overthinker:ADS.overthinker,
   ad_decoded:ADS.decoded, ad_busy:ADS.busy, ad_honest:ADS.honest };
@@ -992,7 +1026,25 @@ document.querySelectorAll('#res button').forEach(function(b){
     setup(); frame(0);
   });
 });
-document.getElementById('pick').addEventListener('change', function(){ setup(); frame(0); });
+function showTitle(){
+  var k = document.getElementById('pick').value;
+  document.getElementById('postTitle').textContent = TITLES[k] || '';
+}
+document.getElementById('copyTitle').addEventListener('click', function(){
+  var t = document.getElementById('postTitle').textContent, b = this;
+  // The clipboard API needs a secure context, which a file:// page is not,
+  // so fall back to a selection rather than failing silently.
+  function ok(){ b.textContent = 'Copied'; setTimeout(function(){ b.textContent = 'Copy'; }, 1200); }
+  if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(t).then(ok, pick); }
+  else pick();
+  function pick(){
+    var r = document.createRange(); r.selectNodeContents(document.getElementById('postTitle'));
+    var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    try { document.execCommand('copy'); ok(); } catch (e) { b.textContent = 'Select & copy'; }
+  }
+});
+document.getElementById('pick').addEventListener('change', function(){ showTitle(); setup(); frame(0); });
+showTitle();
 
 function setup(){ cv.width=EXP.w; cv.height=EXP.h; }
 
@@ -1138,6 +1190,16 @@ function triggerSave(){
   if (!lastUrl) return;
   var a=document.getElementById('dl');
   a.href=lastUrl; a.download=lastName; a.click();
+  // Say it at the moment it matters. This file goes straight to TikTok or
+  // Instagram, but Resolve will refuse it, and a note further down the page
+  // is not read at the point someone is dragging the file into Resolve.
+  var n = document.getElementById('afterDl');
+  n.hidden = false;
+  n.innerHTML = '<b>Saved ' + lastName + '</b><br>'
+    + 'That file is ready for TikTok, Reels and Shorts as it is. '
+    + '<b>For DaVinci Resolve it is not</b> \u2014 it is a fragmented recording and Resolve will refuse it. '
+    + 'Double-click <code>tools/for-resolve.command</code>: it converts every recording in your Downloads '
+    + 'and writes a <code>-resolve.mov</code> beside each one. Import that, not this.';
 }
 document.getElementById('dlbtn').addEventListener('click', triggerSave);
 document.getElementById('go').addEventListener('click', function(){ play(true); });
