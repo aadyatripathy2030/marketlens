@@ -112,7 +112,14 @@
     const url = typeof input === 'string' ? input : (input && input.url) || '';
     if (url.startsWith('/api/') && !PRE_AGREEMENT_OK.test(url) && !(hasAgreed() && isSignedIn())) {
       showGate();
-      return Promise.reject(new Error('Sign in and accept the terms before loading market data.'));
+      // Tagged, so a caller can tell "the gate stopped this" from a real
+      // failure. Checking the signed-in state inside the caller's catch does
+      // not work: auth can land between the rejection and the catch running,
+      // and the check then reads the new state and reports a failure that has
+      // already retried successfully.
+      const gateErr = new Error('Sign in and accept the terms before loading market data.');
+      gateErr.gated = true;
+      return Promise.reject(gateErr);
     }
     return rawFetch(input, init);
   };
@@ -1403,13 +1410,23 @@
     try {
       const j = await (await fetch('/api/paper')).json();
       paperState = j;
+      paperMsg('');          // clear anything left over from an earlier attempt
       renderPaper();
       if (j.account) {
         const first = (j.account.positions[0] || {}).symbol || chartSym || 'AAPL';
         if (!chartSym) selectChart(first);
         startLive();
       }
-    } catch (e) { paperMsg('Could not load the practice account.', true); }
+    } catch (e) {
+      // Before sign-in the shared fetch wrapper rejects every /api call and
+      // shows the gate instead. routeFromPath runs again once auth lands, so
+      // this first rejection is the gate working, not a failure — reporting it
+      // left "Could not load the practice account" sitting on a page that had
+      // in fact loaded fine a moment later.
+      if (e && e.gated) return;      // the gate is handling it; a retry follows
+      console.error('practice: loadPaper failed', e);
+      paperMsg('Could not load the practice account — ' + (e && e.message ? e.message : e), true);
+    }
   }
 
   function paperMsg(text, bad) {
