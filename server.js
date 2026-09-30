@@ -1984,7 +1984,7 @@ const VIEW_SEO = {
     desc: 'Keep the tickers you follow in one place, with live prices and one-click analysis.' },
   'learn': { view: 'learn', title: 'Learn investing — free plain-English lessons — ChartGauge',
     desc: 'Nineteen short lessons covering market basics, technical and fundamental analysis, valuation, financial statements, risk management, order types, candlesticks, volume, trading psychology, costs and index funds — each with a quiz.' },
-  'practice': { view: 'practice', title: 'Paper trading — practise with pretend money — ChartGauge',
+  'practice': { view: 'practice', title: 'Paper trading — practice with pretend money — ChartGauge',
     desc: 'A practice account with a starting balance you choose. Fills use the live price, positions are valued in real time, and a risk meter measures the book against limits you set. None of it is real money.' },
   'settings': { view: 'settings', title: 'Settings — choose what the analysis shows — ChartGauge',
     desc: 'Turn any part of the analysis on or off: the indicator score, the measured base rate, exit levels, the thirteen technical readings, the projection, fundamentals, news and the written summary.' },
