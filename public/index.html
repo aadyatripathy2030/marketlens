@@ -174,6 +174,7 @@
               <button type="button" class="ov active" data-k="slow"><i style="background:var(--sma50)"></i><span id="ovSlow">SMA</span></button>
               <button type="button" class="ov active" data-k="proj"><i class="dashed" style="background:var(--forecast)"></i>Projection</button>
               <button type="button" class="ov" data-k="levels"><i style="background:var(--bad)"></i>Stop / target</button>
+              <button type="button" class="ov" data-k="volume">Volume</button>
               <button type="button" class="ov" id="ovColors">Colors</button>
             </div>
             <div class="chart-time">
@@ -411,13 +412,13 @@
             <span class="amt-cur">$</span>
             <input id="paperStart" type="number" min="100" max="10000000" step="100" value="10000" inputmode="decimal" />
           </div>
-          <div class="amt-presets">
-            <button type="button" class="chip paper-preset" data-amt="1000">1,000</button>
-            <button type="button" class="chip paper-preset" data-amt="10000">10,000</button>
-            <button type="button" class="chip paper-preset" data-amt="25000">25,000</button>
-            <button type="button" class="chip paper-preset" data-amt="100000">100,000</button>
+          <div class="amt-presets" role="group" aria-label="Preset balances">
+            <button type="button" class="paper-preset" data-amt="1000"><b>$1k</b><span>starter</span></button>
+            <button type="button" class="paper-preset" data-amt="10000"><b>$10k</b><span>common</span></button>
+            <button type="button" class="paper-preset" data-amt="25000"><b>$25k</b><span>roomy</span></button>
+            <button type="button" class="paper-preset" data-amt="100000"><b>$100k</b><span>no limits</span></button>
           </div>
-          <button type="button" class="btn primary wide" id="paperOpen">Start practicing</button>
+          <button type="button" class="btn btn-primary wide" id="paperOpen">Start practicing</button>
           <p class="setup-fine">No card, no broker, no real money. Reset it whenever you like.</p>
         </div>
 
@@ -522,8 +523,8 @@
             </div>
             <div class="est" id="pEst">&nbsp;</div>
             <div class="ticket-btns">
-              <button type="button" class="btn buy" id="pBuy">Buy</button>
-              <button type="button" class="btn sell" id="pSell">Sell</button>
+              <button type="button" class="btn btn-buy" id="pBuy">Buy</button>
+              <button type="button" class="btn btn-sell" id="pSell">Sell</button>
             </div>
             <div id="pMsg" class="paper-msg" hidden></div>
           </div>
@@ -561,7 +562,7 @@
       <div id="pFills"></div>
 
       <div class="row" style="margin-top:22px;gap:10px;align-items:center;flex-wrap:wrap">
-        <button type="button" class="btn ghost" id="paperReset">Reset the account</button>
+        <button type="button" class="btn btn-ghost" id="paperReset">Reset the account</button>
         <span class="muted" style="font-size:13px">Clears every position and fill, then lets you pick a new balance.</span>
       </div>
     </div>

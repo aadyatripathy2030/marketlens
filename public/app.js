@@ -352,7 +352,7 @@
   // 5-minute bars would otherwise arrive as a wall of them.
   let viewCandles = INTRADAY.has(interval) ? DEFAULT_CANDLES : null;
   let chartType = 'candle'; // 'candle' | 'line'
-  const show = { fast: true, slow: true, proj: true, levels: false }; // overlay visibility
+  const show = { fast: true, slow: true, proj: true, levels: false, volume: false }; // overlay visibility
 
   // Display mode. Simple keeps the chart and the exit levels and hides the rest;
   // it changes what is rendered, never what is computed.
@@ -733,11 +733,18 @@
     const widest = Math.max(ctx.measureText(pxFmt(hi)).width, ctx.measureText(pxFmt(lo)).width);
     AXIS_W = Math.round(Math.max(56, Math.min(104, widest + 26)));
     const padL = 8, padR = AXIS_W, padT = 12, padB = AXIS_H;
-    const plotW = w - padL - padR, plotH = h - padT - padB;
+    // Volume gets its own pane below the price, so turning it on shortens the
+    // candles rather than drawing bars across them.
+    const volH = show.volume ? Math.max(28, Math.round((h - padT - AXIS_H) * 0.18)) : 0;
+    const volGap = show.volume ? 8 : 0;
+    const plotW = w - padL - padR, plotH = h - padT - padB - volH - volGap;
     const total = bars.length + fc.length;
     const X = (i) => padL + (plotW * i) / (total - 1);
     const Y = (v) => padT + plotH * (1 - (v - lo) / (hi - lo));
     const axX = padL + plotW, axY = padT + plotH;
+    // The time axis belongs under everything, not under the price plot:
+    // with a volume pane between them, axY is the top of the volume.
+    const timeY = axY + volH + volGap;
     lastY = { lo, hi, plotH };
 
     const AXF = '11px ui-sans-serif, system-ui, -apple-system, sans-serif';
@@ -780,7 +787,7 @@
     for (let t = 0; t < ticks; t++) {
       const j = Math.round((bars.length - 1) * t / (ticks - 1));
       const lbl = bars[j].date, lw = ctx.measureText(lbl).width;
-      ctx.fillText(lbl, Math.max(padL, Math.min(axX - lw, X(j) - lw / 2)), axY + 18);
+      ctx.fillText(lbl, Math.max(padL, Math.min(axX - lw, X(j) - lw / 2)), timeY + 18);
     }
     function line(arr, offset, color, dashed) {
       ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash(dashed ? [5, 4] : []);
@@ -792,6 +799,33 @@
     if (chartType === 'candle') {
       const cw = Math.max(1, (plotW / total) * 0.68);
       const cc = candleColors();
+      if (show.volume && volH > 0) {
+        // Scaled to the largest bar in view, so the shape of activity reads the
+        // same whether the window is a week or five years.
+        const vTop = padT + plotH + volGap, vBase = vTop + volH;
+        let maxV = 0;
+        bars.forEach(p => { const v = Number(p.volume) || 0; if (v > maxV) maxV = v; });
+        if (maxV > 0) {
+          ctx.save();
+          bars.forEach((p, j) => {
+            const v = Number(p.volume) || 0;
+            if (!v) return;
+            const rise = p.close >= p.open;
+            const bh = Math.max(1, (v / maxV) * (volH - 2));
+            ctx.globalAlpha = 0.42;
+            ctx.fillStyle = rise ? cc.upBody : cc.downBody;
+            ctx.fillRect(X(j) - cw / 2, vBase - bh, Math.max(1, cw), bh);
+          });
+          ctx.restore();
+          ctx.strokeStyle = col('--border'); ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(padL, Math.round(vBase) + .5);
+          ctx.lineTo(padL + plotW, Math.round(vBase) + .5); ctx.stroke();
+          ctx.fillStyle = col('--muted');
+          ctx.font = '10px ui-monospace, SFMono-Regular, monospace';
+          ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+          ctx.fillText('Volume', padL + 3, vTop + 2);
+        }
+      }
       bars.forEach((p, j) => {
         const x = X(j), up = p.close >= p.open;
         ctx.lineWidth = Math.min(2, Math.max(1, cw * 0.16));
@@ -879,8 +913,8 @@
       ctx.font = AXF;
       const dl = b.date, dw = ctx.measureText(dl).width + 12;
       const dx = Math.max(padL, Math.min(axX - dw, hx - dw / 2));
-      ctx.fillStyle = col('--border-strong'); roundRect(dx, axY + 5, dw, 17, 4); ctx.fill();
-      ctx.fillStyle = col('--text'); ctx.fillText(dl, dx + 6, axY + 17);
+      ctx.fillStyle = col('--border-strong'); roundRect(dx, timeY + 5, dw, 17, 4); ctx.fill();
+      ctx.fillStyle = col('--text'); ctx.fillText(dl, dx + 6, timeY + 17);
       // floating OHLC panel
       const up = b.close >= b.open;
       const rows = [['O', b.open], ['H', b.high], ['L', b.low], ['C', b.close]];
@@ -1811,8 +1845,14 @@
 
   function wirePractice() {
     if (!$('paperOpen')) return;
+    const markPreset = () => {
+      const v = String(Number($('paperStart').value) || '');
+      document.querySelectorAll('.paper-preset').forEach(b => b.classList.toggle('on', b.dataset.amt === v));
+    };
     document.querySelectorAll('.paper-preset').forEach(b =>
-      b.addEventListener('click', () => { $('paperStart').value = b.dataset.amt; }));
+      b.addEventListener('click', () => { $('paperStart').value = b.dataset.amt; markPreset(); }));
+    $('paperStart').addEventListener('input', markPreset);
+    markPreset();
     $('paperOpen').addEventListener('click', async () => {
       const startBalance = Number($('paperStart').value);
       try {
