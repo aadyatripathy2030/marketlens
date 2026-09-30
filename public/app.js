@@ -1370,13 +1370,15 @@
   }
 
   // ---- Practice account ----
-  // Pretend money. Fills use the live price, so the arithmetic is honest even
-  // though none of it is real. The risk meter measures the book against the
-  // user's own limits rather than any house view.
+  // Pretend money, real prices. The chart shows the symbol's actual bars and
+  // keeps the last point live off the quotes endpoint while the page is open,
+  // so the line moves as the stock does.
   let paperState = null;
+  let chartSym = null, chartBars = [], chartRange = '1mo', chartQuote = null;
+  let livePoll = null;
 
-  const pMoney = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Number(n) || 0).toLocaleString('en-US',
-    { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const pMoney = (n) => (n < 0 ? '-' : '') + '$' + Math.abs(Number(n) || 0)
+    .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const pPct = (n) => (Number(n) || 0).toFixed(1) + '%';
 
   async function loadPaper() {
@@ -1384,6 +1386,11 @@
       const j = await (await fetch('/api/paper')).json();
       paperState = j;
       renderPaper();
+      if (j.account) {
+        const first = (j.account.positions[0] || {}).symbol || chartSym || 'AAPL';
+        if (!chartSym) selectChart(first);
+        startLive();
+      }
     } catch (e) { paperMsg('Could not load the practice account.', true); }
   }
 
@@ -1391,9 +1398,147 @@
     const el = $('pMsg');
     if (!el) return;
     if (!text) { el.hidden = true; el.textContent = ''; return; }
-    el.hidden = false;
-    el.textContent = text;
+    el.hidden = false; el.textContent = text;
     el.className = 'paper-msg' + (bad ? ' bad' : ' ok');
+  }
+
+  // ---- the chart ----
+  const RANGE_BARS = { '1mo': 22, '3mo': 66, '1y': 252 };
+
+  async function selectChart(sym) {
+    sym = String(sym || '').toUpperCase().trim();
+    if (!sym) return;
+    chartSym = sym;
+    $('cSym').textContent = sym;
+    $('cName').textContent = '';
+    $('cNote').textContent = 'Loading…';
+    try {
+      const r = await fetch('/api/stock?symbol=' + encodeURIComponent(sym) + '&interval=1day');
+      const j = await r.json();
+      if (!r.ok || !Array.isArray(j.prices) || !j.prices.length) {
+        chartBars = []; $('cNote').textContent = (j && j.message) || 'No data for ' + sym + '.';
+        drawPracChart(); return;
+      }
+      chartBars = j.prices;
+      $('cName').textContent = j.name || '';
+      $('cNote').textContent = j.source === 'demo'
+        ? 'Demo data — set a market-data key for live prices.' : 'Daily bars';
+      await refreshQuote();
+      drawPracChart();
+    } catch (e) {
+      chartBars = []; $('cNote').textContent = 'Could not load the chart.'; drawPracChart();
+    }
+  }
+
+  async function refreshQuote() {
+    if (!chartSym) return;
+    try {
+      const j = await (await fetch('/api/quotes?symbols=' + encodeURIComponent(chartSym))).json();
+      const q = (j.quotes || [])[0];
+      if (!q || !Number.isFinite(Number(q.price))) return;
+      chartQuote = q;
+      $('cLast').textContent = pMoney(q.price);
+      const up = Number(q.changePct) >= 0;
+      $('cChg').textContent = (up ? '+' : '') + Number(q.change || 0).toFixed(2)
+        + '  (' + (up ? '+' : '') + Number(q.changePct || 0).toFixed(2) + '%)';
+      $('cChg').className = 'chart-chg ' + (up ? 'up' : 'down');
+      $('cLive').hidden = false;
+      drawPracChart();
+    } catch (e) { /* a missed poll is not worth surfacing */ }
+  }
+
+  // Only poll while the view is actually on screen. A timer left running in the
+  // background would keep hitting the quotes endpoint for nothing.
+  function startLive() {
+    stopLive();
+    livePoll = setInterval(() => {
+      if (currentView !== 'practice' || document.hidden) return;
+      refreshQuote();
+      loadPaperQuiet();
+    }, 20000);
+  }
+  function stopLive() { if (livePoll) { clearInterval(livePoll); livePoll = null; } }
+
+  async function loadPaperQuiet() {
+    try {
+      const j = await (await fetch('/api/paper')).json();
+      if (j && j.account) { paperState = j; renderPaper(); }
+    } catch (e) {}
+  }
+
+  function drawPracChart() {
+    const cv = $('pChart');
+    if (!cv) return;
+    const holder = cv.parentElement;
+    const w = Math.max(240, holder.clientWidth), h = Math.max(160, holder.clientHeight);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = w * dpr; cv.height = h * dpr;
+    cv.style.width = w + 'px'; cv.style.height = h + 'px';
+    const g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+
+    const css = getComputedStyle(document.documentElement);
+    const good = css.getPropertyValue('--good').trim() || '#3ddc84';
+    const bad = css.getPropertyValue('--bad').trim() || '#ff5f56';
+    const line = css.getPropertyValue('--border').trim() || '#29313d';
+    const muted = css.getPropertyValue('--muted').trim() || '#8a94a3';
+
+    if (!chartBars.length) {
+      g.fillStyle = muted; g.font = '13px system-ui'; g.textAlign = 'center';
+      g.fillText('No chart data', w / 2, h / 2);
+      return;
+    }
+    const n = Math.min(RANGE_BARS[chartRange] || 22, chartBars.length);
+    const bars = chartBars.slice(-n).map(b => Number(b.close)).filter(Number.isFinite);
+    if (chartQuote && Number.isFinite(Number(chartQuote.price))) bars[bars.length - 1] = Number(chartQuote.price);
+    if (bars.length < 2) return;
+
+    const padL = 8, padR = 62, padT = 12, padB = 20;
+    const lo = Math.min.apply(null, bars), hi = Math.max.apply(null, bars);
+    const span = (hi - lo) || 1;
+    const X = (i) => padL + (i / (bars.length - 1)) * (w - padL - padR);
+    const Y = (v) => padT + (1 - (v - lo) / span) * (h - padT - padB);
+
+    for (let k = 0; k <= 3; k++) {
+      const y = padT + (k / 3) * (h - padT - padB);
+      g.strokeStyle = line; g.lineWidth = 1; g.globalAlpha = .6;
+      g.beginPath(); g.moveTo(padL, y); g.lineTo(w - padR, y); g.stroke();
+      g.globalAlpha = 1;
+      g.fillStyle = muted; g.font = '10px ui-monospace, monospace';
+      g.textAlign = 'left'; g.textBaseline = 'middle';
+      g.fillText('$' + (hi - (k / 3) * span).toFixed(2), w - padR + 6, y);
+    }
+
+    const rising = bars[bars.length - 1] >= bars[0];
+    const col = rising ? good : bad;
+    const grad = g.createLinearGradient(0, padT, 0, h - padB);
+    grad.addColorStop(0, rising ? 'rgba(61,220,132,.22)' : 'rgba(255,95,86,.22)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.beginPath(); g.moveTo(X(0), Y(bars[0]));
+    bars.forEach((v, i) => g.lineTo(X(i), Y(v)));
+    g.lineTo(X(bars.length - 1), h - padB); g.lineTo(X(0), h - padB); g.closePath();
+    g.fillStyle = grad; g.fill();
+
+    g.beginPath(); g.moveTo(X(0), Y(bars[0]));
+    bars.forEach((v, i) => g.lineTo(X(i), Y(v)));
+    g.strokeStyle = col; g.lineWidth = 2; g.lineJoin = 'round'; g.stroke();
+
+    // where you got in, if you hold it
+    const held = paperState && paperState.account
+      && paperState.account.positions.find(p => p.symbol === chartSym);
+    if (held && held.avgPrice >= lo && held.avgPrice <= hi) {
+      const y = Y(held.avgPrice);
+      g.save(); g.setLineDash([4, 4]); g.strokeStyle = muted; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(padL, y); g.lineTo(w - padR, y); g.stroke(); g.restore();
+      g.fillStyle = muted; g.font = '10px ui-monospace, monospace';
+      g.textAlign = 'left'; g.textBaseline = 'bottom';
+      g.fillText('your entry', padL + 3, y - 3);
+    }
+
+    const lx = X(bars.length - 1), ly = Y(bars[bars.length - 1]);
+    g.fillStyle = col; g.beginPath(); g.arc(lx, ly, 3.5, 0, Math.PI * 2); g.fill();
+    g.globalAlpha = .25; g.beginPath(); g.arc(lx, ly, 7, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
   }
 
   function renderPaper() {
@@ -1405,6 +1550,7 @@
     if (!has) {
       const d = (paperState && paperState.defaults) || {};
       if (d.startBalance) $('paperStart').value = d.startBalance;
+      stopLive();
       return;
     }
     const a = paperState.account, r = a.risk, lim = a.limits || { maxPosition: 20, perTrade: 2 };
@@ -1412,9 +1558,11 @@
     $('pEquity').textContent = pMoney(a.equity);
     $('pCash').textContent = pMoney(a.cash);
     $('pInvested').textContent = pMoney(a.invested);
+    $('pCount').textContent = a.positions.length;
     const pn = $('pPnl');
-    pn.textContent = (a.pnl >= 0 ? '+' : '') + pMoney(a.pnl).replace('-', '') + '  (' + (a.pnlPct >= 0 ? '+' : '') + pPct(a.pnlPct) + ')';
-    pn.className = 'pstat-v ' + (a.pnl > 0 ? 'up' : a.pnl < 0 ? 'down' : '');
+    pn.textContent = (a.pnl >= 0 ? '+' : '−') + pMoney(a.pnl).replace('-', '')
+      + '  (' + (a.pnlPct >= 0 ? '+' : '−') + pPct(Math.abs(a.pnlPct)) + ')';
+    pn.className = 'pstat-sub ' + (a.pnl > 0 ? 'up' : a.pnl < 0 ? 'down' : '');
 
     $('pBand').textContent = r.band;
     $('pBand').className = 'risk-band ' + r.band;
@@ -1432,33 +1580,53 @@
     $('rPerTradeV').textContent = lim.perTrade + '%';
 
     $('pPositions').innerHTML = a.positions.length
-      ? '<table class="ptable"><thead><tr><th>Symbol</th><th>Qty</th><th>Average</th><th>Price</th>'
-        + '<th>Value</th><th>P&amp;L</th><th></th></tr></thead><tbody>'
-        + a.positions.map(p =>
-          '<tr><td><b>' + esc(p.symbol) + '</b>' + (p.stale ? ' <span class="stale" title="No live quote; valued at your entry price">stale</span>' : '') + '</td>'
-          + '<td>' + p.qty + '</td><td>' + pMoney(p.avgPrice) + '</td><td>' + pMoney(p.mark) + '</td>'
-          + '<td>' + pMoney(p.value) + '</td>'
-          + '<td class="' + (p.pnl > 0 ? 'up' : p.pnl < 0 ? 'down' : '') + '">'
-          + (p.pnl >= 0 ? '+' : '') + pMoney(p.pnl).replace('-', '') + ' (' + (p.pnlPct >= 0 ? '+' : '') + pPct(p.pnlPct) + ')</td>'
-          + '<td><button type="button" class="link-btn p-close" data-sym="' + esc(p.symbol) + '" data-qty="' + p.qty + '">Close</button></td></tr>'
-        ).join('') + '</tbody></table>'
-      : '<p class="muted" style="font-size:14px">Nothing open. Buy something above to start.</p>';
+      ? '<div class="pos-grid">' + a.positions.map(p =>
+          '<div class="pos' + (p.symbol === chartSym ? ' on' : '') + '" data-sym="' + esc(p.symbol) + '">'
+          + '<div class="pos-top"><b>' + esc(p.symbol) + '</b>'
+          + (p.stale ? '<span class="stale" title="No live quote; held at your entry price">stale</span>' : '')
+          + '<span class="pos-pnl ' + (p.pnl > 0 ? 'up' : p.pnl < 0 ? 'down' : '') + '">'
+          + (p.pnl >= 0 ? '+' : '−') + pMoney(p.pnl).replace('-', '') + '</span></div>'
+          + '<div class="pos-mid">' + p.qty + ' @ ' + pMoney(p.avgPrice) + '</div>'
+          + '<div class="pos-bot"><span>' + pMoney(p.value) + '</span>'
+          + '<span class="' + (p.pnlPct > 0 ? 'up' : p.pnlPct < 0 ? 'down' : '') + '">'
+          + (p.pnlPct >= 0 ? '+' : '−') + pPct(Math.abs(p.pnlPct)) + '</span></div>'
+          + '<button type="button" class="pos-close p-close" data-sym="' + esc(p.symbol) + '" data-qty="' + p.qty + '">Close</button>'
+          + '</div>').join('') + '</div>'
+      : '<p class="muted empty">Nothing open. Buy something to start.</p>';
 
     const fills = paperState.fills || [];
     $('pFills').innerHTML = fills.length
-      ? '<table class="ptable"><thead><tr><th>When</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Price</th><th>Realised</th></tr></thead><tbody>'
+      ? '<div class="scroll-x"><table class="ptable"><thead><tr><th>When</th><th>Symbol</th><th>Side</th>'
+        + '<th>Qty</th><th>Price</th><th>Realised</th></tr></thead><tbody>'
         + fills.map(f =>
           '<tr><td class="muted">' + new Date(f.ts).toLocaleString() + '</td><td><b>' + esc(f.symbol) + '</b></td>'
           + '<td class="' + (f.side === 'buy' ? 'up' : 'down') + '">' + esc(f.side) + '</td>'
           + '<td>' + f.qty + '</td><td>' + pMoney(f.price) + '</td>'
           + '<td class="' + (f.realized > 0 ? 'up' : f.realized < 0 ? 'down' : '') + '">'
-          + (f.realized == null ? '—' : (f.realized >= 0 ? '+' : '') + pMoney(f.realized).replace('-', '')) + '</td></tr>'
-        ).join('') + '</tbody></table>'
-      : '<p class="muted" style="font-size:14px">No fills yet.</p>';
+          + (f.realized == null ? '—' : (f.realized >= 0 ? '+' : '−') + pMoney(f.realized).replace('-', '')) + '</td></tr>'
+        ).join('') + '</tbody></table></div>'
+      : '<p class="muted empty">No fills yet.</p>';
 
-    document.querySelectorAll('.p-close').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.pos').forEach(el => el.addEventListener('click', (ev) => {
+      if (ev.target.closest('.p-close')) return;
+      $('pSym').value = el.dataset.sym; selectChart(el.dataset.sym); estimate();
+    }));
+    document.querySelectorAll('.p-close').forEach(b => b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
       $('pSym').value = b.dataset.sym; $('pQty').value = b.dataset.qty; trade('sell');
     }));
+  }
+
+  function estimate() {
+    const el = $('pEst'); if (!el) return;
+    const q = Number($('pQty').value);
+    const px = chartQuote && Number(chartQuote.price);
+    const sym = ($('pSym').value || '').toUpperCase().trim();
+    if (!(q > 0) || !Number.isFinite(px) || sym !== chartSym) { el.innerHTML = '&nbsp;'; return; }
+    const cash = paperState && paperState.account ? paperState.account.cash : 0;
+    const cost = q * px;
+    el.innerHTML = 'About <b>' + pMoney(cost) + '</b> at ' + pMoney(px)
+      + (cost > cash ? ' <span class="over">— more than your cash</span>' : '');
   }
 
   async function trade(side) {
@@ -1471,13 +1639,13 @@
       const res = await fetch('/api/paper/trade', { method: 'POST',
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol, side, qty }) });
       const j = await res.json();
-      if (!res.ok) return paperMsg(j.error || 'That did not go through.', true);
+      if (!res.ok) return paperMsg(j.message || j.error || 'That did not go through.', true);
       paperState = { account: j.account, fills: j.fills, defaults: paperState && paperState.defaults };
       renderPaper();
       const f = j.filled;
-      paperMsg(f.side === 'buy' ? 'Bought ' + f.qty + ' ' + f.symbol + ' at ' + pMoney(f.price)
-                                : 'Sold ' + f.qty + ' ' + f.symbol + ' at ' + pMoney(f.price));
-      $('pQty').value = '';
+      paperMsg((f.side === 'buy' ? 'Bought ' : 'Sold ') + f.qty + ' ' + f.symbol + ' at ' + pMoney(f.price));
+      $('pQty').value = ''; estimate();
+      if (f.symbol !== chartSym) selectChart(f.symbol); else drawPracChart();
     } catch (e) { paperMsg('That did not go through.', true); }
   }
 
@@ -1492,35 +1660,45 @@
           headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ startBalance }) });
         const j = await res.json();
         paperState = { account: j.account, fills: j.fills || [], defaults: paperState && paperState.defaults };
-        renderPaper();
-        paperMsg('');
+        renderPaper(); paperMsg('');
+        selectChart(chartSym || 'AAPL'); startLive();
       } catch (e) { paperMsg('Could not start the account.', true); }
     });
-    $('paperReset').addEventListener('click', () => {
-      // Straight back to the setup card, so the balance is chosen again rather
-      // than silently reused.
+    // Actually clears the server, which the old one did not.
+    $('paperReset').addEventListener('click', async () => {
+      try { await fetch('/api/paper/reset', { method: 'POST' }); } catch (e) {}
       paperState = { account: null, fills: [], defaults: paperState && paperState.defaults };
-      renderPaper();
+      stopLive(); renderPaper();
     });
     $('pBuy').addEventListener('click', () => trade('buy'));
     $('pSell').addEventListener('click', () => trade('sell'));
+    $('pQty').addEventListener('input', estimate);
     $('pQty').addEventListener('keydown', (e) => { if (e.key === 'Enter') trade('buy'); });
+    $('pSym').addEventListener('change', () => { selectChart($('pSym').value); });
+    $('pSym').addEventListener('keydown', (e) => { if (e.key === 'Enter') selectChart($('pSym').value); });
+
+    document.querySelectorAll('#cRange button').forEach(b => b.addEventListener('click', () => {
+      chartRange = b.dataset.r;
+      document.querySelectorAll('#cRange button').forEach(o => o.classList.toggle('on', o === b));
+      drawPracChart();
+    }));
+    window.addEventListener('resize', () => { if (currentView === 'practice') drawPracChart(); });
 
     const live = (id, label) => {
       const el = $(id);
       el.addEventListener('input', () => { $(label).textContent = el.value + '%'; });
-      el.addEventListener('change', saveRisk);
+      el.addEventListener('change', saveRiskLimits);
     };
     live('rMaxPos', 'rMaxPosV');
     live('rPerTrade', 'rPerTradeV');
   }
 
-  async function saveRisk() {
+  async function saveRiskLimits() {
     try {
       const res = await fetch('/api/risk', { method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ maxPosition: Number($('rMaxPos').value), perTrade: Number($('rPerTrade').value) }) });
-      if (res.ok) loadPaper();     // the meter is measured against these, so refresh it
+      if (res.ok) loadPaperQuiet();
     } catch (e) { /* the slider already shows the intent */ }
   }
 

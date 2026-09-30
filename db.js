@@ -159,6 +159,15 @@ async function openPaper(uid, startBalance) {
   }
   return rec;
 }
+async function clearPaper(uid) {
+  if (mode === 'postgres') {
+    await pool.query('DELETE FROM paper_positions WHERE uid=$1', [uid]);
+    await pool.query('DELETE FROM paper_trades WHERE uid=$1', [uid]);
+    await pool.query('DELETE FROM paper_accounts WHERE uid=$1', [uid]);
+  } else {
+    mem.paper.delete(uid); mem.pos.delete(uid); mem.fills.delete(uid);
+  }
+}
 async function setCash(uid, cash) {
   if (mode === 'postgres') await pool.query('UPDATE paper_accounts SET cash=$2 WHERE uid=$1', [uid, cash]);
   else { const a = mem.paper.get(uid); if (a) a.cash = cash; }
@@ -510,7 +519,7 @@ module.exports = {
   createSession, getSessionUser, deleteSession, purgeExpiredSessions,
   getStreak, saveStreak,
   getRisk, saveRisk, RISK_DEFAULTS,
-  getPaper, openPaper, setCash, listPositions, savePosition, dropPosition, addFill, listFills,
+  getPaper, openPaper, clearPaper, setCash, listPositions, savePosition, dropPosition, addFill, listFills,
   listWatch, addWatch, removeWatch,
   listAlerts, addAlert, removeAlert, markTriggered,
   listUsers, counts,

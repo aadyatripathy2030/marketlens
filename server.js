@@ -79,7 +79,8 @@ const KNOWN_API = new Set([
   '/api/billing/webhook', '/api/billing/checkout', '/api/billing/portal',
   // practice account, the risk limits it is measured against, and the
   // sentiment read over the headlines that were already being fetched
-  '/api/paper', '/api/paper/open', '/api/paper/trade', '/api/risk', '/api/sentiment',
+  '/api/paper', '/api/paper/open', '/api/paper/trade', '/api/paper/reset',
+  '/api/risk', '/api/sentiment',
 ]);
 const errorLog = [];                   // recent server errors (ring buffer)
 function logError(e) { errorLog.push({ t: Date.now(), msg: String((e && e.message) || e).slice(0, 200) }); if (errorLog.length > 60) errorLog.shift(); }
@@ -776,7 +777,7 @@ async function sentimentByClaude(items, symbol) {
   return items.map((n, i) => ({ ...n, tone: tones[i + 1] || 'neutral' }));
 }
 
-async function handleSentiment(req, res, symbolRaw) {
+async function handleSentiment(req, res, user, symbolRaw) {
   const symbol = String(symbolRaw || '').toUpperCase().replace(/[^A-Z0-9.\-]/g, '').slice(0, 12);
   if (!symbol) return json(res, 400, { error: 'No symbol.' });
   if (!FINNHUB_API_KEY) {
@@ -792,8 +793,23 @@ async function handleSentiment(req, res, symbolRaw) {
   items = items.slice(0, 10);
   let scored, method = 'rules';
   if (ANTHROPIC_API_KEY) {
-    try { scored = await sentimentByClaude(items, symbol); method = 'claude'; }
-    catch (e) { logError(e); }
+    const pro = hasPro(user);
+    const key = clientKey(req, user);
+    // Cached per symbol. The headlines only refresh every five minutes, so
+    // re-reading them with the model on every page view paid twice for the
+    // same answer. A cache hit is free and is not charged.
+    const hit = cachedAt('sent:' + symbol) > 0;
+    let allowed = true;
+    if (!pro && !hit) {
+      try { allowed = (await db.peekUsage(key, 'ai')) < AI_FREE_DAILY; } catch (e) {}
+    }
+    if (allowed) {
+      try {
+        scored = await cached('sent:' + symbol, 900000, () => sentimentByClaude(items, symbol));
+        method = 'claude';
+        if (!pro && !hit) { try { await db.bumpUsage(key, 'ai', AI_FREE_DAILY); } catch (e) {} }
+      } catch (e) { logError(e); }
+    }
   }
   if (!scored) scored = sentimentByWords(items);
   const counts = { positive: 0, negative: 0, neutral: 0 };
@@ -903,9 +919,13 @@ async function handlePaperTrade(req, res, user, body) {
   if (!symbol) return json(res, 400, { error: 'Pick a symbol.' });
   if (side !== 'buy' && side !== 'sell') return json(res, 400, { error: 'Side must be buy or sell.' });
   if (!qty) return json(res, 400, { error: 'Enter a quantity above zero.' });
+  if (!Number.isFinite(qty) || qty > 1e9) return json(res, 400, { error: 'That quantity is not a realistic trade.' });
 
   const acct = await db.getPaper(user.id);
   if (!acct) return json(res, 400, { error: 'Start a practice account first.' });
+  // Without this the demo price generator invents a quote for any string,
+  // and the account could hold shares in a ticker that does not exist.
+  if (!(await symbolResolves(symbol))) return json(res, 404, noSuchTicker(symbol));
 
   let quotes = [];
   try { quotes = await fetchQuotes([symbol]); } catch (e) { logError(e); }
@@ -933,16 +953,29 @@ async function handlePaperTrade(req, res, user, body) {
       return json(res, 400, { error: 'You hold ' + (held ? held.qty : 0) + ' ' + symbol + '.' });
     }
     const realized = (price - held.avgPrice) * qty;
-    const left = Math.round((held.qty - qty) * 1e4) / 1e4;
+    let left = Math.round((held.qty - qty) * 1e4) / 1e4;
+    // A remainder worth under a cent is dust: close it and pay it out,
+    // rather than leaving 0.0001 shares in the table forever.
+    let proceeds = price * qty;
+    if (left > 0 && left * price < 0.01) { proceeds += left * price; left = 0; }
     if (left <= 0) await db.dropPosition(user.id, symbol);
     else await db.savePosition(user.id, { ...held, qty: left });
-    await db.setCash(user.id, acct.cash + price * qty);
+    await db.setCash(user.id, acct.cash + proceeds);
     await db.addFill(user.id, { symbol, side, qty, price, realized });
   }
 
   const book = await valueBook(user.id);
   const fills = await db.listFills(user.id, 50);
   return json(res, 200, { account: book, fills, filled: { symbol, side, qty, price } });
+}
+
+// The button says "reset the account", so it has to clear the server. It
+// previously blanked local state only, and navigating away and back
+// brought every position straight back.
+async function handlePaperReset(req, res, user) {
+  await db.clearPaper(user.id);
+  return json(res, 200, { account: null, fills: [],
+    defaults: { startBalance: PAPER_DEFAULT, min: PAPER_MIN, max: PAPER_MAX } });
 }
 
 // ---- Risk limits ----
@@ -2338,11 +2371,15 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/auth/delete' && req.method === 'POST') return await handleDeleteAccount(req, res);
     if (url === '/api/auth/me' && req.method === 'GET') return await handleMe(req, res);
     if (url === '/api/watchlist') return await handleWatchlist(req, res);
-    if (url === '/api/sentiment' && req.method === 'GET')
-      return await handleSentiment(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbol'));
-    if (url === '/api/paper' || url === '/api/paper/open' || url === '/api/paper/trade' || url === '/api/risk') {
+    if (url === '/api/paper' || url === '/api/paper/open' || url === '/api/paper/trade'
+        || url === '/api/paper/reset' || url === '/api/risk' || url === '/api/sentiment') {
       const u = await currentUser(req);
       if (!u) return json(res, 401, { error: 'Please sign in.' });
+      // Sentiment spends model tokens, so it belongs behind the same door
+      // and the same daily budget as the written report. It was wide open.
+      if (url === '/api/sentiment' && req.method === 'GET')
+        return await handleSentiment(req, res, u, new URLSearchParams(req.url.split('?')[1] || '').get('symbol'));
+      if (url === '/api/paper/reset' && req.method === 'POST') return await handlePaperReset(req, res, u);
       if (url === '/api/paper' && req.method === 'GET') return await handlePaperGet(req, res, u);
       if (url === '/api/paper/open' && req.method === 'POST') return await handlePaperOpen(req, res, u, await readBody(req));
       if (url === '/api/paper/trade' && req.method === 'POST') return await handlePaperTrade(req, res, u, await readBody(req));

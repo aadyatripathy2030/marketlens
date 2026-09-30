@@ -391,85 +391,121 @@
 
   <!-- SETTINGS -->
   <section class="view hidden" id="view-practice">
-    <div class="view-h">Practice</div>
-    <p class="muted" style="margin:-10px 0 20px;max-width:64ch">
-      A practice account with pretend money, so you can rehearse position sizing against your own
-      limits without any of it being real. Fills use the live price. Nothing here touches a broker.
-    </p>
+    <div class="prac-head">
+      <div>
+        <div class="view-h" style="margin-bottom:4px">Practice</div>
+        <p class="muted" style="margin:0;max-width:56ch;font-size:14.5px">
+          Pretend money, real prices. Rehearse position sizing against your own limits
+          without any of it being real. Nothing here touches a broker.
+        </p>
+      </div>
+      <span class="prac-tag">Simulated</span>
+    </div>
 
-    <div id="paperSetup" class="card hidden" style="max-width:480px">
-      <h3 style="margin:0 0 6px">Start a practice account</h3>
-      <p class="muted" style="margin:0 0 16px;font-size:14px">Pick the balance you want to practise with.</p>
-      <label class="lbl" for="paperStart">Starting balance</label>
-      <div class="row" style="gap:8px;align-items:center;margin-bottom:12px">
-        <span class="muted" style="font-size:18px">$</span>
-        <input id="paperStart" type="number" min="100" max="10000000" step="100" value="10000" class="inp" style="max-width:180px" />
+    <div id="paperSetup" class="hidden">
+      <div class="prac-setup">
+        <h3>Choose a starting balance</h3>
+        <p class="muted">You can reset and pick a different one whenever you like.</p>
+        <div class="amt-row">
+          <span class="amt-cur">$</span>
+          <input id="paperStart" type="number" min="100" max="10000000" step="100" value="10000" />
+        </div>
+        <div class="amt-presets">
+          <button type="button" class="chip paper-preset" data-amt="1000">1,000</button>
+          <button type="button" class="chip paper-preset" data-amt="10000">10,000</button>
+          <button type="button" class="chip paper-preset" data-amt="25000">25,000</button>
+          <button type="button" class="chip paper-preset" data-amt="100000">100,000</button>
+        </div>
+        <button type="button" class="btn primary wide" id="paperOpen">Start practising</button>
       </div>
-      <div class="row" style="gap:6px;flex-wrap:wrap;margin-bottom:16px">
-        <button type="button" class="chip paper-preset" data-amt="1000">1,000</button>
-        <button type="button" class="chip paper-preset" data-amt="10000">10,000</button>
-        <button type="button" class="chip paper-preset" data-amt="25000">25,000</button>
-        <button type="button" class="chip paper-preset" data-amt="100000">100,000</button>
-      </div>
-      <button type="button" class="btn primary" id="paperOpen">Start practising</button>
     </div>
 
     <div id="paperBook" class="hidden">
       <div class="paper-top">
-        <div class="pstat"><div class="pstat-k">Account value</div><div class="pstat-v" id="pEquity">&mdash;</div></div>
-        <div class="pstat"><div class="pstat-k">Cash</div><div class="pstat-v" id="pCash">&mdash;</div></div>
-        <div class="pstat"><div class="pstat-k">Invested</div><div class="pstat-v" id="pInvested">&mdash;</div></div>
-        <div class="pstat"><div class="pstat-k">Profit &amp; loss</div><div class="pstat-v" id="pPnl">&mdash;</div></div>
+        <div class="pstat hero">
+          <div class="pstat-k">Account value</div>
+          <div class="pstat-v" id="pEquity">&mdash;</div>
+          <div class="pstat-sub" id="pPnl">&mdash;</div>
+        </div>
+        <div class="pstat"><div class="pstat-k">Cash</div><div class="pstat-v sm" id="pCash">&mdash;</div></div>
+        <div class="pstat"><div class="pstat-k">Invested</div><div class="pstat-v sm" id="pInvested">&mdash;</div></div>
+        <div class="pstat"><div class="pstat-k">Positions</div><div class="pstat-v sm" id="pCount">&mdash;</div></div>
       </div>
 
-      <div class="paper-grid">
-        <div class="card">
-          <h3 style="margin:0 0 12px">Place a practice trade</h3>
-          <div class="row" style="gap:8px;flex-wrap:wrap;align-items:flex-end">
-            <div style="flex:1 1 130px">
-              <label class="lbl" for="pSym">Symbol</label>
-              <input id="pSym" class="inp" placeholder="AAPL" maxlength="16" />
+      <div class="prac-main">
+        <div class="card chart-card">
+          <div class="chart-head">
+            <div class="chart-id">
+              <span class="chart-sym" id="cSym">&mdash;</span>
+              <span class="chart-name muted" id="cName"></span>
             </div>
-            <div style="flex:0 1 110px">
-              <label class="lbl" for="pQty">Quantity</label>
-              <input id="pQty" class="inp" type="number" min="0" step="any" placeholder="10" />
+            <div class="chart-px">
+              <span class="chart-last" id="cLast">&mdash;</span>
+              <span class="chart-chg" id="cChg"></span>
+              <span class="live-dot" id="cLive" hidden title="Updating while this page is open"></span>
             </div>
-            <button type="button" class="btn buy" id="pBuy">Buy</button>
-            <button type="button" class="btn sell" id="pSell">Sell</button>
           </div>
-          <div id="pMsg" class="paper-msg" hidden></div>
+          <div class="chart-holder"><canvas id="pChart"></canvas></div>
+          <div class="chart-foot">
+            <div class="range-btns" id="cRange">
+              <button type="button" data-r="1mo" class="on">1M</button>
+              <button type="button" data-r="3mo">3M</button>
+              <button type="button" data-r="1y">1Y</button>
+            </div>
+            <span class="muted" id="cNote"></span>
+          </div>
         </div>
 
-        <div class="card">
-          <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:10px">
-            <h3 style="margin:0">Risk</h3>
-            <span class="risk-band" id="pBand">&mdash;</span>
+        <div class="side-col">
+          <div class="card ticket">
+            <h3>Trade</h3>
+            <label class="lbl" for="pSym">Symbol</label>
+            <input id="pSym" class="inp" placeholder="AAPL" maxlength="16" autocomplete="off" />
+            <label class="lbl" for="pQty">Quantity</label>
+            <input id="pQty" class="inp" type="number" min="0" step="any" placeholder="10" />
+            <div class="est" id="pEst">&nbsp;</div>
+            <div class="ticket-btns">
+              <button type="button" class="btn buy" id="pBuy">Buy</button>
+              <button type="button" class="btn sell" id="pSell">Sell</button>
+            </div>
+            <div id="pMsg" class="paper-msg" hidden></div>
           </div>
-          <div class="risk-bar"><i id="pRiskFill"></i></div>
-          <div class="risk-legend"><span>Invested <b id="pInvPct">&mdash;</b></span><span>Largest <b id="pLargest">&mdash;</b></span><span>Cash <b id="pCashPct">&mdash;</b></span></div>
-          <div id="pFlags" class="risk-flags"></div>
-          <details class="risk-set">
-            <summary>Your limits</summary>
-            <label class="lbl" for="rMaxPos">Most in one position &mdash; <b id="rMaxPosV">20%</b></label>
-            <input id="rMaxPos" type="range" min="1" max="100" value="20" />
-            <label class="lbl" for="rPerTrade">Risk per trade &mdash; <b id="rPerTradeV">2%</b></label>
-            <input id="rPerTrade" type="range" min="1" max="25" value="2" />
-            <p class="muted" style="font-size:12.5px;margin:8px 0 0">
-              These are your own limits. The meter measures the account against them; nothing is blocked.
-            </p>
-          </details>
+
+          <div class="card">
+            <div class="row" style="justify-content:space-between;align-items:baseline;margin-bottom:10px">
+              <h3 style="margin:0">Risk</h3>
+              <span class="risk-band" id="pBand">&mdash;</span>
+            </div>
+            <div class="risk-bar"><i id="pRiskFill"></i></div>
+            <div class="risk-legend">
+              <span>Invested <b id="pInvPct">&mdash;</b></span>
+              <span>Largest <b id="pLargest">&mdash;</b></span>
+              <span>Cash <b id="pCashPct">&mdash;</b></span>
+            </div>
+            <div id="pFlags" class="risk-flags"></div>
+            <details class="risk-set">
+              <summary>Your limits</summary>
+              <label class="lbl" for="rMaxPos">Most in one position &mdash; <b id="rMaxPosV">20%</b></label>
+              <input id="rMaxPos" type="range" min="1" max="100" value="20" />
+              <label class="lbl" for="rPerTrade">Risk per trade &mdash; <b id="rPerTradeV">2%</b></label>
+              <input id="rPerTrade" type="range" min="1" max="25" value="2" />
+              <p class="muted" style="font-size:12.5px;margin:8px 0 0">
+                Your limits, not a house view. The meter measures against them; nothing is blocked.
+              </p>
+            </details>
+          </div>
         </div>
       </div>
 
-      <h3 style="margin:22px 0 10px">Positions</h3>
+      <h3 class="sec-h">Positions</h3>
       <div id="pPositions"></div>
 
-      <h3 style="margin:22px 0 10px">Recent fills</h3>
+      <h3 class="sec-h">Recent fills</h3>
       <div id="pFills"></div>
 
-      <div class="row" style="margin-top:20px;gap:10px;align-items:center;flex-wrap:wrap">
+      <div class="row" style="margin-top:22px;gap:10px;align-items:center;flex-wrap:wrap">
         <button type="button" class="btn ghost" id="paperReset">Reset the account</button>
-        <span class="muted" style="font-size:13px">Clears every position and fill, and lets you pick a new starting balance.</span>
+        <span class="muted" style="font-size:13px">Clears every position and fill, then lets you pick a new balance.</span>
       </div>
     </div>
   </section>
