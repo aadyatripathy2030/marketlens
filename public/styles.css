@@ -867,3 +867,10 @@ body.drawer-open .drawer { transform: translateX(0); }
 
 /* the starting-balance field on the setup card */
 .amt-row:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* The ticket's symbol picker reuses .suggest, but sits in a narrow card where
+   the shared 320px max-height would overflow the panel. */
+#pSuggest { max-height: 246px; }
+#pSuggest .suggest-item { padding: 9px 12px; }
+#pSuggest .suggest-sym { min-width: 52px; font-family: var(--font-num); font-size: 13.5px; }
+#pSuggest .suggest-name { font-size: 12px; }

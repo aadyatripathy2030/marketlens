@@ -462,7 +462,9 @@
             <label class="tk-lbl" for="pSym">Symbol</label>
             <div class="tk-field">
               <input id="pSym" class="input tk-sym" placeholder="AAPL" maxlength="16"
-                     autocomplete="off" autocapitalize="characters" spellcheck="false" />
+                     autocomplete="off" autocapitalize="characters" spellcheck="false"
+                     role="combobox" aria-expanded="false" aria-autocomplete="list" aria-controls="pSuggest" />
+              <div class="suggest hidden" id="pSuggest" role="listbox" aria-label="Matching symbols"></div>
             </div>
             <label class="tk-lbl" for="pQty">Quantity</label>
             <div class="tk-field">

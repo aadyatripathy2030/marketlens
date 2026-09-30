@@ -1617,6 +1617,60 @@
     }));
   }
 
+  // ---- Symbol picker on the ticket ----
+  // Reuses the same TICKERS and CRYPTO lists the main search uses, so the two
+  // pickers can never offer different things.
+  let tkItems = [], tkIdx = -1;
+
+  function tkSuggest(raw) {
+    const box = $('pSuggest'), input = $('pSym');
+    if (!box) return;
+    const q = (raw || '').trim().toUpperCase();
+    if (!q) return tkHide();
+    const starts = [], byName = [];
+    for (const t of TICKERS.concat(CRYPTO)) {
+      // "BTC" should find BTC/USD, so match the base of a pair too.
+      if (t[0].startsWith(q) || t[0].split('/')[0] === q) starts.push(t);
+      else if (t[1].toUpperCase().includes(q)) byName.push(t);
+    }
+    tkItems = starts.concat(byName).slice(0, 7);
+    if (!tkItems.length) return tkHide();
+    tkIdx = -1;
+    box.innerHTML = tkItems.map(([sym, name], i) =>
+      '<div class="suggest-item" role="option" aria-selected="false" data-sym="' + esc(sym) + '" data-i="' + i + '">'
+      + '<span class="suggest-sym">' + esc(sym) + '</span>'
+      + '<span class="suggest-name">' + esc(name) + '</span></div>').join('');
+    box.classList.remove('hidden');
+    input.setAttribute('aria-expanded', 'true');
+    // mousedown, not click: the input's blur would close the list first
+    box.querySelectorAll('.suggest-item').forEach(el =>
+      el.addEventListener('mousedown', (e) => { e.preventDefault(); tkPick(el.dataset.sym); }));
+  }
+  function tkHide() {
+    const box = $('pSuggest');
+    if (!box) return;
+    box.classList.add('hidden'); box.innerHTML = '';
+    tkItems = []; tkIdx = -1;
+    $('pSym').setAttribute('aria-expanded', 'false');
+  }
+  function tkPick(sym) {
+    $('pSym').value = sym;
+    tkHide();
+    selectChart(sym);
+    estimate();
+    $('pQty').focus();
+  }
+  function tkHighlight(i) {
+    const box = $('pSuggest');
+    box.querySelectorAll('.suggest-item').forEach((el, n) => {
+      const on = n === i;
+      el.classList.toggle('active', on);
+      el.setAttribute('aria-selected', on ? 'true' : 'false');
+      if (on && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+    });
+    tkIdx = i;
+  }
+
   function estimate() {
     const el = $('pEst'); if (!el) return;
     const q = Number($('pQty').value);
@@ -1677,11 +1731,24 @@
       const el = $('pSym'), at = el.selectionStart;
       el.value = el.value.toUpperCase();
       try { el.setSelectionRange(at, at); } catch (e) {}
+      tkSuggest(el.value);
       estimate();
     });
     $('pQty').addEventListener('keydown', (e) => { if (e.key === 'Enter') trade('buy'); });
     $('pSym').addEventListener('change', () => { selectChart($('pSym').value); });
-    $('pSym').addEventListener('keydown', (e) => { if (e.key === 'Enter') selectChart($('pSym').value); });
+    $('pSym').addEventListener('focus', () => { if ($('pSym').value) tkSuggest($('pSym').value); });
+    $('pSym').addEventListener('blur', () => setTimeout(tkHide, 120));
+    $('pSym').addEventListener('keydown', (e) => {
+      const open = !$('pSuggest').classList.contains('hidden');
+      if (open && e.key === 'ArrowDown') { e.preventDefault(); tkHighlight(Math.min(tkIdx + 1, tkItems.length - 1)); return; }
+      if (open && e.key === 'ArrowUp') { e.preventDefault(); tkHighlight(Math.max(tkIdx - 1, 0)); return; }
+      if (open && e.key === 'Escape') { tkHide(); return; }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (open && tkIdx >= 0) tkPick(tkItems[tkIdx][0]);
+        else { tkHide(); selectChart($('pSym').value); }
+      }
+    });
 
     // Size by a share of what is actually spendable. When the symbol is one you
     // already hold, Max means the whole position, because at that point the
