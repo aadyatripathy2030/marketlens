@@ -13,6 +13,7 @@ origin, so requests are accepted only from a local page, the name is reduced
 to a basename of known characters, and the body is capped.
 """
 import http.server, json, os, re, socketserver, subprocess, sys, threading, urllib.parse
+import importlib.util
 
 # Requests are served on threads, so two posts naming the same file would both
 # write it and then convert it underneath each other -- seen in the log as a
@@ -26,6 +27,7 @@ PORT = 47823
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEST = os.path.expanduser('~/Movies/ChartGauge')
 CONVERTER = os.path.join(HERE, 'for-resolve.command')
+NARRATOR = os.path.join(HERE, 'narrate.py')
 MAX_BYTES = 2 * 1024 * 1024 * 1024        # a 50s take is ~10MB; this is slack
 OK_EXT = ('.mp4', '.webm')
 
@@ -42,7 +44,10 @@ class H(http.server.BaseHTTPRequestHandler):
         o = self.headers.get('Origin')
         self.send_header('Access-Control-Allow-Origin', o if o and o != 'null' else '*')
         self.send_header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        # X-Cg-Script carries the beats. Leaving it out here makes the
+        # browser pass the preflight and then silently refuse to send the
+        # POST at all, which looks exactly like the request never happening.
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, X-Cg-Script')
 
     def _json(self, code, obj):
         body = json.dumps(obj).encode()
@@ -104,13 +109,30 @@ class H(http.server.BaseHTTPRequestHandler):
             os.unlink(src)
             return self._json(400, {'error': 'upload was cut short'})
 
+        # The page sends the cut's beats along with the video, so the sound
+        # track is built from the same script that is on screen and cannot
+        # drift from it. No script header just means a silent track.
+        audio = ''
+        raw = self.headers.get('X-Cg-Script')
+        if raw:
+            try:
+                beats = json.loads(urllib.parse.unquote(raw))
+                total = max(b['to'] for b in beats) / 1000.0
+                spec = importlib.util.spec_from_file_location('narrate', NARRATOR)
+                nr = importlib.util.module_from_spec(spec); spec.loader.exec_module(nr)
+                audio = os.path.splitext(src)[0] + '-audio.wav'
+                nr.build(beats, total, audio)
+            except Exception as e:
+                sys.stderr.write('narration failed: %r\n' % (e,))
+                audio = ''
+
         out = os.path.splitext(src)[0] + '-resolve.mov'
         try:
             # Serialised: two ProRes writes at once only fight over the disk,
             # and the converter takes its own lock anyway and would fail the
             # second one.
             with _gate:
-                r = subprocess.run(['/bin/bash', CONVERTER, src, '60', 'prores'],
+                r = subprocess.run(['/bin/bash', CONVERTER, src, '60', 'prores', audio],
                                    capture_output=True, text=True, timeout=1800)
         except subprocess.TimeoutExpired:
             return self._json(500, {'error': 'conversion timed out', 'saved': src})
@@ -118,6 +140,7 @@ class H(http.server.BaseHTTPRequestHandler):
             return self._json(500, {'error': 'conversion failed', 'saved': src,
                                     'detail': (r.stdout + r.stderr).strip()[-400:]})
         return self._json(200, {'ok': True, 'saved': src, 'converted': out,
+                                'narrated': bool(audio),
                                 'mb': round(os.path.getsize(out) / 1e6)})
 
     def log_message(self, *a):

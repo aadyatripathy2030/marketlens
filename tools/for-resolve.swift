@@ -38,6 +38,36 @@ let outURL: URL = URL(fileURLWithPath: args[2])
 let fps: Int32 = args.count > 3 ? (Int32(args[3]) ?? 60) : 60
 let codecArg: String = args.count > 4 ? args[4].lowercased() : "prores"
 let useProRes: Bool = codecArg != "h264"
+// Optional 6th argument: a mono 16-bit 44.1k WAV to use as the sound track.
+// Without one the track is silence, which is still written, because some
+// Resolve builds refuse a file with no audio at all.
+let audioPath: String? = args.count > 5 && !args[5].isEmpty ? args[5] : nil
+
+// Just the samples out of a canonical WAV -- this only ever reads the file
+// the narrator next door wrote, so it walks the chunks rather than pretending
+// to handle every variant in the wild.
+func loadWavMono16(_ path: String) -> [Int16]? {
+    guard let d = FileManager.default.contents(atPath: path), d.count > 44 else { return nil }
+    let bytes = [UInt8](d)
+    func u32(_ i: Int) -> Int { Int(bytes[i]) | Int(bytes[i+1])<<8 | Int(bytes[i+2])<<16 | Int(bytes[i+3])<<24 }
+    guard bytes[0...3] == ArraySlice("RIFF".utf8), bytes[8...11] == ArraySlice("WAVE".utf8) else { return nil }
+    var i = 12
+    while i + 8 <= bytes.count {
+        let id = String(bytes: bytes[i..<i+4], encoding: .ascii) ?? ""
+        let sz = u32(i+4)
+        if id == "data" {
+            let start = i + 8, end = min(bytes.count, start + sz)
+            if end <= start { return nil }
+            var out = [Int16](); out.reserveCapacity((end - start) / 2)
+            var j = start
+            while j + 1 < end { out.append(Int16(bitPattern: UInt16(bytes[j]) | UInt16(bytes[j+1]) << 8)); j += 2 }
+            return out
+        }
+        i += 8 + sz + (sz & 1)
+    }
+    return nil
+}
+let voice: [Int16]? = audioPath.flatMap { loadWavMono16($0) }
 try? FileManager.default.removeItem(at: outURL)
 
 let asset: AVURLAsset = AVURLAsset(url: inURL)
@@ -158,7 +188,19 @@ do {
                 offsetToData: 0, dataLength: bytes, flags: kCMBlockBufferAssureMemoryNowFlag,
                 blockBufferOut: &block)
             guard let bb = block else { return true }
-            CMBlockBufferFillDataBytes(with: 0, blockBuffer: bb, offsetIntoDestination: 0, dataLength: bytes)
+            if let v = voice {
+                // Copy this slice of the narration in; past its end, silence,
+                // so a track shorter than the clip simply stops rather than
+                // cutting the video short.
+                var pcm = [Int16](repeating: 0, count: n)
+                for k in 0..<n { let idx = made + k; if idx < v.count { pcm[k] = v[idx] } }
+                pcm.withUnsafeBufferPointer { buf in
+                    _ = CMBlockBufferReplaceDataBytes(with: buf.baseAddress!, blockBuffer: bb,
+                                                      offsetIntoDestination: 0, dataLength: bytes)
+                }
+            } else {
+                CMBlockBufferFillDataBytes(with: 0, blockBuffer: bb, offsetIntoDestination: 0, dataLength: bytes)
+            }
             var timing: CMSampleTimingInfo = CMSampleTimingInfo(
                 duration: CMTime(value: 1, timescale: Int32(rate)),
                 presentationTimeStamp: CMTime(value: CMTimeValue(made), timescale: Int32(rate)),
@@ -295,6 +337,8 @@ do {
     let attrs = try? FileManager.default.attributesOfItem(atPath: outURL.path)
     let bytes: Int = (attrs?[.size] as? NSNumber)?.intValue ?? 0
     print("  codec   : \(useProRes ? "ProRes 422 in .mov" : "H.264 in .mp4")")
+    if let v = voice { print("  audio   : narration, \(String(format: "%.1f", Double(v.count) / 44100))s") }
+    else { print("  audio   : silent track") }
     print("  frames  : \(written) at exactly \(fps)fps (\(held) held to fill the grid)")
     print("  length  : \(String(format: "%.2f", secs))s")
     if bytes > 0 { print("  size    : \(String(format: "%.0f", Double(bytes) / 1e6)) MB") }

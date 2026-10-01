@@ -7,7 +7,7 @@
 #
 #   double-click, or:  bash tools/for-resolve.command
 #   bash tools/for-resolve.command --watch          # convert new ones as they land
-#   bash tools/for-resolve.command clip.mp4 [fps] [prores|h264]
+#   bash tools/for-resolve.command clip.mp4 [fps] [prores|h264] [narration.wav]
 #
 # Why a conversion is needed at all: the browser's MediaRecorder writes a
 # fragmented container -- ftyp, an empty moov, then moof/mdat repeating --
@@ -50,6 +50,7 @@ fi
 
 FPS=60
 CODEC=prores
+AUDIO=""   # optional narration track; silence when empty
 
 # Convert one file. Skips anything already done, and anything still being
 # written -- a download in progress would otherwise convert to a short clip.
@@ -81,7 +82,7 @@ convert_one() {
   b=$(stat -f %z "$src" 2>/dev/null || echo 0)
   [ "$a" != "$b" ] && { echo "  $(basename "$src") is still downloading; leaving it."; return 0; }
   echo "  $(basename "$src")"
-  if "$BIN" "$src" "$out" "$FPS" "$CODEC"; then
+  if "$BIN" "$src" "$out" "$FPS" "$CODEC" "$AUDIO"; then
     echo "     -> $(basename "$out")"
   else
     echo "     conversion failed."; rm -f "$out"; return 1
@@ -123,7 +124,7 @@ fi
 # ---- one named file ----
 if [ -n "${1:-}" ]; then
   [ -f "$1" ] || { echo "No such file: $1"; exit 1; }
-  FPS="${2:-60}"; CODEC="${3:-prores}"
+  FPS="${2:-60}"; CODEC="${3:-prores}"; AUDIO="${4:-}"
   echo "Converting for Resolve"
   convert_one "$1" || exit 1
   echo; echo "Import the -resolve file, not the original."

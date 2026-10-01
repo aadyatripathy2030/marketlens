@@ -1316,10 +1316,14 @@ async function sendToConverter(){
     var ping = await fetch(CONVERTER + '/ping', { cache:'no-store' });
     if (!ping.ok) return false;
   } catch (e) { return false; }
-  note('<b>Converting ' + lastName + '\u2026</b><br>Sent to the converter. This takes a few seconds.');
+  note('<b>Converting ' + lastName + '\u2026</b><br>Narrating and converting. This takes a few seconds.');
   try {
+    // The beats go over with the video so the narration is spoken from the
+    // same script that is on screen and the two cannot drift apart.
+    var beats = CAPS[document.getElementById('pick').value] || [];
     var r = await fetch(CONVERTER + '/convert?name=' + encodeURIComponent(lastName),
-                        { method:'POST', body:lastBlob });
+                        { method:'POST', body:lastBlob,
+                          headers: { 'X-Cg-Script': encodeURIComponent(JSON.stringify(beats)) } });
     var j = await r.json();
     if (!r.ok || !j.ok) {
       sentBlob = null;                       // let a failed take be retried
@@ -1328,7 +1332,8 @@ async function sendToConverter(){
       return true;
     }
     note('<b>Done \u2014 ready for Resolve.</b><br>'
-       + '<code>' + j.converted.replace(/^.*\//, '') + '</code> (' + j.mb + ' MB)<br>'
+       + '<code>' + j.converted.replace(/^.*\//, '') + '</code> (' + j.mb + ' MB)'
+       + (j.narrated ? ' <b>with narration and sound</b>' : ' (silent track)') + '<br>'
        + 'Both files are in <code>~/Movies/ChartGauge</code>. Import the <code>-resolve.mov</code>.');
     return true;
   } catch (e) {
