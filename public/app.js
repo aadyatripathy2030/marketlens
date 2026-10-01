@@ -749,8 +749,13 @@
     if (yManual && yManual.hi > yManual.lo) { lo = yManual.lo; hi = yManual.hi; }
     const AXF0 = '11.5px ui-sans-serif, system-ui, -apple-system, sans-serif';
     ctx.font = AXF0;
-    const widest = Math.max(ctx.measureText(pxFmt(hi)).width, ctx.measureText(pxFmt(lo)).width);
-    AXIS_W = Math.round(Math.max(56, Math.min(104, widest + 26)));
+    let widest = Math.max(ctx.measureText(pxFmt(hi)).width, ctx.measureText(pxFmt(lo)).width);
+    // The open position's running result sits in this gutter rather than over
+    // the candles, so the gutter has to be measured wide enough to take it.
+    const posNow = (paperState && paperState.account && lastData)
+      ? paperState.account.positions.find(p => p.symbol === lastData.symbol) : null;
+    if (posNow) widest = Math.max(widest, ctx.measureText('+$000,000.00').width);
+    AXIS_W = Math.round(Math.max(56, Math.min(132, widest + 26)));
     const padL = 8, padR = AXIS_W, padT = 12, padB = AXIS_H;
     // Volume gets its own pane below the price, so turning it on shortens the
     // candles rather than drawing bars across them.
@@ -960,32 +965,27 @@
         ? (short ? (pos.avgPrice - mark) : (mark - pos.avgPrice)) * Math.abs(pos.qty)
         : pos.pnl;
       const good = live >= 0;
-      const c = good ? col('--good') : col('--bad');
       const y = Y(pos.avgPrice);
+      // Thin, dashed and faint. A solid rule at full strength cut the candles
+      // in half and the price action could not be read through it.
       ctx.save();
-      ctx.strokeStyle = col('--accent'); ctx.lineWidth = 1.5; ctx.setLineDash([]);
+      ctx.strokeStyle = col('--accent'); ctx.globalAlpha = .55;
+      ctx.lineWidth = 1; ctx.setLineDash([4, 5]);
       ctx.beginPath(); ctx.moveTo(padL, Math.round(y) + .5); ctx.lineTo(axX, Math.round(y) + .5); ctx.stroke();
       ctx.restore();
-      // what the position is, on the line itself
+      // The side and size sit above the line in plain text, with no filled
+      // box behind them, so they label the line instead of hiding a candle.
       ctx.font = '600 ' + NUMF;
-      const side = short ? 'SHORT' : 'LONG';
-      const tag = side + '  ' + Math.abs(pos.qty) + ' @ ' + pxFmt(pos.avgPrice);
-      const tw = ctx.measureText(tag).width;
-      ctx.fillStyle = col('--accent'); ctx.globalAlpha = .16;
-      roundRect(padL + 4, y - 9, tw + 12, 18, 5); ctx.fill();
-      ctx.globalAlpha = 1; ctx.fillStyle = col('--accent');
-      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-      ctx.fillText(tag, padL + 10, y);
-      // and the running result, against the price scale
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = col('--accent'); ctx.globalAlpha = .9;
+      ctx.fillText((short ? 'SHORT ' : 'LONG ') + Math.abs(pos.qty) + ' @ ' + pxFmt(pos.avgPrice),
+                   padL + 3, y - 5);
+      ctx.globalAlpha = 1;
+      // The running result goes in the price gutter, where the other tags
+      // live, rather than over the newest candles.
       const money = (good ? '+' : '\u2212') + '$' + Math.abs(live)
         .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      ctx.font = '700 ' + NUMF;
-      const mw = ctx.measureText(money).width;
-      const bx = Math.max(padL, axX - mw - 16);
-      ctx.fillStyle = c;
-      roundRect(bx, y - 11, mw + 12, 22, 6); ctx.fill();
-      ctx.fillStyle = '#0b0e12';
-      ctx.fillText(money, bx + 6, y);
+      priceTag(money, y, good ? col('--good') : col('--bad'), '#0b0e12');
     }
 
     if (hover && hover.x > padL && hover.x < axX && hover.y > padT && hover.y < axY) {
