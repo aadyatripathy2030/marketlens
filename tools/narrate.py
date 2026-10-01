@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """Build the sound track for a cut: a spoken line per beat, plus effects.
 
-Everything here is macOS built-ins -- `say` for the voice, arithmetic for the
-effects -- so there is no account, no key and no network. Output is one mono
-16-bit 44.1k WAV the length of the clip, which for-resolve muxes in place of
-the silent track.
+The voice comes from voice/<cut>/<n>.wav when those exist -- real generated
+narration, already trimmed, one file per beat -- and falls back to the Mac's
+own `say` when they do not, so a cut with no recorded voice still gets a
+track. The effects are arithmetic either way: there is no sound-effect
+service here and none is needed for a whoosh and an impact.
 
-Each line is spoken, measured, and if it overruns its beat it is spoken again
-faster until it fits, because a line that runs into the next beat is worse
-than one delivered briskly.
+Output is one mono 16-bit 44.1k WAV the length of the clip, which for-resolve
+muxes in place of the silent track.
+
+Where `say` is used the line is spoken, measured, and spoken again faster if
+it overruns, because a line running into the next beat is worse than one
+delivered briskly. Generated voice is not rushed: the beat timings in the
+exporter were derived from its real lengths instead.
 """
 import array, math, os, re, struct, subprocess, sys, tempfile, wave
 
@@ -69,7 +74,9 @@ def tone(freq_from, freq_to, secs, gain, attack=0.02, release=0.5, noise=0.0):
         vals.append(v * env[i] * gain)
     return array.array('h', [max(-32768, min(32767, int(v * 32767))) for v in vals])
 
-def whoosh():   return tone(900, 180, 0.34, 0.11, attack=0.08, release=0.7, noise=0.85)
+def whoosh():   return tone(1400, 220, 0.30, 0.16, attack=0.10, release=0.75, noise=0.9)
+def riser():    return tone(220, 1500, 0.42, 0.07, attack=0.55, release=0.12, noise=0.35)
+def impact():   return tone(150, 48, 0.26, 0.26, attack=0.004, release=0.80, noise=0.18)
 def tick():     return tone(1600, 1200, 0.05, 0.13, attack=0.05, release=0.8)
 def chime():    return tone(880, 1320, 0.70, 0.13, attack=0.01, release=0.85)
 
@@ -80,7 +87,17 @@ def mix_into(buf, clip, at_s, gain=1.0):
         if 0 <= j < len(buf):
             buf[j] = max(-32768, min(32767, buf[j] + int(v * gain)))
 
-def build(beats, total_s, out_path):
+def clip_for(key, i):
+    """The generated line for this beat, if one was recorded."""
+    if not key: return None
+    f = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'voice', key, '%d.wav' % i)
+    if not os.path.exists(f): return None
+    with wave.open(f, 'rb') as w:
+        if w.getframerate() != RATE or w.getnchannels() != 1 or w.getsampwidth() != 2:
+            return None
+        return array.array('h', w.readframes(w.getnframes()))
+
+def build(beats, total_s, out_path, key=None):
     buf = array.array('h', [0]) * 0
     buf = array.array('h', bytes(int(total_s * RATE) * 2))
     with tempfile.TemporaryDirectory() as tmp:
@@ -90,13 +107,18 @@ def build(beats, total_s, out_path):
             if b.get('sub'): line += '. ' + b['sub'].strip()
             # the URL reads badly as speech
             line = re.sub(r'\bchartgauge\.com\b', 'chart gauge dot com', line, flags=re.I)
+            # a riser into the cut, then the impact on the cut itself
             if i > 0:
-                mix_into(buf, whoosh(), max(0.0, start - 0.12))
-            if line:
+                mix_into(buf, riser(), max(0.0, start - 0.45))
+                mix_into(buf, whoosh(), max(0.0, start - 0.16))
+                mix_into(buf, impact(), start)
+            vo = clip_for(key, i)
+            if vo is None and line:
                 vo = speak(line, end - start, tmp, i)
-                mix_into(buf, vo, start + 0.18, gain=1.0)
+            if vo is not None:
+                mix_into(buf, vo, start + 0.16, gain=1.0)
         mix_into(buf, chime(), max(0.0, beats[-1]['from'] / 1000.0 + 0.05), gain=0.9)
-        mix_into(buf, tick(), 0.02)
+        mix_into(buf, impact(), 0.0, gain=1.1)
     with wave.open(out_path, 'wb') as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(RATE)
         w.writeframes(buf.tobytes())
@@ -106,4 +128,4 @@ if __name__ == '__main__':
     import json
     beats = json.loads(sys.argv[1])
     total = float(sys.argv[2])
-    print(build(beats, total, sys.argv[3]))
+    print(build(beats, total, sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else None))

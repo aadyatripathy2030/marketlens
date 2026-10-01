@@ -121,7 +121,10 @@ class H(http.server.BaseHTTPRequestHandler):
                 spec = importlib.util.spec_from_file_location('narrate', NARRATOR)
                 nr = importlib.util.module_from_spec(spec); spec.loader.exec_module(nr)
                 audio = os.path.splitext(src)[0] + '-audio.wav'
-                nr.build(beats, total, audio)
+                # chartgauge-<cut>-<WxH>.mp4 -> the cut, so the generated
+                # voice lines for it are found instead of the Mac's `say`.
+                m = re.match(r'chartgauge-(.+)-\d+x\d+$', os.path.splitext(name)[0])
+                nr.build(beats, total, audio, m.group(1) if m else None)
             except Exception as e:
                 sys.stderr.write('narration failed: %r\n' % (e,))
                 audio = ''
