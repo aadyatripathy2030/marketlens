@@ -763,6 +763,10 @@ body.drawer-open .drawer { transform: translateX(0); }
 @media (max-width: 620px) { .streak::after { max-width: min(230px, calc(100vw - 32px)); } }
 @media (prefers-reduced-motion: reduce) { .streak::after { transition: none; transform: none; } }
 
+/* A failed chart load, shown on whichever view the panel is mounted in. */
+.chart-err { margin: 0 0 12px; padding: 10px 13px; border-radius: 10px; font-size: 13.5px;
+  color: var(--bad); background: rgba(255,95,86,.10); border: 1px solid rgba(255,95,86,.4); }
+
 /* ---- Practice account ---- */
 .prac-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 22px; }
 .prac-tag { flex: none; font-family: var(--font-num); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;

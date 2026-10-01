@@ -1358,8 +1358,15 @@
     return true;
   }
 
+  let pollSkips = 0;
   async function liveTick() {
     if (!lastData || document.hidden || !chartOnScreen()) return;
+    // Trades are arriving, so the price is already live. Poll once in seven
+    // -- about every twenty seconds -- purely to refresh the change figures,
+    // which a trade tick cannot supply. Asking every three seconds as well
+    // spends the upstream budget twice over for the same number, and when
+    // that budget runs out the chart stops loading entirely.
+    if (streaming() && (++pollSkips % 7) !== 0) return;
     const sym = lastData.symbol;
     let q; try { q = (await getQuotes([sym]))[0]; } catch { return; }
     if (!q || !lastData || lastData.symbol !== sym) return;
@@ -1378,10 +1385,15 @@
   // stays on the server and the browser only listens. If the stream is not
   // available -- no key, an old runtime, a proxy that will not hold the
   // connection -- nothing breaks: the poll underneath carries on.
-  let tickStream = null, tickStreamSym = null;
+  let tickStream = null, tickStreamSym = null, lastTickAt = 0;
+  // True while trades are actually arriving. The poll exists to carry the
+  // change figures and to stand in when there is no stream; while the stream
+  // is feeding, polling three times a minute is plenty and the rest of the
+  // upstream budget is better spent elsewhere.
+  const streaming = () => Date.now() - lastTickAt < 20000;
   function closeStream() {
     if (tickStream) { try { tickStream.close(); } catch (e) {} }
-    tickStream = null; tickStreamSym = null;
+    tickStream = null; tickStreamSym = null; lastTickAt = 0;
   }
   function ensureStream() {
     if (typeof EventSource === 'undefined') return;
@@ -1398,6 +1410,7 @@
       if (!lastData || lastData.symbol !== sym) return;
       let t; try { t = JSON.parse(ev.data); } catch (e) { return; }
       if (!t || String(t.symbol).toUpperCase() !== sym) return;
+      lastTickAt = Date.now();
       if (document.hidden || !chartOnScreen()) return;      // hold the socket, skip the paint
       applyTick(Number(t.price));
     };
@@ -1408,6 +1421,22 @@
       if (es.readyState === EventSource.CLOSED) closeStream();
     };
   }
+
+  // Shown over the chart panel wherever it is mounted, so a failure is
+  // legible on the page the reader is actually on.
+  function chartFailed(msg) {
+    const panel = $('chartPanel');
+    if (!panel) return;
+    let el = $('chartErr');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'chartErr'; el.className = 'chart-err';
+      panel.insertBefore(el, panel.firstChild);
+    }
+    el.textContent = msg || 'Could not load this chart.';
+    el.hidden = false;
+  }
+  function chartOk() { const el = $('chartErr'); if (el) el.hidden = true; }
 
   function tiles(d) {
     const r = d.indicators.rsi;
@@ -1439,6 +1468,7 @@
       if (seq !== runSeq) return;                    // superseded by a newer ticker
       if (!r.ok) throw new Error(d.error || 'Could not load');
       lastData = d; liveBar = null;
+      chartOk();
       // The activation moment: a chart the visitor asked for actually drew.
       // After the ok-check and the sequence guard, so a failed lookup or a
       // superseded request is never counted as one.
@@ -1496,6 +1526,11 @@
     } catch (e) {
       if (seq !== runSeq) return;                    // a newer request owns the UI now
       $('error').textContent = e.message; $('error').classList.remove('hidden'); $('result').classList.add('hidden');
+      // #error lives inside the analyze view. The chart panel also hangs in
+      // practice and the watchlist, and on those a failed load wrote the
+      // reason into a hidden element: the chart just went blank and said
+      // nothing. Put it where the chart actually is.
+      chartFailed(e.message);
     } finally { if (seq === runSeq) { $('goBtn').disabled = false; $('goBtn').textContent = 'Analyze'; } }
   }
 
@@ -1774,13 +1809,12 @@
   // the forming candle on the analyze page stopped updating entirely.
   function startPaperLive() {
     stopPaperLive();
-    // Three seconds for the price, matching the server's single-symbol
-    // window. The book is heavier -- it reprices every position -- so it goes
-    // every third tick, near enough the old rate.
+    // The chart's own poll already keeps the header price current, and the
+    // stream keeps it current faster than that. This one only needs to cover
+    // the case where neither is running, so it goes every third tick.
     livePoll = setInterval(() => {
       if (currentView !== 'practice' || document.hidden) return;
-      refreshQuote();
-      if (++paperTick % 3 === 0) loadPaperQuiet();
+      if (++paperTick % 3 === 0) { refreshQuote(); loadPaperQuiet(); }
     }, 3000);
     if ($('pLive')) $('pLive').hidden = false;
   }
