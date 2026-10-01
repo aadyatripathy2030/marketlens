@@ -1738,12 +1738,24 @@ function fetchQuotes(symbols) {
   // a ten-name watchlist at the same rate would be 200 a minute and blow
   // through the budget for everybody; those keep the slower window.
   const ttl = symbols.length === 1 ? 3000 : 10000;
-  return cached(`quotes:${symbols.join(',')}`, ttl, async () => {
+  const key = `quotes:${symbols.join(',')}`;
+  return cached(key, ttl, async () => {
     if (FINNHUB_API_KEY) {
       try { const r = await fetchQuotesFinnhub(symbols); if (r) return r; }
       catch (e) { logError(e); }
     }
     if (!STOCK_API_KEY) return symbols.map(demoQuote);
+    // Finnhub said no -- usually its own per-minute budget. Falling straight
+    // through to Twelve Data spends a daily credit to refresh a price that is
+    // seconds old, and there are only 800 of those a day against 60 Finnhub
+    // calls a minute. That is how a faster poll emptied the day's quota and
+    // took the charts down with it: the scarce allowance paid for the
+    // plentiful one's overflow. A price a few seconds stale is the better
+    // trade, so reuse what is already in hand and only pay when there is
+    // nothing at all.
+    const stale = dataCache.get(key);
+    if (stale && Date.now() - stale.at < 120000) return stale.value;
+    if (dailyQuotaOut()) return stale ? stale.value : symbols.map(demoQuote);
     return fetchQuotesUncached(symbols);
   });
 }
