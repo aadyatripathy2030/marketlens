@@ -851,20 +851,29 @@ async function valueBook(uid) {
   const rows = positions.map(p => {
     const last = priceOf(p.symbol);
     const mark = last == null ? p.avgPrice : last;
-    const value = mark * p.qty;
+    const value = mark * p.qty;                    // negative while short
     const cost = p.avgPrice * p.qty;
-    return { ...p, last, mark, value, cost, pnl: value - cost,
-      pnlPct: cost > 0 ? ((value - cost) / cost) * 100 : 0, stale: last == null };
+    // A short makes money when the mark falls, so its P&L is the other way
+    // round. cost is negative there, which is why the percentage is taken
+    // against its size rather than its sign.
+    const pnl = p.qty >= 0 ? value - cost : cost - value;
+    return { ...p, last, mark, value, cost, pnl,
+      pnlPct: Math.abs(cost) > 0 ? (pnl / Math.abs(cost)) * 100 : 0,
+      short: p.qty < 0, stale: last == null };
   });
   const invested = rows.reduce((a, r) => a + r.value, 0);
   const equity = acct.cash + invested;
-  const largest = rows.reduce((a, r) => Math.max(a, r.value), 0);
+  // Risk is about what is exposed, not what it nets to: a long and a short of
+  // the same size net to nothing and still have two positions that can move.
+  const gross = rows.reduce((a, r) => a + Math.abs(r.value), 0);
+  const largest = rows.reduce((a, r) => Math.max(a, Math.abs(r.value)), 0);
   return {
     cash: acct.cash, startBalance: acct.startBalance, created: acct.created,
     positions: rows, invested, equity,
     pnl: equity - acct.startBalance,
     pnlPct: acct.startBalance > 0 ? ((equity - acct.startBalance) / acct.startBalance) * 100 : 0,
-    risk: riskMeter({ equity, cash: acct.cash, invested, largest, count: rows.length, rows }, risk),
+    gross,
+    risk: riskMeter({ equity, cash: acct.cash, invested: gross, largest, count: rows.length, rows }, risk),
     limits: risk,
   };
 }
@@ -937,32 +946,77 @@ async function handlePaperTrade(req, res, user, body) {
 
   const positions = await db.listPositions(user.id);
   const held = positions.find(p => p.symbol === symbol);
-  const cost = price * qty;
 
-  if (side === 'buy') {
-    if (cost > acct.cash + 1e-9) {
-      return json(res, 400, { error: 'That costs ' + cost.toFixed(2) + ' and you have ' + acct.cash.toFixed(2) + ' in cash.' });
-    }
-    const newQty = (held ? held.qty : 0) + qty;
-    const newAvg = held ? ((held.avgPrice * held.qty) + cost) / newQty : price;
-    await db.savePosition(user.id, { symbol, qty: newQty, avgPrice: newAvg, opened: held ? held.opened : Date.now() });
-    await db.setCash(user.id, acct.cash - cost);
-    await db.addFill(user.id, { symbol, side, qty, price, realized: null });
+  // Positions are signed: positive is long, negative is short. Selling what
+  // you do not hold opens a short rather than being refused, so "sell here"
+  // means the same thing on this chart as it does on a broker's.
+  const oldQty = held ? held.qty : 0;
+  const oldAvg = held ? held.avgPrice : 0;
+  const delta = side === 'buy' ? qty : -qty;
+  const newQty = Math.round((oldQty + delta) * 1e4) / 1e4;
+  // Cash moves against the trade in every case: buying spends it, selling --
+  // closing a long or opening a short -- brings it in.
+  const cashAfter = acct.cash - delta * price;
+
+  const sameWay = oldQty === 0 || (oldQty > 0) === (delta > 0);
+  let realized = null, newAvg;
+  if (sameWay) {
+    newAvg = oldQty === 0 ? price
+      : ((Math.abs(oldQty) * oldAvg) + (Math.abs(delta) * price)) / Math.abs(newQty);
   } else {
-    if (!held || held.qty + 1e-9 < qty) {
-      return json(res, 400, { error: 'You hold ' + (held ? held.qty : 0) + ' ' + symbol + '.' });
-    }
-    const realized = (price - held.avgPrice) * qty;
-    let left = Math.round((held.qty - qty) * 1e4) / 1e4;
-    // A remainder worth under a cent is dust: close it and pay it out,
-    // rather than leaving 0.0001 shares in the table forever.
-    let proceeds = price * qty;
-    if (left > 0 && left * price < 0.01) { proceeds += left * price; left = 0; }
-    if (left <= 0) await db.dropPosition(user.id, symbol);
-    else await db.savePosition(user.id, { ...held, qty: left });
-    await db.setCash(user.id, acct.cash + proceeds);
-    await db.addFill(user.id, { symbol, side, qty, price, realized });
+    // Reducing, closing, or turning around. What was closed is realised at
+    // the old average; a long makes money above it, a short below it.
+    const closed = Math.min(Math.abs(delta), Math.abs(oldQty));
+    realized = oldQty > 0 ? (price - oldAvg) * closed : (oldAvg - price) * closed;
+    // If it flipped past flat, the remainder is a new position at this price.
+    newAvg = newQty === 0 ? 0 : ((oldQty > 0) === (newQty > 0) ? oldAvg : price);
   }
+
+  // What the account would look like after this fill, priced at the market.
+  // Shorts can lose more than the account holds, so the test is on exposure
+  // rather than on cash, which a short makes larger rather than smaller.
+  const after = positions.filter(p => p.symbol !== symbol)
+    .map(p => ({ qty: p.qty, price: null, symbol: p.symbol }));
+  let others = [];
+  const otherSyms = after.map(p => p.symbol);
+  if (otherSyms.length) { try { others = await fetchQuotes(otherSyms); } catch (e) { logError(e); } }
+  const markOf = (sym) => {
+    const q = others.find(x => x && String(x.symbol).toUpperCase() === sym);
+    const v = q && Number(q.price);
+    return Number.isFinite(v) && v > 0 ? v : null;
+  };
+  let otherValue = 0, otherGross = 0;
+  for (const p of after) {
+    const base = positions.find(x => x.symbol === p.symbol);
+    const mark = markOf(p.symbol) ?? base.avgPrice;
+    otherValue += mark * p.qty;
+    otherGross += Math.abs(mark * p.qty);
+  }
+  const equityAfter = cashAfter + otherValue + newQty * price;
+  const grossAfter = otherGross + Math.abs(newQty * price);
+
+  if (equityAfter <= 0) {
+    return json(res, 400, { error: 'That trade would wipe the account out. Size it smaller.' });
+  }
+  // Two to one. Enough to short or to use a little leverage, not enough to
+  // put the account somewhere one candle can erase it.
+  if (grossAfter > equityAfter * 2 + 1e-6) {
+    const room = Math.max(0, (equityAfter * 2 - otherGross)) / price;
+    return json(res, 400, { error: 'That would put ' + grossAfter.toFixed(2)
+      + ' at risk against an account worth ' + equityAfter.toFixed(2)
+      + '. The most you can hold in ' + symbol + ' is about ' + room.toFixed(4) + '.' });
+  }
+
+  // A remainder worth under a cent is dust: close it out rather than leaving
+  // a ten-thousandth of a share in the table forever.
+  let finalQty = newQty;
+  if (finalQty !== 0 && Math.abs(finalQty * price) < 0.01) finalQty = 0;
+
+  if (finalQty === 0) await db.dropPosition(user.id, symbol);
+  else await db.savePosition(user.id, { symbol, qty: finalQty, avgPrice: newAvg,
+    opened: held && (oldQty > 0) === (finalQty > 0) ? held.opened : Date.now() });
+  await db.setCash(user.id, cashAfter);
+  await db.addFill(user.id, { symbol, side, qty, price, realized });
 
   const book = await valueBook(user.id);
   const fills = await db.listFills(user.id, 50);

@@ -466,6 +466,8 @@
   // `typeof wlRow === 'function'`, which is not the guard it looks like: a
   // const in its temporal dead zone throws on typeof rather than reporting
   // undefined, so the guard would have raised the very error it was avoiding.
+  // Up here because the renderer draws the open position on the chart.
+  let paperState = null;
   let watchRows = [];            // [{symbol, created, entry, stop, target}]
   let wlSym = null, wlQuote = null;
   const wlRow = (sym) => watchRows.find(r => r.symbol === sym) || null;
@@ -947,6 +949,45 @@
       });
     }
 
+    // The open practice position, drawn the way a broker draws it: a line at
+    // what you paid, and what it is worth right now against that line.
+    const pos = (paperState && paperState.account && lastData)
+      ? paperState.account.positions.find(p => p.symbol === lastData.symbol) : null;
+    if (pos && Number.isFinite(pos.avgPrice) && pos.avgPrice >= lo && pos.avgPrice <= hi) {
+      const short = pos.qty < 0;
+      const mark = Number.isFinite(lastClose) ? lastClose : pos.mark;
+      const live = Number.isFinite(mark)
+        ? (short ? (pos.avgPrice - mark) : (mark - pos.avgPrice)) * Math.abs(pos.qty)
+        : pos.pnl;
+      const good = live >= 0;
+      const c = good ? col('--good') : col('--bad');
+      const y = Y(pos.avgPrice);
+      ctx.save();
+      ctx.strokeStyle = col('--accent'); ctx.lineWidth = 1.5; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(padL, Math.round(y) + .5); ctx.lineTo(axX, Math.round(y) + .5); ctx.stroke();
+      ctx.restore();
+      // what the position is, on the line itself
+      ctx.font = '600 ' + NUMF;
+      const side = short ? 'SHORT' : 'LONG';
+      const tag = side + '  ' + Math.abs(pos.qty) + ' @ ' + pxFmt(pos.avgPrice);
+      const tw = ctx.measureText(tag).width;
+      ctx.fillStyle = col('--accent'); ctx.globalAlpha = .16;
+      roundRect(padL + 4, y - 9, tw + 12, 18, 5); ctx.fill();
+      ctx.globalAlpha = 1; ctx.fillStyle = col('--accent');
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      ctx.fillText(tag, padL + 10, y);
+      // and the running result, against the price scale
+      const money = (good ? '+' : '\u2212') + '$' + Math.abs(live)
+        .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      ctx.font = '700 ' + NUMF;
+      const mw = ctx.measureText(money).width;
+      const bx = Math.max(padL, axX - mw - 16);
+      ctx.fillStyle = c;
+      roundRect(bx, y - 11, mw + 12, 22, 6); ctx.fill();
+      ctx.fillStyle = '#0b0e12';
+      ctx.fillText(money, bx + 6, y);
+    }
+
     if (hover && hover.x > padL && hover.x < axX && hover.y > padT && hover.y < axY) {
       const j = Math.max(0, Math.min(bars.length - 1, Math.round((hover.x - padL) / plotW * (total - 1))));
       const b = bars[j], hx = X(j);
@@ -1252,9 +1293,20 @@
   // 8s: fast enough that the forming candle visibly moves, slow enough to stay
   // inside the upstream rate limit once the server-side quote cache absorbs
   // repeats. A new ticker resets the forming-bar marker.
-  function startLive() { if (!liveTimer) liveTimer = setInterval(liveTick, 10000); }
+  // Five seconds, matching the server's quote cache, so the forming candle
+  // moves about as often as there is anything new to move it with.
+  function startLive() { if (!liveTimer) liveTimer = setInterval(liveTick, 5000); }
+  // The chart panel is one element that moves between analyze, practice and
+  // the watchlist, so the forming candle should keep forming in all three
+  // rather than only on the page it started on.
+  const chartOnScreen = () => {
+    const panel = $('chartPanel');
+    if (!panel) return false;
+    const host = panel.closest('.view');
+    return !!host && !host.classList.contains('hidden');
+  };
   async function liveTick() {
-    if (!lastData || document.hidden || $('view-analyze').classList.contains('hidden')) return;
+    if (!lastData || document.hidden || !chartOnScreen()) return;
     const sym = lastData.symbol;
     let q; try { q = (await getQuotes([sym]))[0]; } catch { return; }
     if (!q || !lastData || lastData.symbol !== sym) return;
@@ -1540,7 +1592,6 @@
   // Pretend money, real prices. The chart is the analyze chart, moved into this
   // view rather than reimplemented, so its layers, colours, intervals and
   // interactions are the same ones.
-  let paperState = null;
   let chartSym = null, chartQuote = null;
   let livePoll = null;            // quote poll, only while this view is on screen
 
@@ -1735,17 +1786,18 @@
 
     $('pPositions').innerHTML = a.positions.length
       ? '<div class="pos-grid">' + a.positions.map(p =>
-          '<div class="pos' + (p.symbol === chartSym ? ' on' : '') + '" data-sym="' + esc(p.symbol) + '">'
+          '<div class="pos' + (p.symbol === chartSym ? ' on' : '') + (p.short ? ' short' : '') + '" data-sym="' + esc(p.symbol) + '">'
           + '<div class="pos-top"><b>' + esc(p.symbol) + '</b>'
+          + (p.short ? '<span class="pos-side short">SHORT</span>' : '')
           + (p.stale ? '<span class="stale" title="No live quote; held at your entry price">stale</span>' : '')
           + '<span class="pos-pnl ' + (p.pnl > 0 ? 'up' : p.pnl < 0 ? 'down' : '') + '">'
           + (p.pnl >= 0 ? '+' : '−') + pMoney(p.pnl).replace('-', '') + '</span></div>'
-          + '<div class="pos-mid">' + p.qty + ' @ ' + pMoney(p.avgPrice) + '</div>'
+          + '<div class="pos-mid">' + Math.abs(p.qty) + ' @ ' + pMoney(p.avgPrice) + '</div>'
           + '<div class="pos-bot"><span>' + pMoney(p.value) + '</span>'
           + '<span class="' + (p.pnlPct > 0 ? 'up' : p.pnlPct < 0 ? 'down' : '') + '">'
           + (p.pnlPct >= 0 ? '+' : '−') + pPct(Math.abs(p.pnlPct)) + '</span></div>'
-          + '<button type="button" class="pos-close p-close" data-sym="' + esc(p.symbol) + '" data-qty="' + p.qty + '">Close</button>'
-          + '<i class="pos-share" style="width:' + (a.equity > 0 ? Math.max(2, Math.min(100, (p.value / a.equity) * 100)) : 0) + '%"></i>'
+          + '<button type="button" class="pos-close p-close" data-sym="' + esc(p.symbol) + '" data-qty="' + Math.abs(p.qty) + '" data-side="' + (p.short ? 'buy' : 'sell') + '">Close</button>'
+          + '<i class="pos-share" style="width:' + (a.equity > 0 ? Math.max(2, Math.min(100, (Math.abs(p.value) / a.equity) * 100)) : 0) + '%"></i>'
           + '</div>').join('') + '</div>'
       : '<p class="muted empty">Nothing open. Buy something to start.</p>';
 
@@ -1775,7 +1827,8 @@
     }));
     document.querySelectorAll('.p-close').forEach(b => b.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      $('pSym').value = b.dataset.sym; $('pQty').value = b.dataset.qty; trade('sell');
+      $('pSym').value = b.dataset.sym; $('pQty').value = b.dataset.qty;
+      trade(b.dataset.side || 'sell');            // a short is closed by buying
     }));
   }
 
@@ -1948,9 +2001,13 @@
       const px = chartQuote && sym === chartSym ? Number(chartQuote.price) : null;
       let q;
       if (held) {
-        q = held.qty * f;
+        q = Math.abs(held.qty) * f;               // a share of what is open
       } else if (Number.isFinite(px) && px > 0) {
-        q = Math.floor((acct.cash * f) / px * 1e4) / 1e4;
+        // Nothing open, so size against what the account could carry either
+        // way. Buying is limited by cash; selling short is limited by the
+        // same two-to-one exposure rule the server applies.
+        const room = Math.max(acct.cash, Math.max(0, acct.equity * 2 - (acct.gross || 0)));
+        q = Math.floor((room * f) / px * 1e4) / 1e4;
       } else {
         return paperMsg('Pick a symbol first so there is a price to size against.', true);
       }
