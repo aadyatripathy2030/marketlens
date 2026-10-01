@@ -1592,7 +1592,14 @@ function fetchQuotes(symbols) {
   if (!STOCK_API_KEY && !FINNHUB_API_KEY) return Promise.resolve(symbols.map(demoQuote));
   // Matches the client's live-quote poll, so polling costs one upstream call
   // per symbol set per interval no matter how many tabs are open.
-  return cached(`quotes:${symbols.join(',')}`, 10000, async () => {
+  //
+  // One symbol is the chart someone is actually watching, and it is worth
+  // three seconds of freshness: at one upstream call each that is 20 a
+  // minute against a budget of 55. A list of symbols costs one call each, so
+  // a ten-name watchlist at the same rate would be 200 a minute and blow
+  // through the budget for everybody; those keep the slower window.
+  const ttl = symbols.length === 1 ? 3000 : 10000;
+  return cached(`quotes:${symbols.join(',')}`, ttl, async () => {
     if (FINNHUB_API_KEY) {
       try { const r = await fetchQuotesFinnhub(symbols); if (r) return r; }
       catch (e) { logError(e); }

@@ -1305,9 +1305,9 @@
   // 8s: fast enough that the forming candle visibly moves, slow enough to stay
   // inside the upstream rate limit once the server-side quote cache absorbs
   // repeats. A new ticker resets the forming-bar marker.
-  // Five seconds, matching the server's quote cache, so the forming candle
-  // moves about as often as there is anything new to move it with.
-  function startLive() { if (!liveTimer) liveTimer = setInterval(liveTick, 5000); }
+  // Three seconds, matching how long the server holds a single symbol's
+  // quote. Asking faster than that only re-reads the same number.
+  function startLive() { if (!liveTimer) liveTimer = setInterval(liveTick, 3000); }
   // The chart panel is one element that moves between analyze, practice and
   // the watchlist, so the forming candle should keep forming in all three
   // rather than only on the page it started on.
@@ -1722,14 +1722,14 @@
   // the forming candle on the analyze page stopped updating entirely.
   function startPaperLive() {
     stopPaperLive();
-    // The server holds quotes for ten seconds, so asking more often than that
-    // costs nothing upstream and only decides how soon a move shows up here.
-    // The book is heavier and every other tick is plenty for it.
+    // Three seconds for the price, matching the server's single-symbol
+    // window. The book is heavier -- it reprices every position -- so it goes
+    // every third tick, near enough the old rate.
     livePoll = setInterval(() => {
       if (currentView !== 'practice' || document.hidden) return;
       refreshQuote();
-      if (++paperTick % 2 === 0) loadPaperQuiet();
-    }, 5000);
+      if (++paperTick % 3 === 0) loadPaperQuiet();
+    }, 3000);
     if ($('pLive')) $('pLive').hidden = false;
   }
   function stopPaperLive() {
