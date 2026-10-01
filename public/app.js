@@ -627,20 +627,20 @@
   // the only navigation, so a label alone is not enough — someone opening
   // "Movers" or "Accuracy" for the first time should not have to guess.
   const DESTINATIONS = [
-    { v: 'home',      t: 'Home',      d: 'Look up any ticker, and see where the major indices sit today.' },
-    { v: 'analyze',   t: 'Analyze',   d: 'The full read on one symbol: candlestick chart, thirteen indicators, exit levels and the measured base rate.' },
-    { v: 'compare',   t: 'Compare',   d: 'Put two or more companies side by side on valuation, margins, growth and debt.' },
-    { v: 'screener',  t: 'Screener',  d: 'Filter a curated list of stocks by sector, market capitalization and price.' },
-    { v: 'markets',   t: 'Markets',   d: 'Live quotes for the major US indices and the most active stocks.' },
-    { v: 'movers',    t: 'Movers',    d: 'What is actually moving right now, ranked by how unusual the volume and the day\u2019s range are.' },
-    { v: 'accuracy',  t: 'Accuracy',  d: 'The measured record of how this site\u2019s own readings have performed, published whether or not it flatters them.' },
-    { v: 'watchlist', t: 'Watchlist', d: 'The tickers you follow, with live prices and one-click analysis.' },
-    { v: 'alerts',    t: 'Alerts',    d: 'Set a target above or below the current price and get flagged when a stock crosses it.', badge: 'alertBadge' },
-    { v: 'practice',  t: 'Practice',  d: 'A practice account with pretend money, so you can rehearse position sizing against your own risk limits. Nothing here touches a broker.' },
-    { v: 'learn',     t: 'Learn',     d: 'Nineteen plain-English lessons with quizzes, split by whether they apply to day trading or long-term investing.' },
-    { v: 'pricing',   t: 'Billing',   d: 'What a free account includes, what Pro adds, and what each billing period works out to per month.' },
-    { v: 'settings',  t: 'Settings',  d: 'Turn any part of the analysis on or off \u2014 the score, the indicators, the projection, the summary.' },
-    { v: 'admin',     t: 'Admin',     d: 'Registered accounts, service status, usage and recent errors.', admin: true },
+    { v: 'home', c: '#4c9eff',      t: 'Home',      d: 'Look up any ticker, and see where the major indices sit today.' },
+    { v: 'analyze', c: '#5ac8fa',   t: 'Analyze',   d: 'The full read on one symbol: candlestick chart, thirteen indicators, exit levels and the measured base rate.' },
+    { v: 'compare', c: '#a78bfa',   t: 'Compare',   d: 'Put two or more companies side by side on valuation, margins, growth and debt.' },
+    { v: 'screener', c: '#2dd4bf',  t: 'Screener',  d: 'Filter a curated list of stocks by sector, market capitalization and price.' },
+    { v: 'markets', c: '#f0b429',   t: 'Markets',   d: 'Live quotes for the major US indices and the most active stocks.' },
+    { v: 'movers', c: '#ff8a3d',    t: 'Movers',    d: 'What is actually moving right now, ranked by how unusual the volume and the day\u2019s range are.' },
+    { v: 'accuracy', c: '#3ddc84',  t: 'Accuracy',  d: 'The measured record of how this site\u2019s own readings have performed, published whether or not it flatters them.' },
+    { v: 'watchlist', c: '#ffcf5c', t: 'Watchlist', d: 'The tickers you follow, with live prices and one-click analysis.' },
+    { v: 'alerts', c: '#ff5f56',    t: 'Alerts',    d: 'Set a target above or below the current price and get flagged when a stock crosses it.', badge: 'alertBadge' },
+    { v: 'practice', c: '#c084fc',  t: 'Practice',  d: 'A practice account with pretend money, so you can rehearse position sizing against your own risk limits. Nothing here touches a broker.' },
+    { v: 'learn', c: '#38bdf8',     t: 'Learn',     d: 'Nineteen plain-English lessons with quizzes, split by whether they apply to day trading or long-term investing.' },
+    { v: 'pricing', c: '#e0a33e',   t: 'Billing',   d: 'What a free account includes, what Pro adds, and what each billing period works out to per month.' },
+    { v: 'settings', c: '#8a94a3',  t: 'Settings',  d: 'Turn any part of the analysis on or off \u2014 the score, the indicators, the projection, the summary.' },
+    { v: 'admin', c: '#6b7484',     t: 'Admin',     d: 'Registered accounts, service status, usage and recent errors.', admin: true },
   ];
 
   function buildDrawerNav() {
@@ -653,7 +653,9 @@
       const a = document.createElement('a');
       a.className = 'drawer-link' + (dst.v === currentView ? ' active' : '');
       a.dataset.view = dst.v;
-      a.innerHTML = `<span class="drawer-link-top"><span class="drawer-link-name">${esc(dst.t)}</span>`
+      if (dst.c) a.style.setProperty('--dl', dst.c);
+      a.innerHTML = `<span class="drawer-link-top"><span class="dl-dot" aria-hidden="true"></span>`
+        + `<span class="drawer-link-name">${esc(dst.t)}</span>`
         + (dst.badge ? `<span class="nav-badge hidden" id="${dst.badge}"></span>` : '')
         + `</span><span class="drawer-link-desc">${esc(dst.d)}</span>`;
       a.addEventListener('click', () => { showView(dst.v); closeDrawer(); });
@@ -1560,7 +1562,7 @@
         if (!chartSym) selectChart(first);
         else if (!lastData || lastData.symbol !== chartSym) selectChart(chartSym);
         else refreshQuote();
-        startLive();
+        startPaperLive();
       }
     } catch (e) {
       // Before sign-in the shared fetch wrapper rejects every /api call and
@@ -1625,7 +1627,7 @@
       const q = (j.quotes || [])[0];
       if (!q || !Number.isFinite(Number(q.price))) return;
       chartQuote = q;
-      $('cLast').textContent = pMoney(q.price);
+      setLive('cLast', pMoney(q.price), Number(q.price));
       const up = Number(q.changePct) >= 0;
       $('cChg').textContent = (up ? '+' : '') + Number(q.change || 0).toFixed(2)
         + '  (' + (up ? '+' : '') + Number(q.changePct || 0).toFixed(2) + '%)';
@@ -1636,15 +1638,41 @@
 
   // Only poll while the view is on screen. A timer left running in the
   // background would keep hitting the quotes endpoint for nothing.
-  function startLive() {
-    stopLive();
+  // Figures that move get flashed so a change is noticed rather than found.
+  const lastVals = {};
+  function setLive(id, text, num) {
+    const el = $(id);
+    if (!el || el.textContent === text) return;
+    const before = lastVals[id];
+    el.textContent = text;
+    if (Number.isFinite(num) && Number.isFinite(before) && num !== before) {
+      el.classList.remove('tick-up', 'tick-down');
+      void el.offsetWidth;                    // restart the animation
+      el.classList.add(num > before ? 'tick-up' : 'tick-down');
+    }
+    if (Number.isFinite(num)) lastVals[id] = num;
+  }
+
+  let paperTick = 0;
+  // Named apart from the analyze chart's startLive. Both were called
+  // startLive in the same scope, so this one quietly replaced that one and
+  // the forming candle on the analyze page stopped updating entirely.
+  function startPaperLive() {
+    stopPaperLive();
+    // The server holds quotes for ten seconds, so asking more often than that
+    // costs nothing upstream and only decides how soon a move shows up here.
+    // The book is heavier and every other tick is plenty for it.
     livePoll = setInterval(() => {
       if (currentView !== 'practice' || document.hidden) return;
       refreshQuote();
-      loadPaperQuiet();
-    }, 20000);
+      if (++paperTick % 2 === 0) loadPaperQuiet();
+    }, 5000);
+    if ($('pLive')) $('pLive').hidden = false;
   }
-  function stopLive() { if (livePoll) { clearInterval(livePoll); livePoll = null; } }
+  function stopPaperLive() {
+    if (livePoll) { clearInterval(livePoll); livePoll = null; }
+    if ($('pLive')) $('pLive').hidden = true;
+  }
 
   async function loadPaperQuiet() {
     try {
@@ -1662,14 +1690,14 @@
     if (!has) {
       const d = (paperState && paperState.defaults) || {};
       if (d.startBalance) $('paperStart').value = d.startBalance;
-      stopLive();
+      stopPaperLive();
       return;
     }
     const a = paperState.account, r = a.risk, lim = a.limits || { maxPosition: 20, perTrade: 2 };
 
-    $('pEquity').textContent = pMoney(a.equity);
-    $('pCash').textContent = pMoney(a.cash);
-    $('pInvested').textContent = pMoney(a.invested);
+    setLive('pEquity', pMoney(a.equity), a.equity);
+    setLive('pCash', pMoney(a.cash), a.cash);
+    setLive('pInvested', pMoney(a.invested), a.invested);
     $('pCount').textContent = a.positions.length;
     const pn = $('pPnl');
     const dir = a.pnl > 0 ? '▲ ' : a.pnl < 0 ? '▼ ' : '';
@@ -1864,7 +1892,7 @@
         if (!res.ok || !j.account) return paperMsg(j.message || j.error || 'Could not start the account.', true);
         paperState = { account: j.account, fills: j.fills || [], defaults: paperState && paperState.defaults };
         renderPaper(); paperMsg('');
-        selectChart(chartSym || 'AAPL'); startLive();
+        selectChart(chartSym || 'AAPL'); startPaperLive();
       } catch (e) { paperMsg('Could not start the account.', true); }
     });
     // Actually clears the server, which the old one did not.
@@ -1880,7 +1908,7 @@
         if (!res.ok) return paperMsg('Could not reset the account. Nothing was changed.', true);
       } catch (e) { return paperMsg('Could not reset the account. Nothing was changed.', true); }
       paperState = { account: null, fills: [], defaults: paperState && paperState.defaults };
-      stopLive(); renderPaper();
+      stopPaperLive(); renderPaper();
     });
     $('pBuy').addEventListener('click', () => trade('buy'));
     $('pSell').addEventListener('click', () => trade('sell'));
