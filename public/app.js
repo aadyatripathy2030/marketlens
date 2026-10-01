@@ -916,7 +916,11 @@
       if (L.structureTarget) mark(L.structureTarget.price, col('--sma20'), pxFmt(L.structureTarget.price), true);
     }
 
-    // Last price: dashed marker plus a tag, so the current level is obvious.
+    // Last price: the dashed marker stays, the tag does not. The same number
+    // is already set in large type in the header directly above the chart,
+    // and down here it stacked against the open position's result whenever
+    // the position sat near the market -- two tags on top of each other, in
+    // the one place a price needs to be readable.
     const lastClose = bars[bars.length - 1].close;
     if (lastClose >= lo && lastClose <= hi) {
       const ly = Y(lastClose);
@@ -924,8 +928,6 @@
       ctx.strokeStyle = col('--muted'); ctx.globalAlpha = .5; ctx.setLineDash([2, 4]);
       ctx.beginPath(); ctx.moveTo(padL, Math.round(ly) + .5); ctx.lineTo(axX, Math.round(ly) + .5); ctx.stroke();
       ctx.restore();
-      const upDay = bars.length > 1 && lastClose >= bars[bars.length - 2].close;
-      priceTag(pxFmt(lastClose), ly, upDay ? col('--good') : col('--bad'), '#0b0e12');
     }
 
     // Crosshair + OHLC readout for the bar under the cursor.
