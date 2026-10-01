@@ -767,6 +767,10 @@ body.drawer-open .drawer { transform: translateX(0); }
 .chart-err { margin: 0 0 12px; padding: 10px 13px; border-radius: 10px; font-size: 13.5px;
   color: var(--bad); background: rgba(255,95,86,.10); border: 1px solid rgba(255,95,86,.4); }
 
+.period-trial { margin: 6px 0 2px; font-size: 13px; font-weight: 650; color: var(--good);
+  background: rgba(61,220,132,.12); border: 1px solid rgba(61,220,132,.34);
+  border-radius: 999px; padding: 4px 11px; display: inline-block; }
+
 /* ---- Practice account ---- */
 .prac-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 22px; }
 .prac-tag { flex: none; font-family: var(--font-num); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;

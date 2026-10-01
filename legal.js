@@ -22,6 +22,10 @@ const fmtUTC = (ms) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric'
 const FREE_UNTIL_TEXT = Number.isFinite(FREE_UNTIL_MS) ? fmtUTC(FREE_UNTIL_MS - 1) : '';
 const CHARGE_FROM_TEXT = Number.isFinite(FREE_UNTIL_MS) ? fmtUTC(FREE_UNTIL_MS) : '';
 const inLaunch = () => Number.isFinite(FREE_UNTIL_MS) && Date.now() < FREE_UNTIL_MS;
+// Kept in step with TRIAL_DAYS in server.js, read from the same variable, so
+// the terms describe the trial checkout actually gives rather than a number
+// typed here once and left behind.
+const TRIAL_DAYS = Number(process.env.TRIAL_DAYS || 14);
 const launchPara = () => inLaunch()
   ? `<strong>Launch period:</strong> through the end of ${FREE_UNTIL_TEXT} (UTC) every feature below, including those listed as Pro, is available to every account at no charge. No subscription is needed to use anything during this period, and the daily limits described below are not applied. From ${CHARGE_FROM_TEXT} the split described here takes effect. If you subscribe before that date you are supporting the project early and will not receive anything a free account does not already have until the split begins.`
   : '';
@@ -33,7 +37,11 @@ const h = (title, blocks) => `<article class="legal">
   <p class="legal-foot">Questions about this page: <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a></p>
 </article>`;
 
-const s = (heading, ...paras) => `<h2>${esc(heading)}</h2>` + paras.map(p => `<p>${p}</p>`).join('');
+// Falsy paragraphs are dropped rather than rendered: several of these are
+// conditional, and an empty <p> leaves a gap in the page for a sentence that
+// was deliberately not said.
+const s = (heading, ...paras) => `<h2>${esc(heading)}</h2>`
+  + paras.filter(Boolean).map(p => `<p>${p}</p>`).join('');
 const ul = (items) => `<ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>`;
 
 // ---------------------------------------------------------------- terms
@@ -71,6 +79,9 @@ const buildTerms = () => h('Terms of Service', [
     `<strong>Pro adds:</strong> AI-written reports without the daily limit; reading an uploaded chart image; the screener and side-by-side compare; additional take-profit levels; and a watchlist and alerts without limits.`,
     `The daily limits and allowances above may be adjusted as running costs change. Any reduction applies from your next renewal.`,
     `Subscriptions are billed in advance on the period you choose and renew automatically until cancelled. Payments are processed by Stripe; ${SITE} never receives or stores your card details. Prices may change, and any change applies from your next renewal, not retroactively.`,
+    TRIAL_DAYS > 0
+      ? `A first subscription starts with a free trial of ${TRIAL_DAYS} days. A card is taken at sign-up but nothing is charged during the trial, and cancelling before it ends costs nothing. If you do not cancel, the first payment is taken automatically on the day the trial ends and the subscription continues normally. The trial is offered once per account: if you have subscribed before, checkout charges immediately and the Plans page says so rather than offering a trial it will not give you.`
+      : '',
     `Cancellation and refunds are covered on the <a href="/refunds">Refunds and Cancellation</a> page.`),
 
   s('Limitation of liability',
@@ -144,6 +155,9 @@ const buildRefunds = () => h('Refunds and Cancellation', [
     `The chart itself, every indicator, the stop-loss and take-profit levels, the score and the measured base rate beside it remain free for everyone, subscribed or not. Pro is worth paying for only if you want the parts listed above — the tool is fully usable without it. See the <a href="/terms">Terms of Service</a> for the full split.`),
 
   s('Cancelling',
+    TRIAL_DAYS > 0
+      ? `If you are in the free trial, cancelling before it ends means you are never charged at all. The Plans page shows the trial you would get, and Stripe emails you before the first payment.`
+      : '',
     `You can cancel at any time, with no notice period and no cancellation fee, from the <strong>Manage subscription</strong> button on the Plans page. That opens Stripe's billing portal, where cancellation takes effect immediately for future renewals.`,
     `When you cancel, your subscription runs to the end of the period you have already paid for and then stops. After that the account returns to the free tier: nothing you saved is deleted, but the Pro-only features stop and the free daily limits apply again.`),
 

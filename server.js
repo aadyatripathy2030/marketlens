@@ -43,6 +43,10 @@ const STRIPE_PRICES = {
   yearly: (process.env.STRIPE_PRICE_YEARLY || '').replace(/\s/g, ''),
 };
 const BILLING_ON = !!(STRIPE_SECRET_KEY && (STRIPE_PRICES.weekly || STRIPE_PRICES.monthly || STRIPE_PRICES.yearly));
+// Free trial on a first subscription, in days. 0 turns it off. Checkout still
+// collects a card, so it charges by itself when the trial runs out and the
+// webhook already grants access on the completed session, trial or not.
+const TRIAL_DAYS = Number(process.env.TRIAL_DAYS || 14);
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'atriuminstitutereal@gmail.com,aadyatripathy3@gmail.com,chartgauge@gmail.com').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
 const isAdmin = (u) => !!(u && ADMIN_EMAILS.includes(String(u.email || '').toLowerCase()));
 // Accounts that get Pro without paying — the operator's own, and anyone else
@@ -1478,6 +1482,12 @@ async function handleMe(req, res) {
   if (u) { try { streak = streakView(await db.getStreak(u.id)); } catch (e) { logError(e); } }
   let aiUsed = 0;
   if (!access && ANTHROPIC_API_KEY) { try { aiUsed = await db.peekUsage(clientKey(req, u), 'ai'); } catch (e) {} }
+  // The session user is the trimmed { id, email, plan }: it carries no
+  // stripe_customer, so testing it for one would answer "never subscribed"
+  // for everybody and offer a trial the checkout would then refuse to give.
+  // Read the row checkout reads.
+  let everSubscribed = false;
+  if (u) { try { const full = await db.getUserById(u.id); everSubscribed = !!(full && full.stripe_customer); } catch (e) { logError(e); } }
   return json(res, 200, {
     user: u ? { ...u, plan: isPro(u) ? 'pro' : u.plan, admin: isAdmin(u) } : null,
     store: db.storeMode(),
@@ -1493,6 +1503,11 @@ async function handleMe(req, res) {
     limits: { pro: access, aiPerDay: access ? null : AI_FREE_DAILY, aiUsed,
       watchMax: access ? null : FREE_WATCH_MAX, alertMax: access ? null : FREE_ALERT_MAX,
       takeProfits: access ? 3 : 1 },
+    // The trial this particular visitor would actually get, so the plans page
+    // promises what checkout will do rather than what it does for a stranger.
+    // Someone who has subscribed before is told nothing about a trial, because
+    // they will not be given one.
+    trialDays: (TRIAL_DAYS > 0 && u && !everSubscribed) ? TRIAL_DAYS : 0,
   });
 }
 async function handleAdmin(req, res) {
@@ -2143,8 +2158,14 @@ async function handleCheckout(req, res) {
   const plan = ['weekly', 'monthly', 'yearly'].includes(b.plan) ? b.plan : 'monthly';
   const price = STRIPE_PRICES[plan] || STRIPE_PRICES.monthly || STRIPE_PRICES.weekly || STRIPE_PRICES.yearly;
   if (!price) return json(res, 200, { error: 'That plan isn’t available.' });
+  // A free trial, but only to someone who has never subscribed. Checkout has
+  // no memory of its own: without this test, cancelling and signing up again
+  // hands out another fortnight, forever. A Stripe customer id on the account
+  // is the record that they have been through here before.
+  const prior = await db.getUserById(user.id);
+  const firstTime = !(prior && prior.stripe_customer);
   try {
-    const s = await stripePost('checkout/sessions', {
+    const params = {
       mode: 'subscription',
       'line_items[0][price]': price,
       'line_items[0][quantity]': '1',
@@ -2153,7 +2174,11 @@ async function handleCheckout(req, res) {
       client_reference_id: user.id,
       customer_email: user.email,
       allow_promotion_codes: 'true',
-    });
+    };
+    if (TRIAL_DAYS > 0 && firstTime) {
+      params['subscription_data[trial_period_days]'] = String(TRIAL_DAYS);
+    }
+    const s = await stripePost('checkout/sessions', params);
     return json(res, 200, { url: s.url });
   } catch (e) { return json(res, 200, { error: 'Could not start checkout (' + e.message + ').' }); }
 }

@@ -1675,6 +1675,9 @@
 
   // ---- Accounts + watchlist ----
   let currentUser = null, currentStreak = null, watchSymbols = [], authMode = 'login', billingOn = false, billingPlans = {};
+  // Days of trial this visitor would get on a first subscription; 0 for
+  // anyone who has subscribed before, so the page never offers one twice.
+  let trialDays = 0;
 
   // Cheap and quiet: the streak only ever changes once a day, so a failure
   // here just leaves the badge as it was.
@@ -2169,7 +2172,7 @@
     }
   }
   async function checkAuth() {
-    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; currentStreak = j.streak || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; launch = j.launch || launch; showGoogleButtons(!!j.googleAuth); billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; currentStreak = null; }
+    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; currentStreak = j.streak || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; trialDays = Number(j.trialDays) || 0; launch = j.launch || launch; showGoogleButtons(!!j.googleAuth); billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; currentStreak = null; }
     renderAcct();
     $('watchBtn').classList.toggle('hidden', !currentUser);
     // The gate comes down only for a signed-in visitor who has agreed on this
@@ -2760,8 +2763,11 @@
         const sub = (pm != null && !(p.interval === 'month' && (p.intervalCount || 1) === 1))
           ? `${esc(money(Math.round(pm), p.currency))} per month` : '';
         const isBest = pm != null && best != null && pm <= best + 0.5 && priced.length > 1;
+        const trial = trialDays > 0
+          ? `<div class="period-trial">${trialDays} days free, then ${esc(amount)} ${esc(word)}</div>` : '';
         return `<div class="plan-card pro period"><div class="plan-name">Pro · ${esc(label)}</div>`
           + `<div class="plan-price">${esc(amount)}<small>${esc(word)}</small></div>`
+          + trial
           + `<div class="period-sub">${sub}</div>`
           + `<div class="period-tag">${isBest ? '<span class="pb-best">best value</span>' : ''}</div>`
           + `<button class="btn btn-ai btn-block plan-btn" data-plan="${k}">`
