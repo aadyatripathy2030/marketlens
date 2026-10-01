@@ -352,10 +352,28 @@ async function gradeReadings(symbol, prices) {
   } catch (e) { logError(e); }
 }
 
+// The trading day ACCURACY_HORIZON sessions after `day`, which is when that
+// reading's outcome exists and it can be graded. Weekends and market holidays
+// are not sessions, so this walks the calendar rather than adding days.
+function dueDay(day) {
+  if (!day) return null;
+  let d = day, left = ACCURACY_HORIZON;
+  for (let i = 0; i < 400 && left > 0; i++) {
+    d = MKT.addDays(d, 1);
+    if (MKT.isTradingDay(d)) left--;
+  }
+  return left === 0 ? d : null;
+}
+
 async function handleAccuracy(req, res) {
   try {
     const st = await db.accuracyStats();
-    return json(res, 200, { ...st, horizon: ACCURACY_HORIZON });
+    // A record with nothing graded yet is not a broken record, it is a young
+    // one. Saying when the first outcome is due is the difference between
+    // those two, and the page had no way to tell them apart.
+    const firstDue = dueDay(st.oldestPending);
+    return json(res, 200, { ...st, horizon: ACCURACY_HORIZON, firstDue,
+      firstDuePassed: !!(firstDue && MKT.etDay() >= firstDue) });
   } catch (e) { logError(e); return json(res, 200, { recorded: 0, graded: 0, labels: [], horizon: ACCURACY_HORIZON }); }
 }
 

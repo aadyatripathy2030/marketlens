@@ -2868,9 +2868,20 @@
     try {
       const d = await fetch('/api/accuracy').then(r => r.json());
       if (!d.graded) {
+        // An empty record and a stalled one look identical unless the page
+        // says which it is, so it says when the first outcome is due.
+        const due = d.firstDue
+          ? new Date(d.firstDue + 'T00:00:00Z').toLocaleDateString('en-GB',
+              { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
+          : null;
+        const when = !due ? ''
+          : d.firstDuePassed
+            ? ` The earliest reading passed its outcome date on ${esc(due)} and is graded the next time that symbol's daily chart is opened.`
+            : ` The earliest one reaches its outcome on ${esc(due)}.`;
         host.innerHTML = `<p class="compare-note">`
           + (d.recorded ? `${d.recorded} readings recorded so far; none have` : 'No readings have')
-          + ` reached their ${d.horizon}-day outcome yet, so there is nothing to report. This page fills in on its own.</p>`;
+          + ` reached their ${d.horizon}-trading-day outcome yet, so there is nothing to report.${when}`
+          + ` This page fills in on its own.</p>`;
         return;
       }
       const pc = (v) => v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2) + '%';

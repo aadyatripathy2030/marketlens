@@ -540,22 +540,30 @@ async function gradePrediction(id, outPrice, outDay, ret) {
 // at all — so the score is measured against doing nothing, not against a
 // benchmark chosen to flatter it.
 async function accuracyStats() {
-  let rows;
+  let rows, oldestPending = null;
   if (mode === 'postgres') {
     const r = await pool.query('SELECT label, ret FROM predictions WHERE graded IS NOT NULL');
     rows = r.rows;
     const t = await pool.query('SELECT COUNT(*)::int AS n FROM predictions');
     var total = t.rows[0].n;
+    // The earliest reading still waiting on its outcome, so a record with
+    // nothing in it yet can say when it will have something rather than
+    // looking broken or abandoned.
+    const o = await pool.query('SELECT MIN(day) AS d FROM predictions WHERE graded IS NULL');
+    oldestPending = (o.rows[0] && o.rows[0].d) || null;
   } else {
     rows = [...mem.preds.values()].filter(p => p.graded).map(p => ({ label: p.label, ret: p.ret }));
     var total = mem.preds.size;
+    for (const p of mem.preds.values()) {
+      if (!p.graded && (!oldestPending || p.day < oldestPending)) oldestPending = p.day;
+    }
   }
   const byLabel = {};
   for (const r of rows) (byLabel[r.label] ||= []).push(Number(r.ret));
   const mean = (a) => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
   const all = rows.map(r => Number(r.ret));
   return {
-    recorded: total, graded: rows.length,
+    recorded: total, graded: rows.length, oldestPending,
     baseline: mean(all),
     labels: Object.entries(byLabel).map(([label, a]) => ({
       label, n: a.length, mean: mean(a),
