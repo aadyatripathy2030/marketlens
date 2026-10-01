@@ -1361,16 +1361,40 @@ async function play(record){
     }
   }
 
+  // requestAnimationFrame stops dead in a tab the browser considers hidden,
+  // and a take recorded that way is a slideshow: 2018 of 2140 frames came
+  // back as duplicates of the one before. A MessageChannel round trip is a
+  // task the browser does not throttle the way it throttles rAF and
+  // setTimeout, so recording drives itself and keeps drawing whether or not
+  // anyone is looking at the tab. Preview still uses rAF, where matching the
+  // display refresh is the point and nothing is being captured.
+  var yieldToBrowser = (function(){
+    var ch = new MessageChannel(), waiting = null;
+    ch.port1.onmessage = function(){ var w = waiting; waiting = null; if (w) w(); };
+    return function(){ return new Promise(function(r){ waiting = r; ch.port2.postMessage(0); }); };
+  })();
+
   var t0=performance.now();
-  await new Promise(function(done){
-    (function step(now){
-      var ms=now-t0;
+  if (record) {
+    for (;;) {
+      var ms = performance.now() - t0;
       frame(Math.min(ms, sc.dur));
-      prog.style.width=Math.min(100,(ms/sc.dur)*100)+'%';
-      statusEl.innerHTML=(record?'Recording ':'Preview ')+'<b>'+(ms/1000).toFixed(1)+'s</b> of '+(sc.dur/1000).toFixed(1)+'s';
-      if(ms<sc.dur) requestAnimationFrame(step); else done();
-    })(t0);
-  });
+      prog.style.width = Math.min(100,(ms/sc.dur)*100)+'%';
+      statusEl.innerHTML = 'Recording <b>'+(ms/1000).toFixed(1)+'s</b> of '+(sc.dur/1000).toFixed(1)+'s';
+      if (ms >= sc.dur) break;
+      await yieldToBrowser();
+    }
+  } else {
+    await new Promise(function(done){
+      (function step(now){
+        var ms=now-t0;
+        frame(Math.min(ms, sc.dur));
+        prog.style.width=Math.min(100,(ms/sc.dur)*100)+'%';
+        statusEl.innerHTML='Preview <b>'+(ms/1000).toFixed(1)+'s</b> of '+(sc.dur/1000).toFixed(1)+'s';
+        if(ms<sc.dur) requestAnimationFrame(step); else done();
+      })(t0);
+    });
+  }
 
   if (record){
     await new Promise(function(r){ rec.onstop=r; rec.stop(); });
