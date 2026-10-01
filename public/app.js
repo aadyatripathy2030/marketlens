@@ -1307,7 +1307,10 @@
   // repeats. A new ticker resets the forming-bar marker.
   // Three seconds, matching how long the server holds a single symbol's
   // quote. Asking faster than that only re-reads the same number.
-  function startLive() { if (!liveTimer) liveTimer = setInterval(liveTick, 3000); }
+  function startLive() {
+    ensureStream();
+    if (!liveTimer) liveTimer = setInterval(liveTick, 3000);
+  }
   // The chart panel is one element that moves between analyze, practice and
   // the watchlist, so the forming candle should keep forming in all three
   // rather than only on the page it started on.
@@ -1317,18 +1320,16 @@
     const host = panel.closest('.view');
     return !!host && !host.classList.contains('hidden');
   };
-  async function liveTick() {
-    if (!lastData || document.hidden || !chartOnScreen()) return;
-    const sym = lastData.symbol;
-    let q; try { q = (await getQuotes([sym]))[0]; } catch { return; }
-    if (!q || !lastData || lastData.symbol !== sym) return;
-    if (q.source && lastData.source && q.source !== lastData.source) return;   // demo vs live
-    const prices = lastData.prices; if (!prices.length) return;
+  // One price in, the forming candle updated. Shared by the three-second
+  // poll and the live trade stream so a tick does the same thing whichever
+  // way it arrived.
+  function applyTick(price) {
+    if (!lastData) return false;
+    const prices = lastData.prices; if (!prices.length) return false;
     const last = prices[prices.length - 1];
-    const price = Number(q.price);
     // A tick more than 25% from the last close is mismatched data, not a move.
-    if (!Number.isFinite(price) || price <= 0) return;
-    if (last.close > 0 && Math.abs(price - last.close) / last.close > 0.25) return;
+    if (!Number.isFinite(price) || price <= 0) return false;
+    if (last.close > 0 && Math.abs(price - last.close) / last.close > 0.25) return false;
 
     // If the clock has moved past the end of the last bar, the tick opens a new
     // one rather than stretching the old one forever.
@@ -1351,10 +1352,61 @@
     }
     lastData.latest = price;
     $('price').textContent = price.toFixed(2) + ' ' + lastData.currency;
+    if ($('cLast') && chartSym === lastData.symbol) $('cLast').textContent = pMoney(price);
+    if ($('wlLast') && wlSym === lastData.symbol) $('wlLast').textContent = pMoney(price);
+    drawChart();
+    return true;
+  }
+
+  async function liveTick() {
+    if (!lastData || document.hidden || !chartOnScreen()) return;
+    const sym = lastData.symbol;
+    let q; try { q = (await getQuotes([sym]))[0]; } catch { return; }
+    if (!q || !lastData || lastData.symbol !== sym) return;
+    if (q.source && lastData.source && q.source !== lastData.source) return;   // demo vs live
+    if (!applyTick(Number(q.price))) return;
+    // The change figures only come from a quote: a trade tick carries a price
+    // and nothing to measure it against, so the poll keeps these honest.
     const up = q.changePct >= 0;
     $('chg').textContent = (up ? '▲ ' : '▼ ') + Math.abs(q.change).toFixed(2) + ' (' + q.changePct.toFixed(2) + '%)';
     $('chg').className = 'chg ' + (up ? 'up' : 'down');
-    drawChart();
+  }
+
+  // ---- Live trade stream ----
+  // Every trade as it prints, rather than a snapshot every few seconds. The
+  // server holds one socket upstream and fans it out over SSE, so the key
+  // stays on the server and the browser only listens. If the stream is not
+  // available -- no key, an old runtime, a proxy that will not hold the
+  // connection -- nothing breaks: the poll underneath carries on.
+  let tickStream = null, tickStreamSym = null;
+  function closeStream() {
+    if (tickStream) { try { tickStream.close(); } catch (e) {} }
+    tickStream = null; tickStreamSym = null;
+  }
+  function ensureStream() {
+    if (typeof EventSource === 'undefined') return;
+    const sym = lastData && lastData.symbol;
+    if (!sym || lastData.source === 'demo') { closeStream(); return; }
+    if (tickStreamSym === sym && tickStream) return;        // already on it
+    closeStream();
+    tickStreamSym = sym;
+    let es;
+    try { es = new EventSource('/api/stream?symbol=' + encodeURIComponent(sym)); }
+    catch (e) { tickStreamSym = null; return; }
+    tickStream = es;
+    es.onmessage = (ev) => {
+      if (!lastData || lastData.symbol !== sym) return;
+      let t; try { t = JSON.parse(ev.data); } catch (e) { return; }
+      if (!t || String(t.symbol).toUpperCase() !== sym) return;
+      if (document.hidden || !chartOnScreen()) return;      // hold the socket, skip the paint
+      applyTick(Number(t.price));
+    };
+    es.onerror = () => {
+      // EventSource reconnects on its own after a dropped connection. Closed
+      // means the server refused -- no live feed to give -- so stop asking
+      // and leave it to the poll.
+      if (es.readyState === EventSource.CLOSED) closeStream();
+    };
   }
 
   function tiles(d) {

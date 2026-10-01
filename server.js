@@ -73,7 +73,7 @@ const usage = { total: 0 };            // per-endpoint request counters (reset o
 const KNOWN_API = new Set([
   '/api/stock', '/api/quotes', '/api/fundamentals', '/api/analyze', '/api/analyze-stream',
   '/api/analyze-image', '/api/compare', '/api/screen', '/api/watchlist', '/api/alerts',
-  '/api/movers', '/api/ranked', '/api/accuracy', '/api/admin', '/api/config',
+  '/api/movers', '/api/ranked', '/api/accuracy', '/api/admin', '/api/config', '/api/stream',
   '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
   '/api/auth/delete', '/api/auth/google', '/api/auth/google/callback',
   '/api/billing/webhook', '/api/billing/checkout', '/api/billing/portal',
@@ -818,6 +818,145 @@ async function handleSentiment(req, res, user, symbolRaw) {
     : counts.positive > counts.negative ? 'positive' : 'negative';
   return json(res, 200, { symbol, available: true, method, items: scored, counts, lean,
     note: 'How the last ' + scored.length + ' headlines read. It describes coverage, not what the price will do.' });
+}
+
+
+// ---- Live tick hub -------------------------------------------------------
+// One websocket to Finnhub for the whole server, fanned out to browsers over
+// Server-Sent Events. Browsers never see the API key, and a hundred people
+// watching AAPL cost one upstream subscription rather than a hundred polls.
+//
+// SSE rather than a websocket back to the browser because it is one-way
+// anyway -- the page only ever listens -- and it needs no dependency and no
+// protocol upgrade: it is a long-lived HTTP response that EventSource
+// reconnects on its own.
+const WS_SUPPORTED = typeof WebSocket === 'function';
+const WS_MAX_SYMBOLS = Number(process.env.FINNHUB_WS_SYMBOLS || 45);   // free tier allows 50
+const tickHub = {
+  ws: null, ready: false, retry: 0, timer: null,
+  subs: new Map(),          // SYMBOL -> Set(res)
+  wanted: new Set(),        // what the upstream socket is subscribed to
+  last: new Map(),          // SYMBOL -> last price seen, for an instant first paint
+};
+
+function hubSend(obj) {
+  try { if (tickHub.ws && tickHub.ready) tickHub.ws.send(JSON.stringify(obj)); } catch (e) {}
+}
+
+function hubSyncSymbols() {
+  if (!tickHub.ready) return;
+  // Subscribe to anything newly wanted, drop anything nobody is watching.
+  const want = new Set([...tickHub.subs.keys()].slice(0, WS_MAX_SYMBOLS));
+  for (const sym of want) {
+    if (!tickHub.wanted.has(sym)) { hubSend({ type: 'subscribe', symbol: sym }); tickHub.wanted.add(sym); }
+  }
+  for (const sym of [...tickHub.wanted]) {
+    if (!want.has(sym)) { hubSend({ type: 'unsubscribe', symbol: sym }); tickHub.wanted.delete(sym); }
+  }
+}
+
+function hubConnect() {
+  if (!WS_SUPPORTED || !FINNHUB_API_KEY || tickHub.ws) return;
+  if (!tickHub.subs.size) return;                       // nothing to listen for
+  let ws;
+  // Overridable so the fan-out can be exercised against a local stand-in.
+  const wsUrl = process.env.FINNHUB_WS_URL
+    || ('wss://ws.finnhub.io?token=' + encodeURIComponent(FINNHUB_API_KEY));
+  try { ws = new WebSocket(wsUrl); }
+  catch (e) { logError(e); return; }
+  tickHub.ws = ws;
+  ws.addEventListener('open', () => {
+    tickHub.ready = true; tickHub.retry = 0; tickHub.wanted.clear();
+    hubSyncSymbols();
+  });
+  ws.addEventListener('message', (ev) => {
+    let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+    if (!msg || msg.type !== 'trade' || !Array.isArray(msg.data)) return;
+    // Several trades can land in one frame; only the newest matters for a
+    // price, so collapse per symbol before writing to any client.
+    const latest = new Map();
+    for (const t of msg.data) {
+      const sym = String(t.s || '').toUpperCase();
+      const px = Number(t.p);
+      if (!sym || !Number.isFinite(px) || px <= 0) continue;
+      const prev = latest.get(sym);
+      if (!prev || Number(t.t) >= prev.t) latest.set(sym, { p: px, t: Number(t.t) || Date.now(), v: Number(t.v) || 0 });
+    }
+    for (const [sym, tick] of latest) {
+      tickHub.last.set(sym, tick);
+      const set = tickHub.subs.get(sym);
+      if (!set) continue;
+      const line = 'data: ' + JSON.stringify({ symbol: sym, price: tick.p, ts: tick.t, volume: tick.v }) + '\n\n';
+      for (const res of set) { try { res.write(line); } catch (e) {} }
+    }
+  });
+  const down = () => {
+    tickHub.ready = false; tickHub.ws = null; tickHub.wanted.clear();
+    clearTimeout(tickHub.timer);
+    if (!tickHub.subs.size) return;
+    // Back off, but keep trying while anyone is still listening.
+    tickHub.retry = Math.min(tickHub.retry + 1, 6);
+    tickHub.timer = setTimeout(hubConnect, Math.min(30000, 1000 * Math.pow(2, tickHub.retry)));
+  };
+  ws.addEventListener('close', down);
+  ws.addEventListener('error', () => { try { ws.close(); } catch (e) {} });
+}
+
+function hubAdd(symbol, res) {
+  if (!tickHub.subs.has(symbol)) tickHub.subs.set(symbol, new Set());
+  tickHub.subs.get(symbol).add(res);
+  // close() is asynchronous: the socket stays referenced until its close
+  // event fires. Treating "a socket exists" as "a socket works" meant anyone
+  // arriving in that window had their subscribe written to a dying socket
+  // and silently got no ticks. Go by readyState, not by existence.
+  const state = tickHub.ws ? tickHub.ws.readyState : 3;   // 3 = CLOSED
+  if (state === 1) hubSyncSymbols();                      // open: just subscribe
+  else if (state === 0) { /* connecting: its open handler will sync */ }
+  else { tickHub.ws = null; tickHub.ready = false; hubConnect(); }
+}
+function hubRemove(symbol, res) {
+  const set = tickHub.subs.get(symbol);
+  if (!set) return;
+  set.delete(res);
+  if (!set.size) tickHub.subs.delete(symbol);
+  hubSyncSymbols();
+  if (!tickHub.subs.size && tickHub.ws) {
+    const ws = tickHub.ws;
+    // Let go of it now rather than waiting for the close event, so the next
+    // listener opens a fresh socket instead of reusing this one.
+    tickHub.ws = null; tickHub.ready = false; tickHub.wanted.clear();
+    try { ws.close(); } catch (e) {}
+  }
+}
+
+async function handleStream(req, res, symbolRaw) {
+  const user = await currentUser(req);
+  if (!user) return json(res, 401, { error: 'Please sign in.' });
+  const symbol = String(symbolRaw || '').toUpperCase().replace(/[^A-Z0-9.\-:\/]/g, '').slice(0, 24);
+  if (!symbol) return json(res, 400, { error: 'No symbol.' });
+  if (!WS_SUPPORTED || !FINNHUB_API_KEY) {
+    // Say so rather than holding a socket open that will never say anything;
+    // the page falls back to polling when it sees this.
+    return json(res, 503, { error: 'live_unavailable' });
+  }
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.write('retry: 4000\n\n');
+  // Whatever was last seen, so the page does not wait for the next trade --
+  // out of hours that could be a long time.
+  const seeded = tickHub.last.get(symbol);
+  if (seeded) res.write('data: ' + JSON.stringify({ symbol, price: seeded.p, ts: seeded.t, stale: true }) + '\n\n');
+
+  hubAdd(symbol, res);
+  // Comment frames keep proxies from closing an idle stream.
+  const beat = setInterval(() => { try { res.write(': ping\n\n'); } catch (e) {} }, 25000);
+  const bye = () => { clearInterval(beat); hubRemove(symbol, res); };
+  req.on('close', bye);
+  req.on('error', bye);
 }
 
 // ---- Paper trading ----
@@ -2471,6 +2610,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 405, { error: 'Method not allowed.' });
     }
     if (url === '/api/quotes' && req.method === 'GET') return await handleQuotes(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));
+    if (url === '/api/stream' && req.method === 'GET') return await handleStream(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbol'));
     if (url === '/api/movers' && req.method === 'GET') return await handleMovers(req, res);
     if (url === '/api/ranked' && req.method === 'GET') return await handleRanked(req, res);
     if (url === '/api/accuracy' && req.method === 'GET') return await handleAccuracy(req, res);
