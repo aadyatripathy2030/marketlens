@@ -763,7 +763,13 @@
     const volGap = show.volume ? 8 : 0;
     const plotW = w - padL - padR, plotH = h - padT - padB - volH - volGap;
     const total = bars.length + fc.length;
-    const X = (i) => padL + (plotW * i) / (total - 1);
+    // Breathing room between the newest candle and the price scale. Without
+    // it the last bar lands hard against the gutter and the price and P&L
+    // tags sit on top of exactly the candles being watched. The scale itself
+    // does not move: only the bars are laid out inside the narrower span.
+    const RIGHT_GAP = Math.max(16, Math.min(96, plotW * 0.07));
+    const barsW = Math.max(1, plotW - RIGHT_GAP);
+    const X = (i) => padL + (barsW * i) / (total - 1);
     const Y = (v) => padT + plotH * (1 - (v - lo) / (hi - lo));
     const axX = padL + plotW, axY = padT + plotH;
     // The time axis belongs under everything, not under the price plot:
@@ -806,7 +812,7 @@
     }
 
     // Dates sit in the gutter with no tick marks.
-    const ticks = Math.max(2, Math.min(6, Math.floor(plotW / 130)));
+    const ticks = Math.max(2, Math.min(6, Math.floor(barsW / 130)));
     ctx.font = AXF; ctx.fillStyle = col('--muted');
     for (let t = 0; t < ticks; t++) {
       const j = Math.round((bars.length - 1) * t / (ticks - 1));
@@ -821,7 +827,7 @@
     }
 
     if (chartType === 'candle') {
-      const cw = Math.max(1, (plotW / total) * 0.68);
+      const cw = Math.max(1, (barsW / total) * 0.68);
       const cc = candleColors();
       if (show.volume && volH > 0) {
         // Scaled to the largest bar in view, so the shape of activity reads the
@@ -989,7 +995,7 @@
     }
 
     if (hover && hover.x > padL && hover.x < axX && hover.y > padT && hover.y < axY) {
-      const j = Math.max(0, Math.min(bars.length - 1, Math.round((hover.x - padL) / plotW * (total - 1))));
+      const j = Math.max(0, Math.min(bars.length - 1, Math.round((hover.x - padL) / barsW * (total - 1))));
       const b = bars[j], hx = X(j);
       ctx.save();
       ctx.strokeStyle = col('--border-strong'); ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
@@ -1046,7 +1052,10 @@
       if (e.clientY - r.top >= r.height - AXIS_H) return 'time';
       return 'plot';
     };
-    const plotWidth = (r) => Math.max(1, r.width - AXIS_W - PAD_L);
+    const plotWidth = (r) => {
+      const inner = Math.max(1, r.width - AXIS_W - PAD_L);
+      return Math.max(1, inner - Math.max(16, Math.min(96, inner * 0.07)));
+    };
     // Leaving auto-fit: seed the manual window from whatever is on screen now,
     // so the first pixel of a drag doesn't make the chart jump.
     const ensureManual = () => {
