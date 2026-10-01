@@ -916,12 +916,12 @@
       if (L.structureTarget) mark(L.structureTarget.price, col('--sma20'), pxFmt(L.structureTarget.price), true);
     }
 
-    // Last price: the dashed marker stays, the tag does not. The same number
-    // is already set in large type in the header directly above the chart,
-    // and down here it stacked against the open position's result whenever
-    // the position sat near the market -- two tags on top of each other, in
-    // the one place a price needs to be readable.
-    const lastClose = bars[bars.length - 1].close;
+    // The latest price in the data, not the last one that happens to be in
+    // view. `bars` is the visible slice, so reading its final close made the
+    // marker -- and the position's result below -- change every time the
+    // chart was dragged sideways, as though panning back through history
+    // moved the market.
+    const lastClose = prices[len - 1].close;
     if (lastClose >= lo && lastClose <= hi) {
       const ly = Y(lastClose);
       ctx.save();
@@ -968,6 +968,7 @@
       ? paperState.account.positions.find(p => p.symbol === lastData.symbol) : null;
     if (pos && Number.isFinite(pos.avgPrice) && pos.avgPrice >= lo && pos.avgPrice <= hi) {
       const short = pos.qty < 0;
+      // Priced at the market, which panning does not move.
       const mark = Number.isFinite(lastClose) ? lastClose : pos.mark;
       const live = Number.isFinite(mark)
         ? (short ? (pos.avgPrice - mark) : (mark - pos.avgPrice)) * Math.abs(pos.qty)
