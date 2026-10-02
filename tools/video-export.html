@@ -781,7 +781,8 @@ function candles(x0,y0,bw,bh,opt){
     ctx.save(); ctx.setLineDash([bw*0.018,bw*0.018]); ctx.lineWidth=Math.max(1.4,bw*0.007);
     ctx.font='600 '+Math.max(8,bw*0.045)+'px "IBM Plex Mono", monospace';
     ctx.textAlign='left'; ctx.textBaseline='bottom';
-    [[target,G,'target'],[stop,R,'stop']].forEach(function(L){
+    var NM = opt.names || ['target','stop'];
+    [[target,G,NM[0]],[stop,R,NM[1]]].forEach(function(L){
       var y=Y(L[0]); ctx.strokeStyle=L[1];
       ctx.beginPath(); ctx.moveTo(x0,y); ctx.lineTo(x0+bw,y); ctx.stroke();
       ctx.fillStyle=L[1]; ctx.fillText(L[2],x0+bw*0.01,y-bw*0.018); });
@@ -839,6 +840,266 @@ var MODES = {
     }
     ctx.globalAlpha = 1;
   },
+  // ---- the get-rich cut: one visual per line of the script ----
+
+  // "close to no effort": sunset, a lounger, and nobody doing anything.
+  beach: function(p){
+    var hz = H*0.50, INK = '#0a0c10';
+    var sun = hz - H*0.09 + ease(p)*H*0.035;          // sinking, slowly
+    var sky = ctx.createLinearGradient(0,0,0,hz);
+    sky.addColorStop(0,'#141726'); sky.addColorStop(0.42,'#53304a');
+    sky.addColorStop(0.76,'#b05a3e'); sky.addColorStop(1,'#e8a84a');
+    ctx.fillStyle=sky; ctx.fillRect(0,0,W,hz);
+    var rad=W*0.125;
+    var gl=ctx.createRadialGradient(W*0.5,sun,rad*0.2,W*0.5,sun,rad*2.8);
+    gl.addColorStop(0,'rgba(255,214,130,0.50)'); gl.addColorStop(1,'rgba(255,214,130,0)');
+    ctx.fillStyle=gl; ctx.beginPath(); ctx.arc(W*0.5,sun,rad*2.8,0,6.2832); ctx.fill();
+    ctx.fillStyle='#ffd98a'; ctx.beginPath(); ctx.arc(W*0.5,sun,rad,0,6.2832); ctx.fill();
+
+    var seaB=H*0.68;
+    var sea=ctx.createLinearGradient(0,hz,0,seaB);
+    sea.addColorStop(0,'#8a4a3a'); sea.addColorStop(0.35,'#2d3a4a'); sea.addColorStop(1,'#16212c');
+    ctx.fillStyle=sea; ctx.fillRect(0,hz,W,seaB-hz);
+    ctx.save(); ctx.beginPath(); ctx.rect(0,hz,W,seaB-hz); ctx.clip();
+    var rs=mulberry(23);                               // the sun on the water
+    for(var i=0;i<46;i++){
+      var t=i/45, yy=hz+t*(seaB-hz)+rs()*H*0.004;
+      var cone=W*(0.022+t*0.17), n=1+Math.floor(rs()*3);
+      for(var j=0;j<n;j++){
+        var off=(rs()*2-1)*cone;
+        var len=cone*(0.10+rs()*0.34)*(0.62+0.38*Math.abs(Math.sin(p*6+i*0.9+j*2.1)));
+        ctx.globalAlpha=(0.10+rs()*0.34)*(1-t*0.45);
+        ctx.fillStyle='#ffd98a';
+        ctx.fillRect(W*0.5+off-len/2, yy, len, Math.max(1.2,H*0.0030));
+      }
+    }
+    ctx.globalAlpha=1; ctx.restore();
+    var sand=ctx.createLinearGradient(0,seaB,0,H);
+    sand.addColorStop(0,'#3a2c20'); sand.addColorStop(1,'#1d160f');
+    ctx.fillStyle=sand; ctx.fillRect(0,seaB,W,H-seaB);
+
+    ctx.fillStyle=INK; ctx.strokeStyle=INK; ctx.lineCap='round';
+
+    var sway=Math.sin(p*2.0)*0.014;                    // parasol
+    var px=W*0.16, py=H*0.92, ph=H*0.38;
+    var tx=px+ph*(0.12+sway), ty=py-ph, cr=W*0.165;
+    ctx.lineWidth=Math.max(3,W*0.011);
+    ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(tx,ty); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(tx-cr,ty+cr*0.26);
+    ctx.quadraticCurveTo(tx,ty-cr*0.58,tx+cr,ty+cr*0.26);
+    for(var s=5;s>0;s--){
+      var x1=tx-cr+(2*cr)*(s/5), x0=tx-cr+(2*cr)*((s-1)/5);
+      ctx.quadraticCurveTo((x0+x1)/2, ty+cr*0.42, x0, ty+cr*0.26);
+    }
+    ctx.closePath(); ctx.fill();
+
+    // the lounger is drawn thin on purpose, so the body on it is the solid mass
+    var ly=H*0.90, hipx=W*0.52, hipy=ly-H*0.055;
+    var headx=W*0.29, heady=ly-H*0.190, feetx=W*0.85, feety=ly-H*0.070;
+    ctx.lineWidth=Math.max(2,W*0.009);
+    ctx.beginPath(); ctx.moveTo(hipx,hipy); ctx.lineTo(headx-W*0.035,heady+H*0.022); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(hipx,hipy); ctx.lineTo(feetx+W*0.035,feety); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(W*0.42,hipy+H*0.014); ctx.lineTo(W*0.44,ly+H*0.038); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(W*0.79,feety+H*0.010); ctx.lineTo(W*0.81,ly+H*0.032); ctx.stroke();
+
+    var br=Math.sin(p*3.0)*W*0.0035;                   // breathing, and that is all
+    var shx=headx+W*0.085, shy=heady+H*0.042;
+    var kneex=W*0.70, kneey=hipy-H*0.064;              // one knee up: it reads as lounging
+    ctx.lineCap='round';
+    ctx.lineWidth=W*0.060;
+    ctx.beginPath(); ctx.moveTo(shx,shy+br); ctx.lineTo(hipx+W*0.020,hipy-H*0.014+br); ctx.stroke();
+    ctx.lineWidth=W*0.042;
+    ctx.beginPath(); ctx.moveTo(hipx+W*0.020,hipy-H*0.014); ctx.lineTo(kneex,kneey); ctx.stroke();
+    ctx.lineWidth=W*0.034;
+    ctx.beginPath(); ctx.moveTo(kneex,kneey); ctx.lineTo(feetx,feety-H*0.006); ctx.stroke();
+    ctx.lineWidth=W*0.022;                             // arm folded up behind the head
+    ctx.beginPath(); ctx.moveTo(shx+W*0.012,shy+br);
+    ctx.lineTo(shx-W*0.034,shy-H*0.062+br);
+    ctx.lineTo(headx+W*0.020,heady-H*0.006+br); ctx.stroke();
+    var hr=W*0.048;
+    ctx.beginPath(); ctx.arc(headx+W*0.034,heady+br,hr,0,6.2832); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(headx+W*0.034,heady-hr*0.62+br,hr*1.95,hr*0.38,-0.12,0,6.2832); ctx.fill();
+
+    var dx=W*0.90, dy=H*0.97;                          // a drink, untouched
+    ctx.beginPath(); ctx.moveTo(dx-W*0.026,dy-H*0.052); ctx.lineTo(dx+W*0.026,dy-H*0.052);
+    ctx.lineTo(dx+W*0.015,dy); ctx.lineTo(dx-W*0.015,dy); ctx.closePath(); ctx.fill();
+    ctx.lineWidth=Math.max(2,W*0.007);
+    ctx.beginPath(); ctx.moveTo(dx+W*0.006,dy-H*0.050); ctx.lineTo(dx+W*0.032,dy-H*0.086); ctx.stroke();
+    ctx.lineCap='butt';
+  },
+
+  // the site opening, because the line says to go to it
+  site: function(p){
+    var x=W*0.07, y=H*0.08, w=W*0.86, h=H*0.78, r=W*0.028, ch=H*0.082;
+    ctx.fillStyle='#11151b'; ctx.strokeStyle=LINE; ctx.lineWidth=Math.max(1.4,W*0.0035);
+    rr(x,y,w,h,r); ctx.fill(); ctx.stroke();
+    ctx.save(); rr(x,y,w,h,r); ctx.clip();
+    ctx.fillStyle='#171c24'; ctx.fillRect(x,y,w,ch);
+    ctx.strokeStyle=LINE; ctx.lineWidth=Math.max(1,W*0.002);
+    ctx.beginPath(); ctx.moveTo(x,y+ch); ctx.lineTo(x+w,y+ch); ctx.stroke();
+    ctx.restore();
+    ['#ff5f56','#ffbd2e','#27c93f'].forEach(function(c,i){
+      ctx.fillStyle=c; ctx.beginPath();
+      ctx.arc(x+W*0.048+i*W*0.040, y+ch/2, W*0.012, 0, 6.2832); ctx.fill(); });
+    var ax=x+W*0.175, aw=w-(ax-x)-W*0.045, ah=ch*0.56, ay=y+(ch-ah)/2;
+    ctx.fillStyle='#0e1014'; ctx.strokeStyle='#2a323d'; ctx.lineWidth=Math.max(1,W*0.0022);
+    rr(ax,ay,aw,ah,ah/2); ctx.fill(); ctx.stroke();
+    var url='chartgauge.com';
+    var typed=url.slice(0, Math.round(url.length*Math.min(1,p/0.34)));
+    ctx.fillStyle=FG; ctx.font='600 '+(W*0.032)+'px "IBM Plex Mono", monospace';
+    ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.fillText(typed, ax+W*0.030, ay+ah/2);
+    if(p<0.36 && Math.sin(p*46)>0){
+      ctx.fillStyle=FG;
+      ctx.fillRect(ax+W*0.030+ctx.measureText(typed).width+W*0.006, ay+ah*0.24, W*0.005, ah*0.52);
+    }
+    var load=Math.min(1,Math.max(0,(p-0.38)/0.30));
+    if(load<=0){ ctx.textBaseline='top'; return; }
+    var e=ease(load), px=x+W*0.048, pw=w-W*0.096, py=y+ch+H*0.042;
+    ctx.globalAlpha=e;
+    ctx.fillStyle=FG; ctx.font='400 '+(W*0.052)+'px "Archivo Black", sans-serif';
+    ctx.textBaseline='top'; ctx.fillText('NVDA', px, py);
+    ctx.fillStyle=G; ctx.font='600 '+(W*0.034)+'px "IBM Plex Mono", monospace';
+    ctx.fillText('+1.84%', px+W*0.27, py+W*0.014);
+    candles(px, py+H*0.080, pw, H*0.24, {grow:load});
+    var names=['Analyze','Practice','Watchlist','Lessons'];
+    var cwid=(pw-W*0.030)/2, chgt=H*0.082, gy=W*0.028;
+    for(var i=0;i<4;i++){
+      var lo=Math.min(1,Math.max(0,(load-0.22-i*0.13)/0.32)); if(lo<=0) continue;
+      var cx2=px+(i%2)*(cwid+W*0.030), cy2=py+H*0.370+Math.floor(i/2)*(chgt+gy);
+      ctx.globalAlpha=e*lo;
+      ctx.fillStyle='#161b22'; ctx.strokeStyle=LINE; ctx.lineWidth=Math.max(1,W*0.0025);
+      rr(cx2,cy2,cwid,chgt,W*0.020); ctx.fill(); ctx.stroke();
+      ctx.fillStyle=FG; ctx.font='600 '+(W*0.034)+'px "Archivo", sans-serif';
+      ctx.textBaseline='middle'; ctx.fillText(names[i], cx2+cwid*0.10, cy2+chgt/2);
+    }
+    ctx.globalAlpha=1; ctx.textBaseline='top';
+  },
+
+  // practice trading, then the nineteen lessons, counted out
+  practice: function(p){
+    var x=W*0.07, y=H*0.04, w=W*0.86, h=H*0.36;
+    ctx.fillStyle='#11151b'; ctx.strokeStyle=LINE; ctx.lineWidth=Math.max(1.4,W*0.003);
+    rr(x,y,w,h,W*0.026); ctx.fill(); ctx.stroke();
+    ctx.fillStyle=BLUE; ctx.font='600 '+(W*0.028)+'px "IBM Plex Mono", monospace';
+    ctx.textAlign='left'; ctx.textBaseline='top';
+    ctx.fillText('PRACTICE', x+W*0.045, y+H*0.028);
+    candles(x+W*0.045, y+H*0.080, w-W*0.09, h*0.46, {grow:Math.min(1,p*3.0)});
+    var bw2=(w-W*0.09-W*0.03)/2, bh2=H*0.070, byy=y+h-bh2-H*0.028;
+    var press=p>0.26;
+    [['BUY',G,0],['SELL',R,1]].forEach(function(B,i){
+      var bx2=x+W*0.045+i*(bw2+W*0.03), on=(i===0&&press);
+      ctx.globalAlpha=on?1:0.55;
+      ctx.fillStyle=on?B[1]:'#161b22'; ctx.strokeStyle=B[1]; ctx.lineWidth=Math.max(1.4,W*0.004);
+      rr(bx2,byy,bw2,bh2,W*0.018); ctx.fill(); ctx.stroke();
+      ctx.fillStyle=on?'#0b0e12':B[1]; ctx.font='700 '+(W*0.042)+'px "Archivo", sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(B[0], bx2+bw2/2, byy+bh2/2);
+      ctx.globalAlpha=1;
+    });
+    var lo=Math.min(1,Math.max(0,(p-0.32)/0.52));
+    if(lo>0){
+      var cols=5, gx=W*0.022, tw=(w-gx*(cols-1))/cols, th=tw*0.74, y0=H*0.47;
+      for(var i=0;i<19;i++){
+        var li=Math.min(1,Math.max(0,(lo-i*0.034)/0.20)); if(li<=0) continue;
+        var cx2=x+(i%cols)*(tw+gx), cy2=y0+Math.floor(i/cols)*(th+gx);
+        ctx.globalAlpha=li;
+        ctx.fillStyle='#161b22'; ctx.strokeStyle=LINE; ctx.lineWidth=Math.max(1,W*0.0022);
+        rr(cx2,cy2,tw,th,W*0.016); ctx.fill(); ctx.stroke();
+        ctx.fillStyle=(i===18?G:DIM); ctx.font='600 '+(tw*0.30)+'px "IBM Plex Mono", monospace';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(String(i+1), cx2+tw/2, cy2+th/2);
+        ctx.globalAlpha=1;
+      }
+    }
+    ctx.textAlign='left'; ctx.textBaseline='top';
+  },
+
+  // a screenshot dragged into the drop zone, which is the whole job
+  upload: function(p){
+    var zx=W*0.12, zy=H*0.20, zw=W*0.76, zh=H*0.48;
+    var land=Math.min(1,Math.max(0,(p-0.50)/0.16));
+    ctx.save();
+    ctx.setLineDash([W*0.028,W*0.020]); ctx.lineWidth=Math.max(2,W*0.006);
+    ctx.strokeStyle=land>0?G:'#3a4353'; ctx.globalAlpha=land>0?1:0.85;
+    rr(zx,zy,zw,zh,W*0.035); ctx.stroke();
+    ctx.restore();
+    var k=ease(Math.min(1,p/0.56));
+    var sw=zw*0.70, sh=zh*0.62;
+    var sx=W*0.05+(zx+zw/2-sw/2-W*0.05)*k;
+    var sy=-sh*0.60+(zy+zh*0.50-sh*0.50+sh*0.60)*k;
+    ctx.save();
+    ctx.translate(sx+sw/2, sy+sh/2); ctx.rotate((1-k)*0.22); ctx.translate(-sw/2,-sh/2);
+    ctx.fillStyle='#11151b'; ctx.strokeStyle='#2a323d'; ctx.lineWidth=Math.max(1.4,W*0.004);
+    rr(0,0,sw,sh,W*0.022); ctx.fill(); ctx.stroke();
+    ctx.save(); rr(0,0,sw,sh,W*0.022); ctx.clip();
+    candles(sw*0.07, sh*0.14, sw*0.86, sh*0.70, {});
+    ctx.restore(); ctx.restore();
+    if(k<1){
+      var cxp=sx+sw*0.80, cyp=sy+sh*0.78;
+      ctx.fillStyle=FG; ctx.beginPath();
+      ctx.moveTo(cxp,cyp); ctx.lineTo(cxp,cyp+W*0.058);
+      ctx.lineTo(cxp+W*0.016,cyp+W*0.043); ctx.lineTo(cxp+W*0.038,cyp+W*0.038);
+      ctx.closePath(); ctx.fill();
+    }
+    var ly2=zy+zh+H*0.070;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    if(land<1){
+      ctx.globalAlpha=1-land; ctx.fillStyle=DIM;
+      ctx.font='600 '+(W*0.038)+'px "IBM Plex Mono", monospace';
+      ctx.fillText('drop a screenshot', W*0.5, ly2);
+    }
+    if(land>0){
+      ctx.globalAlpha=land;
+      ctx.strokeStyle=G; ctx.lineWidth=Math.max(3,W*0.012); ctx.lineCap='round';
+      var mx=W*0.5-W*0.175, my=ly2;
+      ctx.beginPath(); ctx.moveTo(mx,my); ctx.lineTo(mx+W*0.028,my+W*0.026);
+      ctx.lineTo(mx+W*0.082,my-W*0.038); ctx.stroke();
+      ctx.lineCap='butt';
+      ctx.fillStyle=G; ctx.font='600 '+(W*0.038)+'px "IBM Plex Mono", monospace';
+      ctx.textAlign='left'; ctx.fillText('chart.png', W*0.5-W*0.055, ly2);
+    }
+    ctx.globalAlpha=1; ctx.textAlign='left'; ctx.textBaseline='top';
+  },
+
+  // the same chart, with the two levels named the way the script names them
+  tpsl: function(p){
+    candles(W*0.08,H*0.18,W*0.84,H*0.54,
+            {levels:true,names:['take profit','stop loss'],grow:Math.min(1,p*1.6)});
+  },
+
+  // what it costs: free now, then the price, then the trial
+  price: function(p){
+    var x=W*0.12, y=H*0.14, w=W*0.76, h=H*0.58, a=ease(Math.min(1,p*2.2));
+    ctx.globalAlpha=a;
+    ctx.fillStyle='#11151b'; ctx.strokeStyle=G; ctx.lineWidth=Math.max(1.6,W*0.005);
+    rr(x,y,w,h,W*0.040); ctx.fill(); ctx.stroke();
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    // these two must never share the frame: swap, do not cross-dissolve
+    var out=1-Math.min(1,Math.max(0,(p-0.40)/0.08));
+    var flip=Math.min(1,Math.max(0,(p-0.50)/0.10));
+    if(out>0){
+      ctx.globalAlpha=a*out;
+      ctx.fillStyle=G; ctx.font='400 '+(W*0.150)+'px "Archivo Black", sans-serif';
+      ctx.fillText('FREE', x+w/2, y+h*0.42);
+      ctx.fillStyle=DIM; ctx.font='600 '+(W*0.040)+'px "IBM Plex Mono", monospace';
+      ctx.fillText('until October 17', x+w/2, y+h*0.66);
+    }
+    if(flip>0){
+      ctx.globalAlpha=a*flip;
+      ctx.fillStyle=FG; ctx.font='400 '+(W*0.140)+'px "Archivo Black", sans-serif';
+      ctx.fillText('$4.99', x+w/2, y+h*0.36);
+      ctx.fillStyle=DIM; ctx.font='600 '+(W*0.042)+'px "IBM Plex Mono", monospace';
+      ctx.fillText('a week', x+w/2, y+h*0.56);
+      var pw2=w*0.80, ph2=H*0.082, pxx=x+(w-pw2)/2, pyy=y+h*0.70;
+      ctx.fillStyle='rgba(61,220,132,0.12)'; ctx.strokeStyle=G; ctx.lineWidth=Math.max(1.4,W*0.0035);
+      rr(pxx,pyy,pw2,ph2,ph2/2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle=G; ctx.font='700 '+(W*0.038)+'px "Archivo", sans-serif';
+      ctx.fillText('2 WEEKS FREE FIRST', pxx+pw2/2, pyy+ph2/2);
+    }
+    ctx.globalAlpha=1; ctx.textAlign='left'; ctx.textBaseline='top';
+  },
+
   // a wall of restless charts
   noise: function(p){
     var r=mulberry(3);
@@ -1039,7 +1300,7 @@ var MODES = {
 };
 
 
-  var DATA = {"confidence": {"name": "Smarter, not harder", "rows": [{"mode": "noise", "role": "Hook", "big": "The market never sleeps. But you do.", "sub": "", "from": 0, "to": 3592}, {"mode": "app", "role": "The tool", "big": "ChartGauge reads a chart in seconds, so you do not have to squint at thirteen indicators yourself.", "sub": "", "from": 3592, "to": 11030}, {"mode": "plain", "role": "Plain English", "big": "Real readings. Plain explanations. Stop and target levels you can see on the chart.", "sub": "", "from": 11030, "to": 17315}, {"mode": "alerts", "role": "Alerts", "big": "Set an alert and it watches the stock while you get on with your day.", "sub": "", "from": 17315, "to": 23984}, {"mode": "graded", "role": "Honest", "big": "And every reading is graded in public afterwards, including the wrong ones.", "sub": "", "from": 23984, "to": 29499}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 29499, "to": 33861}], "end": 33861}, "beginner": {"name": "Finally explained", "rows": [{"mode": "jargon", "role": "Hook", "big": "Want to start investing but have no idea what any of this means?", "sub": "", "from": 0, "to": 5900}, {"mode": "plain", "role": "Translate", "big": "ChartGauge turns the jargon into plain English, on any stock or crypto pair.", "sub": "", "from": 5900, "to": 11800}, {"mode": "lessons", "role": "Learn", "big": "And short lessons with quizzes when you want to go deeper.", "sub": "", "from": 11800, "to": 17315}, {"mode": "graded", "role": "Honest", "big": "And it shows you its own record, including where it got things wrong.", "sub": "", "from": 17315, "to": 23215}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 23215, "to": 27577}], "end": 27577}, "overthinker": {"name": "Less overthinking", "rows": [{"mode": "tabs", "role": "Hook", "big": "Fourteen tabs, three spreadsheets, and six weeks on one stock.", "sub": "", "from": 0, "to": 4746}, {"mode": "app", "role": "The tool", "big": "ChartGauge computes thirteen indicators on the real bars and writes out what they say.", "sub": "", "from": 4746, "to": 11031}, {"mode": "plain", "role": "Snapshot", "big": "One snapshot, in seconds, instead of an evening.", "sub": "", "from": 11031, "to": 15008}, {"mode": "levels", "role": "Levels", "big": "With the stop and the target marked, so you know what would prove you wrong.", "sub": "", "from": 15008, "to": 21677}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 21677, "to": 26039}], "end": 26039}, "decoded": {"name": "The data, decoded", "rows": [{"mode": "stream", "role": "Hook", "big": "Every second, the market produces more numbers than anyone can read.", "sub": "", "from": 0, "to": 5131}, {"mode": "indics", "role": "The work", "big": "Thirteen indicators computed on real price data, not vibes.", "sub": "", "from": 5131, "to": 9493}, {"mode": "plain", "role": "Why", "big": "Each one explained in plain English, so you can see why the read says what it says.", "sub": "", "from": 9493, "to": 16931}, {"mode": "graded", "role": "Honest", "big": "Then graded against what the price actually did, in public.", "sub": "", "from": 16931, "to": 21677}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk. Analysis does not guarantee results.", "from": 21677, "to": 26039}], "end": 26039}, "busy": {"name": "Better things to do", "rows": [{"mode": "noise", "role": "Hook", "big": "You have a job, a family, a life. You cannot watch the market all day.", "sub": "", "from": 0, "to": 6669}, {"mode": "alerts", "role": "Alerts", "big": "Put a stock on your watchlist and set an alert. It tells you when your level is hit.", "sub": "", "from": 6669, "to": 14492}, {"mode": "plain", "role": "Quick", "big": "Open it, read the summary already written, and get on with your day.", "sub": "", "from": 14492, "to": 20007}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 20007, "to": 24369}], "end": 24369}, "honest": {"name": "No crystal ball", "rows": [{"mode": "crystal", "role": "Hook", "big": "Let us be honest. No app can predict the market.", "sub": "", "from": 0, "to": 4746}, {"mode": "result", "role": "Proof", "big": "We tested our own score over thirty six thousand past setups. It did not predict direction.", "sub": "", "from": 4746, "to": 11800}, {"mode": "plain", "role": "What it does", "big": "What it does do is read the chart for you and explain it, clearly.", "sub": "", "from": 11800, "to": 18085}, {"mode": "graded", "role": "Record", "big": "And publish every reading afterwards, graded, including the wrong ones.", "sub": "", "from": 18085, "to": 22831}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "No hype. Investing involves risk, including possible loss of principal.", "from": 22831, "to": 27962}], "end": 27962}, "easy": {"name": "Easier with AI", "rows": [{"mode": "stream", "role": "Hook", "big": "Trading with AI has never been easier.", "sub": "", "from": 0, "to": 2719}, {"mode": "app", "role": "Vision", "big": "Screenshot any chart. Claude reads the picture.", "sub": "", "from": 2719, "to": 7529}, {"mode": "plain", "role": "Plain", "big": "The trend, the levels, and what the numbers are saying.", "sub": "", "from": 7529, "to": 11812}, {"mode": "indics", "role": "Work", "big": "Thirteen indicators on the real bars, computed for you.", "sub": "", "from": 11812, "to": 15810}, {"mode": "levels", "role": "Levels", "big": "Your stop and your target, marked on the chart.", "sub": "", "from": 15810, "to": 19417}, {"mode": "alerts", "role": "Alerts", "big": "Set an alert. It watches the stock so you do not have to.", "sub": "", "from": 19417, "to": 23846}, {"mode": "jargon", "role": "Clarity", "big": "No jargon. Just what the chart is doing.", "sub": "", "from": 23846, "to": 27219}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 27219, "to": 29854}], "end": 29854}, "noeffort": {"name": "Get rich easily", "rows": [{"mode": "money", "role": "Hook", "big": "Want to get rich so easily that a 5 year old could do it?", "sub": "", "from": 0, "to": 4400}, {"mode": "noise", "role": "Hook2", "big": "Want to spend close to no effort doing so?", "sub": "", "from": 4400, "to": 7800}, {"mode": "plain", "role": "CTA", "big": "If this applies to you, go to ChartGauge.com and check out all its features.", "sub": "", "from": 7800, "to": 12600}, {"mode": "lessons", "role": "What", "big": "It has practice trading, and 19 different lessons.", "sub": "", "from": 12600, "to": 16600}, {"mode": "app", "role": "Upload", "big": "But if you don't want to do any work, just upload a screenshot of your chart", "sub": "", "from": 16600, "to": 21400}, {"mode": "levels", "role": "Read", "big": "and it tells you everything about the stock, and exactly where to put your take profit and stop loss.", "sub": "", "from": 21400, "to": 27400}, {"mode": "stream", "role": "Price", "big": "Free until October seventeenth, but then only $4.99 a week — with a two week free trial!", "sub": "", "from": 27400, "to": 32400}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Link in bio. Investing involves risk, including possible loss of principal.", "from": 32400, "to": 36000}], "end": 36000}};
+  var DATA = {"confidence": {"name": "Smarter, not harder", "rows": [{"mode": "noise", "role": "Hook", "big": "The market never sleeps. But you do.", "sub": "", "from": 0, "to": 3592}, {"mode": "app", "role": "The tool", "big": "ChartGauge reads a chart in seconds, so you do not have to squint at thirteen indicators yourself.", "sub": "", "from": 3592, "to": 11030}, {"mode": "plain", "role": "Plain English", "big": "Real readings. Plain explanations. Stop and target levels you can see on the chart.", "sub": "", "from": 11030, "to": 17315}, {"mode": "alerts", "role": "Alerts", "big": "Set an alert and it watches the stock while you get on with your day.", "sub": "", "from": 17315, "to": 23984}, {"mode": "graded", "role": "Honest", "big": "And every reading is graded in public afterwards, including the wrong ones.", "sub": "", "from": 23984, "to": 29499}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 29499, "to": 33861}], "end": 33861}, "beginner": {"name": "Finally explained", "rows": [{"mode": "jargon", "role": "Hook", "big": "Want to start investing but have no idea what any of this means?", "sub": "", "from": 0, "to": 5900}, {"mode": "plain", "role": "Translate", "big": "ChartGauge turns the jargon into plain English, on any stock or crypto pair.", "sub": "", "from": 5900, "to": 11800}, {"mode": "lessons", "role": "Learn", "big": "And short lessons with quizzes when you want to go deeper.", "sub": "", "from": 11800, "to": 17315}, {"mode": "graded", "role": "Honest", "big": "And it shows you its own record, including where it got things wrong.", "sub": "", "from": 17315, "to": 23215}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 23215, "to": 27577}], "end": 27577}, "overthinker": {"name": "Less overthinking", "rows": [{"mode": "tabs", "role": "Hook", "big": "Fourteen tabs, three spreadsheets, and six weeks on one stock.", "sub": "", "from": 0, "to": 4746}, {"mode": "app", "role": "The tool", "big": "ChartGauge computes thirteen indicators on the real bars and writes out what they say.", "sub": "", "from": 4746, "to": 11031}, {"mode": "plain", "role": "Snapshot", "big": "One snapshot, in seconds, instead of an evening.", "sub": "", "from": 11031, "to": 15008}, {"mode": "levels", "role": "Levels", "big": "With the stop and the target marked, so you know what would prove you wrong.", "sub": "", "from": 15008, "to": 21677}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 21677, "to": 26039}], "end": 26039}, "decoded": {"name": "The data, decoded", "rows": [{"mode": "stream", "role": "Hook", "big": "Every second, the market produces more numbers than anyone can read.", "sub": "", "from": 0, "to": 5131}, {"mode": "indics", "role": "The work", "big": "Thirteen indicators computed on real price data, not vibes.", "sub": "", "from": 5131, "to": 9493}, {"mode": "plain", "role": "Why", "big": "Each one explained in plain English, so you can see why the read says what it says.", "sub": "", "from": 9493, "to": 16931}, {"mode": "graded", "role": "Honest", "big": "Then graded against what the price actually did, in public.", "sub": "", "from": 16931, "to": 21677}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk. Analysis does not guarantee results.", "from": 21677, "to": 26039}], "end": 26039}, "busy": {"name": "Better things to do", "rows": [{"mode": "noise", "role": "Hook", "big": "You have a job, a family, a life. You cannot watch the market all day.", "sub": "", "from": 0, "to": 6669}, {"mode": "alerts", "role": "Alerts", "big": "Put a stock on your watchlist and set an alert. It tells you when your level is hit.", "sub": "", "from": 6669, "to": 14492}, {"mode": "plain", "role": "Quick", "big": "Open it, read the summary already written, and get on with your day.", "sub": "", "from": 14492, "to": 20007}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 20007, "to": 24369}], "end": 24369}, "honest": {"name": "No crystal ball", "rows": [{"mode": "crystal", "role": "Hook", "big": "Let us be honest. No app can predict the market.", "sub": "", "from": 0, "to": 4746}, {"mode": "result", "role": "Proof", "big": "We tested our own score over thirty six thousand past setups. It did not predict direction.", "sub": "", "from": 4746, "to": 11800}, {"mode": "plain", "role": "What it does", "big": "What it does do is read the chart for you and explain it, clearly.", "sub": "", "from": 11800, "to": 18085}, {"mode": "graded", "role": "Record", "big": "And publish every reading afterwards, graded, including the wrong ones.", "sub": "", "from": 18085, "to": 22831}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "No hype. Investing involves risk, including possible loss of principal.", "from": 22831, "to": 27962}], "end": 27962}, "easy": {"name": "Easier with AI", "rows": [{"mode": "stream", "role": "Hook", "big": "Trading with AI has never been easier.", "sub": "", "from": 0, "to": 2719}, {"mode": "app", "role": "Vision", "big": "Screenshot any chart. Claude reads the picture.", "sub": "", "from": 2719, "to": 7529}, {"mode": "plain", "role": "Plain", "big": "The trend, the levels, and what the numbers are saying.", "sub": "", "from": 7529, "to": 11812}, {"mode": "indics", "role": "Work", "big": "Thirteen indicators on the real bars, computed for you.", "sub": "", "from": 11812, "to": 15810}, {"mode": "levels", "role": "Levels", "big": "Your stop and your target, marked on the chart.", "sub": "", "from": 15810, "to": 19417}, {"mode": "alerts", "role": "Alerts", "big": "Set an alert. It watches the stock so you do not have to.", "sub": "", "from": 19417, "to": 23846}, {"mode": "jargon", "role": "Clarity", "big": "No jargon. Just what the chart is doing.", "sub": "", "from": 23846, "to": 27219}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 27219, "to": 29854}], "end": 29854}, "noeffort": {"name": "Get rich easily", "rows": [{"mode": "money", "role": "Hook", "big": "Want to get rich so easily that a 5 year old could do it?", "sub": "", "from": 0, "to": 4400}, {"mode": "beach", "role": "Hook2", "big": "Want to spend close to no effort doing so?", "sub": "", "from": 4400, "to": 7800}, {"mode": "site", "role": "CTA", "big": "If this applies to you, go to ChartGauge.com and check out all its features.", "sub": "", "from": 7800, "to": 12600}, {"mode": "practice", "role": "What", "big": "It has practice trading, and 19 different lessons.", "sub": "", "from": 12600, "to": 16600}, {"mode": "upload", "role": "Upload", "big": "But if you don't want to do any work, just upload a screenshot of your chart", "sub": "", "from": 16600, "to": 21400}, {"mode": "tpsl", "role": "Read", "big": "and it tells you everything about the stock, and exactly where to put your take profit and stop loss.", "sub": "", "from": 21400, "to": 27400}, {"mode": "price", "role": "Price", "big": "Free until October seventeenth, but then only $4.99 a week — with a two week free trial!", "sub": "", "from": 27400, "to": 32400}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Link in bio. Investing involves risk, including possible loss of principal.", "from": 32400, "to": 36000}], "end": 36000}};
   function make(key){
     var sc = DATA[key];
     function at(ms){
@@ -1308,7 +1569,7 @@ var BOS = (function(){
 var SCENES = { buyorsell:BOS, readchart:RC, rsi70:OB, recovery:RV, aiproduct:AIP,
   ad_confidence:ADS.confidence, ad_beginner:ADS.beginner, ad_overthinker:ADS.overthinker,
   ad_decoded:ADS.decoded, ad_busy:ADS.busy, ad_honest:ADS.honest, ad_easy:ADS.easy, ad_noeffort:ADS.noeffort };
-var CAPS = {"buyorsell": [{"from":0,"to":5400,"badge":"","big":"Should you buy or sell here?","sub":"Take a second before you scroll.","url":"","fine":""},{"from":5400,"to":9200,"badge":"The level","big":"Start with where price keeps stopping.","sub":"","url":"","fine":""},{"from":9200,"to":13800,"badge":"Three times","big":"It came down to this level three times.","sub":"Each time, it bounced.","url":"","fine":""},{"from":13800,"to":18200,"badge":"The break","big":"On the last candle it broke below it.","sub":"","url":"","fine":""},{"from":18200,"to":22800,"badge":"Bought back","big":"Then buyers took the whole move back.","sub":"","url":"","fine":""},{"from":22800,"to":27200,"badge":"The shape","big":"A long tail down, and a close near the high.","sub":"","url":"","fine":""},{"from":27200,"to":31400,"badge":"","big":"That is a hammer, on a level that has held.","sub":"Sellers had it and could not keep it.","url":"","fine":""},{"from":31400,"to":35000,"badge":"","big":"Read any chart like this one.","sub":"","url":"chartgauge.com","fine":"A study tool. Not financial advice."}], "readchart": [{"from": 0, "to": 5000, "badge": "", "big": "Most people open a stock chart and just see noise.", "sub": "", "url": "", "fine": ""}, {"from": 5000, "to": 8000, "badge": "", "big": "Here\u2019s what\u2019s actually on it.", "sub": "", "url": "", "fine": ""}, {"from": 8000, "to": 18600, "badge": "Trend", "big": "The 50-day average, and the 200.", "sub": "When the fast one crosses above the slow one, the trend has turned up.", "url": "", "fine": ""}, {"from": 18600, "to": 25600, "badge": "Momentum", "big": "This is RSI.", "sub": "Near 70 the move is stretched. Near 30 it has been beaten down.", "url": "", "fine": ""}, {"from": 25600, "to": 34200, "badge": "Levels", "big": "Where the move is proven wrong, and where it has done its job.", "sub": "", "url": "", "fine": ""}, {"from": 34200, "to": 43600, "badge": "", "big": "All thirteen of these, on any stock or crypto pair.", "sub": "Explained, not just scored.", "url": "", "fine": ""}, {"from": 43600, "to": 50200, "badge": "", "big": "The same read on any stock or crypto pair.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "rsi70": [{"from": 0, "to": 5100, "badge": "", "big": "RSI above 70 means sell.", "sub": "That\u2019s the rule everyone repeats.", "url": "", "fine": ""}, {"from": 5100, "to": 8600, "badge": "The signal", "big": "This stock crossed 70 right here.", "sub": "", "url": "", "fine": ""}, {"from": 8600, "to": 14500, "badge": "", "big": "Sell on that rule and you\u2019re out at 106.", "sub": "", "url": "", "fine": ""}, {"from": 14500, "to": 19600, "badge": "", "big": "It kept going for another seventeen weeks.", "sub": "Up 41%.", "url": "", "fine": ""}, {"from": 19600, "to": 24700, "badge": "", "big": "RSI never dropped back below 60.", "sub": "Not once, the whole way up.", "url": "", "fine": ""}, {"from": 24700, "to": 33400, "badge": "What it actually means", "big": "Overbought means the move got stretched.", "sub": "In a strong trend it can stay stretched for months.", "url": "", "fine": ""}, {"from": 33400, "to": 40100, "badge": "", "big": "Which is why it\u2019s one of thirteen readings.", "sub": "Not a signal on its own.", "url": "", "fine": ""}, {"from": 40100, "to": 44800, "badge": "", "big": "Reads like this one, on any stock you follow.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "recovery": [{"from": 0, "to": 5500, "badge": "", "big": "Before your first trade, learn this.", "sub": "One piece of arithmetic. It applies to everyone.", "url": "", "fine": ""}, {"from": 5500, "to": 13400, "badge": "Lose 10%", "big": "You need 11% to get back to even.", "sub": "That sounds fine.", "url": "", "fine": ""}, {"from": 13400, "to": 18100, "badge": "Lose 25%", "big": "You need 33%.", "sub": "Still sounds manageable.", "url": "", "fine": ""}, {"from": 18100, "to": 24800, "badge": "Lose 50%", "big": "You need 100%.", "sub": "You have to double what\u2019s left.", "url": "", "fine": ""}, {"from": 24800, "to": 31500, "badge": "Lose 80%", "big": "You need 400%.", "sub": "Just to be where you started.", "url": "", "fine": ""}, {"from": 31500, "to": 41400, "badge": "", "big": "A loss and the gain that undoes it are never the same size.", "sub": "The bigger the loss, the further apart they get.", "url": "", "fine": ""}, {"from": 41400, "to": 49300, "badge": "", "big": "Which is why how much you risk matters more than how often you\u2019re right.", "sub": "", "url": "", "fine": ""}, {"from": 49300, "to": 54000, "badge": "", "big": "See what your own risk actually looks like.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "aiproduct": [{"from": 0, "to": 4271, "pat": "vision", "big": "Screenshot any chart you don\u2019t understand.", "sub": "Drop it in here.", "url": "", "fine": ""}, {"from": 4271, "to": 11757, "pat": "aitext", "big": "Claude looks at the picture and tells you the trend, the levels, and whether it looks bullish or bearish.", "sub": "", "url": "", "fine": ""}, {"from": 11757, "to": 17100, "pat": "ticker", "big": "Or just type a stock name and it pulls the real price data instead.", "sub": "", "url": "", "fine": ""}, {"from": 17100, "to": 21729, "pat": "indics", "big": "Thirteen indicators computed on those bars, and what each one is telling you.", "sub": "", "url": "", "fine": ""}, {"from": 21729, "to": 26000, "pat": "levels", "big": "With the stop and the target marked on the chart.", "sub": "", "url": "", "fine": ""}, {"from": 26000, "to": 31700, "pat": "graded", "big": "And it tells you when it was wrong.", "sub": "Every reading is graded in public.", "url": "", "fine": ""}, {"from": 31700, "to": 34543, "pat": "end", "big": "Try it on your own chart.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "ad_confidence": [{"mode": "noise", "role": "Hook", "big": "The market never sleeps. But you do.", "sub": "", "from": 0, "to": 3592}, {"mode": "app", "role": "The tool", "big": "ChartGauge reads a chart in seconds, so you do not have to squint at thirteen indicators yourself.", "sub": "", "from": 3592, "to": 11030}, {"mode": "plain", "role": "Plain English", "big": "Real readings. Plain explanations. Stop and target levels you can see on the chart.", "sub": "", "from": 11030, "to": 17315}, {"mode": "alerts", "role": "Alerts", "big": "Set an alert and it watches the stock while you get on with your day.", "sub": "", "from": 17315, "to": 23984}, {"mode": "graded", "role": "Honest", "big": "And every reading is graded in public afterwards, including the wrong ones.", "sub": "", "from": 23984, "to": 29499}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 29499, "to": 33861}], "ad_beginner": [{"mode": "jargon", "role": "Hook", "big": "Want to start investing but have no idea what any of this means?", "sub": "", "from": 0, "to": 5900}, {"mode": "plain", "role": "Translate", "big": "ChartGauge turns the jargon into plain English, on any stock or crypto pair.", "sub": "", "from": 5900, "to": 11800}, {"mode": "lessons", "role": "Learn", "big": "And short lessons with quizzes when you want to go deeper.", "sub": "", "from": 11800, "to": 17315}, {"mode": "graded", "role": "Honest", "big": "And it shows you its own record, including where it got things wrong.", "sub": "", "from": 17315, "to": 23215}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 23215, "to": 27577}], "ad_overthinker": [{"mode": "tabs", "role": "Hook", "big": "Fourteen tabs, three spreadsheets, and six weeks on one stock.", "sub": "", "from": 0, "to": 4746}, {"mode": "app", "role": "The tool", "big": "ChartGauge computes thirteen indicators on the real bars and writes out what they say.", "sub": "", "from": 4746, "to": 11031}, {"mode": "plain", "role": "Snapshot", "big": "One snapshot, in seconds, instead of an evening.", "sub": "", "from": 11031, "to": 15008}, {"mode": "levels", "role": "Levels", "big": "With the stop and the target marked, so you know what would prove you wrong.", "sub": "", "from": 15008, "to": 21677}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 21677, "to": 26039}], "ad_decoded": [{"mode": "stream", "role": "Hook", "big": "Every second, the market produces more numbers than anyone can read.", "sub": "", "from": 0, "to": 5131}, {"mode": "indics", "role": "The work", "big": "Thirteen indicators computed on real price data, not vibes.", "sub": "", "from": 5131, "to": 9493}, {"mode": "plain", "role": "Why", "big": "Each one explained in plain English, so you can see why the read says what it says.", "sub": "", "from": 9493, "to": 16931}, {"mode": "graded", "role": "Honest", "big": "Then graded against what the price actually did, in public.", "sub": "", "from": 16931, "to": 21677}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk. Analysis does not guarantee results.", "from": 21677, "to": 26039}], "ad_busy": [{"mode": "noise", "role": "Hook", "big": "You have a job, a family, a life. You cannot watch the market all day.", "sub": "", "from": 0, "to": 6669}, {"mode": "alerts", "role": "Alerts", "big": "Put a stock on your watchlist and set an alert. It tells you when your level is hit.", "sub": "", "from": 6669, "to": 14492}, {"mode": "plain", "role": "Quick", "big": "Open it, read the summary already written, and get on with your day.", "sub": "", "from": 14492, "to": 20007}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 20007, "to": 24369}], "ad_honest": [{"mode": "crystal", "role": "Hook", "big": "Let us be honest. No app can predict the market.", "sub": "", "from": 0, "to": 4746}, {"mode": "result", "role": "Proof", "big": "We tested our own score over thirty six thousand past setups. It did not predict direction.", "sub": "", "from": 4746, "to": 11800}, {"mode": "plain", "role": "What it does", "big": "What it does do is read the chart for you and explain it, clearly.", "sub": "", "from": 11800, "to": 18085}, {"mode": "graded", "role": "Record", "big": "And publish every reading afterwards, graded, including the wrong ones.", "sub": "", "from": 18085, "to": 22831}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "No hype. Investing involves risk, including possible loss of principal.", "from": 22831, "to": 27962}], "ad_noeffort": [{"mode": "money", "role": "Hook", "big": "Want to get rich so easily that a 5 year old could do it?", "sub": "", "from": 0, "to": 4400}, {"mode": "noise", "role": "Hook2", "big": "Want to spend close to no effort doing so?", "sub": "", "from": 4400, "to": 7800}, {"mode": "plain", "role": "CTA", "big": "If this applies to you, go to ChartGauge.com and check out all its features.", "sub": "", "from": 7800, "to": 12600}, {"mode": "lessons", "role": "What", "big": "It has practice trading, and 19 different lessons.", "sub": "", "from": 12600, "to": 16600}, {"mode": "app", "role": "Upload", "big": "But if you don't want to do any work, just upload a screenshot of your chart", "sub": "", "from": 16600, "to": 21400}, {"mode": "levels", "role": "Read", "big": "and it tells you everything about the stock, and exactly where to put your take profit and stop loss.", "sub": "", "from": 21400, "to": 27400}, {"mode": "stream", "role": "Price", "big": "Free until October seventeenth, but then only $4.99 a week — with a two week free trial!", "sub": "", "from": 27400, "to": 32400}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Link in bio. Investing involves risk, including possible loss of principal.", "from": 32400, "to": 36000}], "ad_easy": [{"mode": "stream", "role": "Hook", "big": "Trading with AI has never been easier.", "sub": "", "from": 0, "to": 2719}, {"mode": "app", "role": "Vision", "big": "Screenshot any chart. Claude reads the picture.", "sub": "", "from": 2719, "to": 7529}, {"mode": "plain", "role": "Plain", "big": "The trend, the levels, and what the numbers are saying.", "sub": "", "from": 7529, "to": 11812}, {"mode": "indics", "role": "Work", "big": "Thirteen indicators on the real bars, computed for you.", "sub": "", "from": 11812, "to": 15810}, {"mode": "levels", "role": "Levels", "big": "Your stop and your target, marked on the chart.", "sub": "", "from": 15810, "to": 19417}, {"mode": "alerts", "role": "Alerts", "big": "Set an alert. It watches the stock so you do not have to.", "sub": "", "from": 19417, "to": 23846}, {"mode": "jargon", "role": "Clarity", "big": "No jargon. Just what the chart is doing.", "sub": "", "from": 23846, "to": 27219}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 27219, "to": 29854}]};
+var CAPS = {"buyorsell": [{"from": 0, "to": 5400, "badge": "", "big": "Should you buy or sell here?", "sub": "Take a second before you scroll.", "url": "", "fine": ""}, {"from": 5400, "to": 9200, "badge": "The level", "big": "Start with where price keeps stopping.", "sub": "", "url": "", "fine": ""}, {"from": 9200, "to": 13800, "badge": "Three times", "big": "It came down to this level three times.", "sub": "Each time, it bounced.", "url": "", "fine": ""}, {"from": 13800, "to": 18200, "badge": "The break", "big": "On the last candle it broke below it.", "sub": "", "url": "", "fine": ""}, {"from": 18200, "to": 22800, "badge": "Bought back", "big": "Then buyers took the whole move back.", "sub": "", "url": "", "fine": ""}, {"from": 22800, "to": 27200, "badge": "The shape", "big": "A long tail down, and a close near the high.", "sub": "", "url": "", "fine": ""}, {"from": 27200, "to": 31400, "badge": "", "big": "That is a hammer, on a level that has held.", "sub": "Sellers had it and could not keep it.", "url": "", "fine": ""}, {"from": 31400, "to": 35000, "badge": "", "big": "Read any chart like this one.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "readchart": [{"from": 0, "to": 5000, "badge": "", "big": "Most people open a stock chart and just see noise.", "sub": "", "url": "", "fine": ""}, {"from": 5000, "to": 8000, "badge": "", "big": "Here’s what’s actually on it.", "sub": "", "url": "", "fine": ""}, {"from": 8000, "to": 18600, "badge": "Trend", "big": "The 50-day average, and the 200.", "sub": "When the fast one crosses above the slow one, the trend has turned up.", "url": "", "fine": ""}, {"from": 18600, "to": 25600, "badge": "Momentum", "big": "This is RSI.", "sub": "Near 70 the move is stretched. Near 30 it has been beaten down.", "url": "", "fine": ""}, {"from": 25600, "to": 34200, "badge": "Levels", "big": "Where the move is proven wrong, and where it has done its job.", "sub": "", "url": "", "fine": ""}, {"from": 34200, "to": 43600, "badge": "", "big": "All thirteen of these, on any stock or crypto pair.", "sub": "Explained, not just scored.", "url": "", "fine": ""}, {"from": 43600, "to": 50200, "badge": "", "big": "The same read on any stock or crypto pair.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "rsi70": [{"from": 0, "to": 5100, "badge": "", "big": "RSI above 70 means sell.", "sub": "That’s the rule everyone repeats.", "url": "", "fine": ""}, {"from": 5100, "to": 8600, "badge": "The signal", "big": "This stock crossed 70 right here.", "sub": "", "url": "", "fine": ""}, {"from": 8600, "to": 14500, "badge": "", "big": "Sell on that rule and you’re out at 106.", "sub": "", "url": "", "fine": ""}, {"from": 14500, "to": 19600, "badge": "", "big": "It kept going for another seventeen weeks.", "sub": "Up 41%.", "url": "", "fine": ""}, {"from": 19600, "to": 24700, "badge": "", "big": "RSI never dropped back below 60.", "sub": "Not once, the whole way up.", "url": "", "fine": ""}, {"from": 24700, "to": 33400, "badge": "What it actually means", "big": "Overbought means the move got stretched.", "sub": "In a strong trend it can stay stretched for months.", "url": "", "fine": ""}, {"from": 33400, "to": 40100, "badge": "", "big": "Which is why it’s one of thirteen readings.", "sub": "Not a signal on its own.", "url": "", "fine": ""}, {"from": 40100, "to": 44800, "badge": "", "big": "Reads like this one, on any stock you follow.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "recovery": [{"from": 0, "to": 5500, "badge": "", "big": "Before your first trade, learn this.", "sub": "One piece of arithmetic. It applies to everyone.", "url": "", "fine": ""}, {"from": 5500, "to": 13400, "badge": "Lose 10%", "big": "You need 11% to get back to even.", "sub": "That sounds fine.", "url": "", "fine": ""}, {"from": 13400, "to": 18100, "badge": "Lose 25%", "big": "You need 33%.", "sub": "Still sounds manageable.", "url": "", "fine": ""}, {"from": 18100, "to": 24800, "badge": "Lose 50%", "big": "You need 100%.", "sub": "You have to double what’s left.", "url": "", "fine": ""}, {"from": 24800, "to": 31500, "badge": "Lose 80%", "big": "You need 400%.", "sub": "Just to be where you started.", "url": "", "fine": ""}, {"from": 31500, "to": 41400, "badge": "", "big": "A loss and the gain that undoes it are never the same size.", "sub": "The bigger the loss, the further apart they get.", "url": "", "fine": ""}, {"from": 41400, "to": 49300, "badge": "", "big": "Which is why how much you risk matters more than how often you’re right.", "sub": "", "url": "", "fine": ""}, {"from": 49300, "to": 54000, "badge": "", "big": "See what your own risk actually looks like.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "aiproduct": [{"from": 0, "to": 4271, "pat": "vision", "big": "Screenshot any chart you don’t understand.", "sub": "Drop it in here.", "url": "", "fine": ""}, {"from": 4271, "to": 11757, "pat": "aitext", "big": "Claude looks at the picture and tells you the trend, the levels, and whether it looks bullish or bearish.", "sub": "", "url": "", "fine": ""}, {"from": 11757, "to": 17100, "pat": "ticker", "big": "Or just type a stock name and it pulls the real price data instead.", "sub": "", "url": "", "fine": ""}, {"from": 17100, "to": 21729, "pat": "indics", "big": "Thirteen indicators computed on those bars, and what each one is telling you.", "sub": "", "url": "", "fine": ""}, {"from": 21729, "to": 26000, "pat": "levels", "big": "With the stop and the target marked on the chart.", "sub": "", "url": "", "fine": ""}, {"from": 26000, "to": 31700, "pat": "graded", "big": "And it tells you when it was wrong.", "sub": "Every reading is graded in public.", "url": "", "fine": ""}, {"from": 31700, "to": 34543, "pat": "end", "big": "Try it on your own chart.", "sub": "", "url": "chartgauge.com", "fine": "A study tool. Not financial advice."}], "ad_confidence": [{"mode": "noise", "role": "Hook", "big": "The market never sleeps. But you do.", "sub": "", "from": 0, "to": 3592}, {"mode": "app", "role": "The tool", "big": "ChartGauge reads a chart in seconds, so you do not have to squint at thirteen indicators yourself.", "sub": "", "from": 3592, "to": 11030}, {"mode": "plain", "role": "Plain English", "big": "Real readings. Plain explanations. Stop and target levels you can see on the chart.", "sub": "", "from": 11030, "to": 17315}, {"mode": "alerts", "role": "Alerts", "big": "Set an alert and it watches the stock while you get on with your day.", "sub": "", "from": 17315, "to": 23984}, {"mode": "graded", "role": "Honest", "big": "And every reading is graded in public afterwards, including the wrong ones.", "sub": "", "from": 23984, "to": 29499}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 29499, "to": 33861}], "ad_beginner": [{"mode": "jargon", "role": "Hook", "big": "Want to start investing but have no idea what any of this means?", "sub": "", "from": 0, "to": 5900}, {"mode": "plain", "role": "Translate", "big": "ChartGauge turns the jargon into plain English, on any stock or crypto pair.", "sub": "", "from": 5900, "to": 11800}, {"mode": "lessons", "role": "Learn", "big": "And short lessons with quizzes when you want to go deeper.", "sub": "", "from": 11800, "to": 17315}, {"mode": "graded", "role": "Honest", "big": "And it shows you its own record, including where it got things wrong.", "sub": "", "from": 17315, "to": 23215}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 23215, "to": 27577}], "ad_overthinker": [{"mode": "tabs", "role": "Hook", "big": "Fourteen tabs, three spreadsheets, and six weeks on one stock.", "sub": "", "from": 0, "to": 4746}, {"mode": "app", "role": "The tool", "big": "ChartGauge computes thirteen indicators on the real bars and writes out what they say.", "sub": "", "from": 4746, "to": 11031}, {"mode": "plain", "role": "Snapshot", "big": "One snapshot, in seconds, instead of an evening.", "sub": "", "from": 11031, "to": 15008}, {"mode": "levels", "role": "Levels", "big": "With the stop and the target marked, so you know what would prove you wrong.", "sub": "", "from": 15008, "to": 21677}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 21677, "to": 26039}], "ad_decoded": [{"mode": "stream", "role": "Hook", "big": "Every second, the market produces more numbers than anyone can read.", "sub": "", "from": 0, "to": 5131}, {"mode": "indics", "role": "The work", "big": "Thirteen indicators computed on real price data, not vibes.", "sub": "", "from": 5131, "to": 9493}, {"mode": "plain", "role": "Why", "big": "Each one explained in plain English, so you can see why the read says what it says.", "sub": "", "from": 9493, "to": 16931}, {"mode": "graded", "role": "Honest", "big": "Then graded against what the price actually did, in public.", "sub": "", "from": 16931, "to": 21677}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk. Analysis does not guarantee results.", "from": 21677, "to": 26039}], "ad_busy": [{"mode": "noise", "role": "Hook", "big": "You have a job, a family, a life. You cannot watch the market all day.", "sub": "", "from": 0, "to": 6669}, {"mode": "alerts", "role": "Alerts", "big": "Put a stock on your watchlist and set an alert. It tells you when your level is hit.", "sub": "", "from": 6669, "to": 14492}, {"mode": "plain", "role": "Quick", "big": "Open it, read the summary already written, and get on with your day.", "sub": "", "from": 14492, "to": 20007}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 20007, "to": 24369}], "ad_honest": [{"mode": "crystal", "role": "Hook", "big": "Let us be honest. No app can predict the market.", "sub": "", "from": 0, "to": 4746}, {"mode": "result", "role": "Proof", "big": "We tested our own score over thirty six thousand past setups. It did not predict direction.", "sub": "", "from": 4746, "to": 11800}, {"mode": "plain", "role": "What it does", "big": "What it does do is read the chart for you and explain it, clearly.", "sub": "", "from": 11800, "to": 18085}, {"mode": "graded", "role": "Record", "big": "And publish every reading afterwards, graded, including the wrong ones.", "sub": "", "from": 18085, "to": 22831}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "No hype. Investing involves risk, including possible loss of principal.", "from": 22831, "to": 27962}], "ad_noeffort": [{"mode": "money", "role": "Hook", "big": "Want to get rich so easily that a 5 year old could do it?", "sub": "", "from": 0, "to": 4400}, {"mode": "beach", "role": "Hook2", "big": "Want to spend close to no effort doing so?", "sub": "", "from": 4400, "to": 7800}, {"mode": "site", "role": "CTA", "big": "If this applies to you, go to ChartGauge.com and check out all its features.", "sub": "", "from": 7800, "to": 12600}, {"mode": "practice", "role": "What", "big": "It has practice trading, and 19 different lessons.", "sub": "", "from": 12600, "to": 16600}, {"mode": "upload", "role": "Upload", "big": "But if you don't want to do any work, just upload a screenshot of your chart", "sub": "", "from": 16600, "to": 21400}, {"mode": "tpsl", "role": "Read", "big": "and it tells you everything about the stock, and exactly where to put your take profit and stop loss.", "sub": "", "from": 21400, "to": 27400}, {"mode": "price", "role": "Price", "big": "Free until October seventeenth, but then only $4.99 a week — with a two week free trial!", "sub": "", "from": 27400, "to": 32400}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Link in bio. Investing involves risk, including possible loss of principal.", "from": 32400, "to": 36000}], "ad_easy": [{"mode": "stream", "role": "Hook", "big": "Trading with AI has never been easier.", "sub": "", "from": 0, "to": 2719}, {"mode": "app", "role": "Vision", "big": "Screenshot any chart. Claude reads the picture.", "sub": "", "from": 2719, "to": 7529}, {"mode": "plain", "role": "Plain", "big": "The trend, the levels, and what the numbers are saying.", "sub": "", "from": 7529, "to": 11812}, {"mode": "indics", "role": "Work", "big": "Thirteen indicators on the real bars, computed for you.", "sub": "", "from": 11812, "to": 15810}, {"mode": "levels", "role": "Levels", "big": "Your stop and your target, marked on the chart.", "sub": "", "from": 15810, "to": 19417}, {"mode": "alerts", "role": "Alerts", "big": "Set an alert. It watches the stock so you do not have to.", "sub": "", "from": 19417, "to": 23846}, {"mode": "jargon", "role": "Clarity", "big": "No jargon. Just what the chart is doing.", "sub": "", "from": 23846, "to": 27219}, {"mode": "logo", "role": "End", "big": "chartgauge.com", "sub": "Investing involves risk, including possible loss of principal.", "from": 27219, "to": 29854}]};
 
 // ---------------------------------------------------------------- render ----
 var cv=document.getElementById('cv'), ctx=cv.getContext('2d', { alpha:false });
