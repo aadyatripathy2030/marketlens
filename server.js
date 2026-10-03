@@ -1526,10 +1526,21 @@ async function handleMe(req, res) {
       watchMax: access ? null : FREE_WATCH_MAX, alertMax: access ? null : FREE_ALERT_MAX,
       takeProfits: access ? 3 : 1 },
     // The trial this particular visitor would actually get, so the plans page
-    // promises what checkout will do rather than what it does for a stranger.
-    // Someone who has subscribed before is told nothing about a trial, because
-    // they will not be given one.
-    trialDays: (TRIAL_DAYS > 0 && u && !everSubscribed) ? TRIAL_DAYS : 0,
+    // promises what checkout will do rather than something it will refuse.
+    //
+    // Signed in with no Stripe customer on the row checkout reads: they will be
+    // given it, and it is stated flatly. Signed in having subscribed before:
+    // checkout will not give it, so they are told nothing.
+    //
+    // Signed out is the case this used to get wrong. It reported no trial at
+    // all, so every visitor arriving from an ad that promises one landed on a
+    // page that never mentioned it. A stranger's billing history is unknowable
+    // here, so the offer is shown with the one qualifier that is true for all
+    // of them -- it applies to a first subscription -- rather than withheld.
+    trialDays: (TRIAL_DAYS > 0 && (!u || !everSubscribed)) ? TRIAL_DAYS : 0,
+    // Set when the visitor's history is unknown, so the wording has to carry
+    // the "first subscription" qualifier rather than promise it outright.
+    trialFirstOnly: !u,
   });
 }
 async function handleAdmin(req, res) {
