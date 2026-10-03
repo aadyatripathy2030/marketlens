@@ -354,7 +354,14 @@ function overallRating(rep) {
   // construction. Grouping them means agreement now compares things that can
   // genuinely disagree.
   const groups = [];
-  const add = (name, v, w) => { if (v != null && Number.isFinite(v)) groups.push({ name, v: clamp(v, -1, 1), w }); };
+  // abstain marks a group that could be computed but has nothing to say. It
+  // still counts as present for the data-sufficiency floor below, and is kept
+  // out of the weighted mean and the agreement count -- leaving a no-opinion
+  // group in either would quietly drag the score toward the middle and make it
+  // look like a dissenter.
+  const add = (name, v, w, abstain) => {
+    if (v != null && Number.isFinite(v)) groups.push({ name, v: clamp(v, -1, 1), w, abstain: !!abstain });
+  };
   const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
 
   // 1. Trend. Scaled by how far apart the averages are, not a binary cross: a
@@ -398,7 +405,29 @@ function overallRating(rep) {
   }
 
   // 4. Stretch: sitting on a band edge is a caution, not a confirmation.
-  if (bollinger) add('stretch', -(bollinger.pctB - 0.5) * 1.2, 0.12);
+  //
+  //    This had the same two faults the momentum group had. -(pctB-0.5)*1.2
+  //    only reaches 0.60 with price exactly on a band -- a genuine extreme --
+  //    so a group declared at 0.12 of the weight spent most of its life well
+  //    under half of it. And it cast a directional vote across the whole
+  //    middle of the bands, where nothing is stretched at all: on 34% of real
+  //    bars price sits between 0.3 and 0.7 and the term still voted against
+  //    the trend. Since every other group reads the trend, that made this one
+  //    a built-in dissenter rather than an independent view -- it agreed with
+  //    the trend on 4 of 20 real symbols -- which both squeezed the scale
+  //    toward 50 and held the agreement count down.
+  //
+  //    The bands are two standard deviations wide, so one standard deviation
+  //    is the natural line between drifting and stretched. Inside it the group
+  //    abstains, which is what "not a confirmation" has to mean; from there it
+  //    ramps to its full weight at the band. The site's own RSI lesson makes
+  //    this argument already: in a strong trend price can sit stretched for
+  //    months, so being above the middle is not by itself bearish.
+  if (bollinger) {
+    const x = (bollinger.pctB - 0.5) * 2;             // 0 mid band, +/-1 at a band
+    const beyond = (Math.abs(x) - 0.5) / 0.5;         // 0 at one sigma, 1 at the band
+    add('stretch', beyond > 0 ? -Math.sign(x) * clamp(beyond, 0, 1) : 0, 0.12, beyond <= 0);
+  }
 
   // 5. How cleanly it is trending at all.
   if (trend) add('trend quality', (trend.strength / 100) * (trend.direction === 'up' ? 1 : -1), 0.10);
@@ -421,8 +450,9 @@ function overallRating(rep) {
     };
   }
 
-  const wsum = groups.reduce((a, g) => a + g.w, 0) || 1;
-  const bull = groups.reduce((a, g) => a + g.v * g.w, 0) / wsum;
+  const voting = groups.filter(g => !g.abstain);
+  const wsum = voting.reduce((a, g) => a + g.w, 0) || 1;
+  const bull = voting.reduce((a, g) => a + g.v * g.w, 0) / wsum;
   const score = Math.round(clamp(50 + 50 * bull, 0, 100));
 
   // Thresholds calibrated so the labels actually partition: the old scale
@@ -438,13 +468,13 @@ function overallRating(rep) {
   // Agreement is now a countable fact — how many of the independent groups
   // lean the same way as the total — not a percentage implying precision.
   const dir = Math.sign(bull);
-  const agreeing = groups.filter(g => Math.sign(g.v) === dir && g.v !== 0).length;
-  const confidence = groups.length ? Math.round((agreeing / groups.length) * 100) : 0;
+  const agreeing = voting.filter(g => Math.sign(g.v) === dir && g.v !== 0).length;
+  const confidence = voting.length ? Math.round((agreeing / voting.length) * 100) : 0;
 
   const annual = rep.volatility ? rep.volatility.annual : null;
   const risk = annual == null ? 'Unknown' : annual < 25 ? 'Low' : annual < 45 ? 'Moderate' : annual < 70 ? 'High' : 'Very High';
   return { score, label, tone, confidence, risk, agreeing,
-    groupCount: groups.length, groupsPossible: GROUPS_POSSIBLE, insufficient: false, groups };
+    groupCount: voting.length, groupsPossible: GROUPS_POSSIBLE, insufficient: false, groups };
 }
 
 // Probabilistic forecast bands (±1σ ≈ 68% range) per horizon, in trading days.
