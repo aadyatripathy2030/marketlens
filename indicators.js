@@ -369,11 +369,33 @@ function overallRating(rep) {
   // 2. Long-term trend.
   if (sma[50] != null && sma[200] != null) add('long trend', (sma[50] - sma[200]) / (price * 0.04), 0.22);
 
-  // 3. Momentum, rising through the mid range then fading and turning back at
-  //    the extremes. The old curve peaked at RSI 90, so the score called a
-  //    stretched chart maximally bullish while the written read beside it said
-  //    "overbought, pullback risk". The two now agree.
-  if (rsi14 != null) { const d = (rsi14 - 50) / 20; add('momentum', d * (1 - Math.abs(d) * 0.9), 0.22); }
+  // 3. Momentum. A hump: nothing at RSI 50, strongest around 60/40 where a move
+  //    is running cleanly, fading back to nothing once it is stretched. The
+  //    curve before that one peaked at RSI 90, so the score called a stretched
+  //    chart maximally bullish while the written read beside it said
+  //    "overbought, pullback risk".
+  //
+  //    Two things were wrong with the hump that replaced it, and together they
+  //    were the main reason symbols bunched around 50.
+  //
+  //    Its peak value was 0.278, not 1 -- |d|*(1-0.9|d|) maxes at 1/3.6 -- so a
+  //    group declared at 0.22 of the weight could only ever move the score by
+  //    3.1 points of its intended 11. Across twenty real symbols the term never
+  //    once left the range -0.28..+0.28.
+  //
+  //    And past RSI 72.2 the factor went negative and kept growing, so a stock
+  //    with powerful upward momentum was handed a maximally *bearish* momentum
+  //    reading. Being stretched is what group 4 below is for; counting it twice,
+  //    under the wrong name, is not the independence this grouping exists for.
+  //
+  //    Normalised against its own peak so the group spans the weight it is
+  //    given, and floored at zero past the extremes instead of inverting.
+  if (rsi14 != null) {
+    const d = (rsi14 - 50) / 20;
+    const HUMP_PEAK = 1 / 3.6;                  // max of |d|*(1-0.9|d|), at |d| = 1/1.8
+    const hump = Math.abs(d) * (1 - Math.abs(d) * 0.9);
+    add('momentum', Math.sign(d) * clamp(Math.max(0, hump) / HUMP_PEAK, 0, 1), 0.22);
+  }
 
   // 4. Stretch: sitting on a band edge is a caution, not a confirmation.
   if (bollinger) add('stretch', -(bollinger.pctB - 0.5) * 1.2, 0.12);
