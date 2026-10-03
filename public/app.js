@@ -190,6 +190,20 @@
       + `On any bar it was higher <b>${e.baseWinRate}%</b> of the time — so this setup ${verdict}.`;
   }
 
+  // Buy / Sell / Hold, and the measurement it came from on the same line, so
+  // the badge is never read without the number behind it. Hidden entirely when
+  // the symbol has too little history to measure -- a blank badge would be
+  // read as Hold, which is itself a claim.
+  function renderSignal(sig) {
+    const row = $('signalRow');
+    if (!row) return;
+    if (!sig || !sig.action) { row.classList.add('hidden'); return; }
+    row.classList.remove('hidden');
+    $('signalBadge').textContent = sig.action;
+    $('signalBadge').className = 'signal-badge sig-' + (sig.tone || 'neutral');
+    $('signalWhy').textContent = sig.why || '';
+  }
+
   function renderLevels(d) {
     const L = d && d.levels;
     if (!L) { $('levelsCard').classList.add('hidden'); return; }
@@ -1500,6 +1514,7 @@
       $('aiRec').className = 'ai-rec ' + (rt.tone || 'neutral');
       const conf = agreePct(rt.agreeing, rt.groupCount);
       $('aiConf').textContent = conf != null ? conf + '%' : (rt.confidence != null ? rt.confidence + '%' : '—');
+      renderSignal(d.tradeSignal);
       renderEdge(d.edge, rt);
       $('aiRisk').textContent = rt.risk || '—';
       $('aiRisk').className = 'risk-' + String(rt.risk || 'neutral').split(' ')[0];

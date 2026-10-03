@@ -51,7 +51,7 @@ const buildTerms = () => h('Terms of Service', [
     `By using ${SITE} you agree to these terms. If you do not agree, do not use the service.`),
 
   s('It is not financial advice',
-    `Nothing on ${SITE} is financial, investment, legal, or tax advice, and nothing on it is a recommendation to buy, sell, or hold any security or asset. No adviser, broker, or fiduciary relationship is created by your use of it.`,
+    `Nothing on ${SITE} is financial, investment, legal, or tax advice, and no adviser, broker, or fiduciary relationship is created by your use of it. ${SITE} does show a Buy / Sell / Hold signal. It is a statistic, not advice: it reports how bars resembling the current one went on to perform on that same symbol's own past, measured against that symbol's base rate over the same period. It is not a prediction, it is not personalised to you or your circumstances, and it is not a recommendation that you do anything.`,
     `The scores, ratings, projections, levels, and written summaries are mechanical outputs of formulas applied to past prices. They are frequently wrong. ${SITE} publishes a measured base rate beside its own score precisely so you can see how often that reading has actually preceded the move it implies — which is often no more often than chance.`,
     `All trading and investing involves risk, including the loss of everything you put in. Every decision you make, and every consequence of it, is yours alone.`),
 

@@ -27,7 +27,7 @@
     <p class="gate-tag">Price charts, technical indicators, and a written read of them. For learning, not for trading.</p>
     <div class="gate-terms">
       <p><strong>Please read and agree before continuing.</strong></p>
-      <p>ChartGauge is an <strong>educational and informational tool only</strong>. Nothing here is financial, investment, legal, or tax advice, and no content is a recommendation to buy, sell, or hold any security. The scores, ratings, forecasts, and written analyses are mechanical outputs that are <strong>frequently wrong</strong> — no tool can reliably predict markets.</p>
+      <p>ChartGauge is an <strong>educational and informational tool only</strong>. Nothing here is financial, investment, legal, or tax advice, and nothing here is personalised to you. The Buy / Sell / Hold signal reports what happened on a symbol's own past bars, not what will happen next. The scores, ratings, forecasts, and written analyses are mechanical outputs that are <strong>frequently wrong</strong> — no tool can reliably predict markets.</p>
       <p>All investing involves risk, including the possible <strong>loss of the money you invest</strong>. You alone are responsible for your decisions and their outcomes. To the fullest extent permitted by law, ChartGauge and its creators are <strong>not liable for any losses, damages, or costs</strong> arising from your use of this tool or your reliance on its content.</p>
       <p>By continuing, you confirm you are using ChartGauge for personal, educational purposes and accept the Terms of Service and Privacy Policy. The charts and indicators do not load until you do.</p>
     </div>
@@ -159,6 +159,13 @@
             <!-- The measured record leads. The score is the claim; this is the
                  evidence, and reading the claim first frames the evidence as a
                  footnote to it rather than the other way round. -->
+            <!-- The signal leads because it is the only thing in this card
+                 with a measurement behind it. The indicator score below is the
+                 unbacked claim, so it comes second. -->
+            <div class="signal-row hidden" id="signalRow">
+              <span class="signal-badge" id="signalBadge"></span>
+              <span class="signal-why" id="signalWhy"></span>
+            </div>
             <p class="edge-line lead" id="edgeLine"></p>
             <div class="ai-score-lead">Indicator score</div>
             <div class="ai-rec" id="aiRec">—</div>
@@ -637,7 +644,7 @@
     <p class="foot-note">ChartGauge is a charting tool for learning to read charts. Nothing on it is financial advice.</p>
   </footer>
 
-  <p class="disclaimer">For education only — <strong>not financial advice</strong>. The bullish / bearish reading is a mechanical score describing how far the past-price indicators agree (and, for images, a read of one picture) — it is not a recommendation, and it has been measured against future returns and did not predict them. Signals like these are wrong <em>often</em> — no tool reliably predicts markets. This is not a recommendation to trade; decisions and their consequences are yours alone. Never trade based on this tool.</p>
+  <p class="disclaimer">For education only — <strong>not financial advice</strong>. The Buy / Sell / Hold signal is measured, not predicted: it reports how bars like the current one performed on that symbol&rsquo;s own history against its base rate, and reads Hold whenever that gap is inside the margin of error. The separate bullish / bearish score describes how far the past-price indicators agree (and, for images, a read of one picture) &mdash; it is not a recommendation, and it has been measured against future returns and did not predict them. Signals like these are wrong <em>often</em> — no tool reliably predicts markets. This is not a recommendation to trade; decisions and their consequences are yours alone. Never trade based on this tool.</p>
 </main>
 
 <div class="modal-overlay hidden" id="authModal">

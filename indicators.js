@@ -453,6 +453,9 @@ function historicalEdge(candles, score, horizon, opts) {
   if (matched.length < 20 || all.length < 40) return null;
   const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
   const winRate = (a) => a.filter(v => v > 0).length / a.length * 100;
+  const mMatched = mean(matched);
+  const sdMatched = Math.sqrt(
+    matched.reduce((s, v) => s + (v - mMatched) * (v - mMatched), 0) / Math.max(1, matched.length - 1));
   return {
     horizon: H,
     n: matched.length,
@@ -462,7 +465,43 @@ function historicalEdge(candles, score, horizon, opts) {
     baseMeanReturn: Math.round(mean(all) * 1000) / 10,
     // The honest headline: did the setup beat simply being invested?
     edge: Math.round((mean(matched) - mean(all)) * 1000) / 10,
+    // Standard error of the matched mean, in the same points as edge, so a
+    // caller can ask whether that gap is bigger than its own noise before
+    // calling it anything.
+    se: Math.round((sdMatched / Math.sqrt(matched.length)) * 10000) / 100,
   };
+}
+
+// A Buy / Sell / Hold signal taken only from what has been measured on this
+// symbol's own past.
+//
+// The indicator score deliberately does not feed this. That score was
+// backtested twice -- 36,524 walk-forward observations on 20 years of bars,
+// then 7,870 more against the current code -- and has no relationship with
+// forward returns; it is mildly inverted, with bars it scored most bullish
+// going on to return less than the base rate. So it is not allowed to tell
+// anyone to buy. This asks the narrower question that does have an answer:
+// when this symbol last looked like this, what happened next, measured
+// against this symbol's own base rate.
+//
+// It says Hold whenever the gap is inside the noise, which is most of the
+// time, and nothing at all when there is too little history to measure.
+function edgeSignal(e) {
+  if (!e || e.n < 30 || e.se == null) return null;
+  const span = `over the next ${e.horizon} bars, across ${e.n} past occurrences on this symbol`;
+  const by = Math.abs(e.edge).toFixed(1);
+  // One standard error is a low bar deliberately -- it is a floor against
+  // noise, not a claim of significance. The win rate has to agree with the
+  // return as well, so one outlier move cannot carry the call on its own.
+  const margin = Math.max(0.1, e.se);
+  if (e.edge >= margin && e.winRate >= e.baseWinRate)
+    return { action: 'Buy', tone: 'bullish',
+      why: `Setups like this beat this symbol's base rate by ${by} points ${span}.` };
+  if (e.edge <= -margin && e.winRate <= e.baseWinRate)
+    return { action: 'Sell', tone: 'bearish',
+      why: `Setups like this lagged this symbol's base rate by ${by} points ${span}.` };
+  return { action: 'Hold', tone: 'neutral',
+    why: `The gap from this symbol's base rate is inside the margin of error ${span}.` };
 }
 
 function forecastBands(closes) {
@@ -531,6 +570,6 @@ function tradeLevels(candles, direction, atrMult = 1.5) {
 module.exports = {
   sma, rsi, linearForecast, computeSignal, demoCloses, demoCandles, analyze, verdict, STRAT, RISK,
   ema, macd, bollinger, atr, vwap, supportResistance, fibonacci, volatility, trendStrength,
-  techReport, overallRating, forecastBands, tradeLevels, historicalEdge,
+  techReport, overallRating, forecastBands, tradeLevels, historicalEdge, edgeSignal,
 };
 

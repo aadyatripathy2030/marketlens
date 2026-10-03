@@ -429,10 +429,14 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   // on a full series; null when there is not enough history to say anything.
   let edge = null;
   if (rating.score != null) { try { edge = I.historicalEdge(candles, rating.score, 20); } catch (e) { logError(e); } }
+  // Buy / Sell / Hold, derived from that measurement and nothing else. Null
+  // when there is not enough history on the symbol to measure anything.
+  const signal = I.edgeSignal(edge);
   const last = closes[closes.length - 1];
   const prev = closes[closes.length - 2] || last;
   json(res, 200, {
     symbol, name: data.name, currency: data.currency, source, note,
+    tradeSignal: signal,
     strategy, direction: a.direction, strategyLabel: stratLabel(strategy, a.direction), interval,
     prices: data.prices,
     latest: last, change: last - prev, changePct: prev ? ((last - prev) / prev) * 100 : 0,
