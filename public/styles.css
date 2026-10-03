@@ -141,7 +141,12 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .acct .plan.pro { color: var(--text); background: var(--card-hi); border-color: var(--border-strong); }
 .acct .upgrade { font-family: var(--font); font-size: 12px; font-weight: 600; color: var(--text); background: var(--card-hi); border: 1px solid var(--border-strong); border-radius: 999px; padding: 5px 12px; cursor: pointer; }
 
+.verdict-kicker { font-size: 10px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+
 /* Buy / Sell / Hold signal */
+.signal-kicker { font-size: 10px; font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--muted); align-self: center; }
 .signal-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
 .signal-badge { font-size: 13px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase;
   padding: 5px 13px; border-radius: 999px; border: 1px solid; white-space: nowrap; }

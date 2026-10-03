@@ -502,7 +502,7 @@ function ruleBasedReport(p) {
   if (t.rsi14 != null) { if (t.rsi14 >= 70) bear.push(`RSI is overbought (${t.rsi14}) — pullback risk.`); else if (t.rsi14 <= 30) bull.push(`RSI is oversold (${t.rsi14}) — possible bounce.`); else (t.rsi14 >= 50 ? bull : bear).push(`RSI momentum is ${t.rsi14 >= 50 ? 'firm' : 'soft'} (${t.rsi14}).`); }
   if (trend && trend.strength >= 45) (trend.direction === 'up' ? bull : bear).push(`Price is trending ${trend.direction} cleanly (trend strength ${trend.strength}/100).`);
   if (t.volatility) (t.volatility.annual >= 45 ? bear : bull).push(`Volatility is ${t.volatility.annual >= 45 ? 'elevated' : 'contained'} (~${Math.round(t.volatility.annual)}% annualized).`);
-  if (!bull.length) bull.push('No clear bullish signals right now.');
+  if (!bull.length) bull.push('No clear buy signals right now.');
   if (!bear.length) bear.push('No glaring red flags in the technicals right now.');
   const edgeLine = p.edge
     ? ` Measured on this symbol\u2019s own history, setups scoring near this were higher ${p.edge.horizon} bars later ${p.edge.winRate}% of the time, against ${p.edge.baseWinRate}% on any given bar.`
@@ -704,8 +704,8 @@ async function handleAnalyze(req, res) {
 
 // ---- Uploaded-chart analysis (Claude vision) ----
 async function callClaudeVision(base64, mediaType) {
-  const system = 'You are a cautious technical-analysis assistant reading a stock chart image. Describe what you see: overall trend, notable support/resistance levels, chart patterns, and what the visible momentum suggests. Then give a single mechanical read — "Bullish", "Bearish", or "Mixed" — describing what the visible price action looks like, NOT what the reader should do, based ONLY on the visible price action, and explain why in one sentence. Be explicit that this is a mechanical read of one image, is frequently wrong, and is NOT financial advice. Keep it to 4-6 sentences. If the image is not a stock/price chart, say so instead.';
-  const user = 'Analyze this chart and give your read plus a bullish / bearish / mixed description of what it shows.';
+  const system = 'You are a cautious technical-analysis assistant reading a stock chart image. Describe what you see: overall trend, notable support/resistance levels, chart patterns, and what the visible momentum suggests. Then give a single mechanical read — "Buy", "Sell", or "Mixed" — naming which way the visible price action points, based ONLY on the visible price action, and explain why in one sentence. Be explicit that this is a mechanical read of one image, is frequently wrong, and is NOT financial advice. Keep it to 4-6 sentences. If the image is not a stock/price chart, say so instead.';
+  const user = 'Analyze this chart and give your read plus a buy / sell / mixed description of what it shows.';
   const body = JSON.stringify({
     model: AI_MODEL, max_tokens: 500, system,
     messages: [{ role: 'user', content: [
@@ -2625,11 +2625,11 @@ function accuracyHtml(st, horizon) {
     + `<table class="acc-table"><thead><tr><th>Reading</th><th>Count</th><th>Average return</th><th>vs doing nothing</th><th>Higher after</th></tr></thead>`
     + `<tbody>${rows}</tbody></table>`
     + (best ? `<p>Strongest by average return so far: <strong>${esc(best.label)}</strong> at ${pc(best.mean)}. `
-      + `If that is not the most bullish reading, the score is not ordering outcomes the way its wording implies — `
+      + `If that is not the strongest buy reading, the score is not ordering outcomes the way its wording implies — `
       + `which is exactly the sort of thing this page exists to show.</p>` : '')
     + `</div>`;
 }
-const ORDERED_LABELS = ['Very bullish', 'Bullish', 'Mixed', 'Bearish', 'Very bearish'];
+const ORDERED_LABELS = ['Strong buy', 'Buy', 'Mixed', 'Sell', 'Strong sell'];
 
 function serveStatic(req, res) {
   let urlPath = decodeURIComponent(req.url.split('?')[0]);

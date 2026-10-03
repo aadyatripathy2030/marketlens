@@ -133,9 +133,9 @@
     const items = [];
     const add = (name, val, note, cls) => items.push({ name, val, note, cls: cls || '' });
     if (t.rsi14 != null) add('RSI (14)', t.rsi14, t.rsi14 >= 70 ? 'Overbought — stretched up, pullback risk' : t.rsi14 <= 30 ? 'Oversold — stretched down, possible bounce' : t.rsi14 >= 50 ? 'Firm momentum, buyers in control' : 'Soft momentum, sellers leaning in', t.rsi14 >= 70 ? 'bear' : t.rsi14 <= 30 ? 'bull' : t.rsi14 >= 50 ? 'bull' : 'bear');
-    if (t.macd) add('MACD', f2(t.macd.hist), t.macd.hist > 0 ? 'Bullish — MACD above its signal line' : 'Bearish — MACD below its signal line', t.macd.hist > 0 ? 'bull' : 'bear');
+    if (t.macd) add('MACD', f2(t.macd.hist), t.macd.hist > 0 ? 'Buy — MACD above its signal line' : 'Sell — MACD below its signal line', t.macd.hist > 0 ? 'bull' : 'bear');
     if (t.sma && t.sma[20] != null && t.sma[50] != null) add('SMA 20 / 50', f2(t.sma[20]) + ' / ' + f2(t.sma[50]), t.sma[20] > t.sma[50] ? 'Short-term uptrend (20 above 50)' : 'Short-term downtrend (20 below 50)', t.sma[20] > t.sma[50] ? 'bull' : 'bear');
-    if (t.sma && t.sma[200] != null) add('SMA 200', f2(t.sma[200]), t.price > t.sma[200] ? 'Price above 200-day — long-term bullish' : 'Price below 200-day — long-term bearish', t.price > t.sma[200] ? 'bull' : 'bear');
+    if (t.sma && t.sma[200] != null) add('SMA 200', f2(t.sma[200]), t.price > t.sma[200] ? 'Price above 200-day — long-term uptrend' : 'Price below 200-day — long-term downtrend', t.price > t.sma[200] ? 'bull' : 'bear');
     if (t.ema && t.ema[20] != null && t.ema[50] != null) add('EMA 20 / 50', f2(t.ema[20]) + ' / ' + f2(t.ema[50]), t.ema[20] > t.ema[50] ? 'Fast EMA above slow — momentum up' : 'Fast EMA below slow — momentum down', t.ema[20] > t.ema[50] ? 'bull' : 'bear');
     if (t.bollinger) { const pb = t.bollinger.pctB; add('Bollinger %B', Math.round(pb * 100) + '%', pb > 1 ? 'Above upper band — overextended' : pb < 0 ? 'Below lower band — oversold stretch' : pb > 0.8 ? 'Near upper band' : pb < 0.2 ? 'Near lower band' : 'Mid-range, no extreme', pb > 1 ? 'bear' : pb < 0 ? 'bull' : ''); }
     if (t.vwap != null) add('VWAP', f2(t.vwap), t.price > t.vwap ? 'Price above VWAP — buyers in control' : 'Price below VWAP — sellers in control', t.price > t.vwap ? 'bull' : 'bear');
@@ -154,7 +154,7 @@
     const bits = [];
     if (t.sma && t.sma[50] != null && t.sma[200] != null) bits.push(t.sma[50] > t.sma[200] ? 'long-term trend up' : 'long-term trend down');
     if (t.rsi14 != null) bits.push(t.rsi14 >= 70 ? 'overbought' : t.rsi14 <= 30 ? 'oversold' : t.rsi14 >= 50 ? 'firm momentum' : 'soft momentum');
-    if (t.macd) bits.push(t.macd.hist > 0 ? 'MACD bullish' : 'MACD bearish');
+    if (t.macd) bits.push(t.macd.hist > 0 ? 'MACD on the buy side' : 'MACD on the sell side');
     if (t.trend) bits.push((t.trend.strength >= 60 ? 'strong' : t.trend.strength >= 35 ? 'moderate' : 'weak') + ' ' + t.trend.direction + 'trend');
     if (r.insufficient) return `Only ${r.groupCount} of ${r.groupsPossible} indicator groups have enough history here, so no score is shown.`;
     return `Comprehensive read across 13 signals → ${r.label || '—'}${bits.length ? '. ' + bits.join(', ') + '.' : ''}`;
@@ -381,7 +381,7 @@
     { k: 'baserate',     on: true,  sel: '.edge-line',      name: 'Measured base rate',
       desc: 'What actually happened, historically, at scores like today’s on this symbol.' },
     { k: 'score',        on: true,  sel: '.ai-score-card',  name: 'Indicator score',
-      desc: 'The 0–100 composite and its bullish / bearish reading.' },
+      desc: 'The 0–100 composite and its buy / sell reading.' },
     { k: 'reason',       on: true,  sel: '.reason',         name: 'One-line summary',
       desc: 'The sentence under the price that sums up the read.' },
     { k: 'levels',       on: true,  sel: '#levelsCard',     name: 'Stop loss and take profit',
@@ -2941,7 +2941,7 @@
         return;
       }
       const pc = (v) => v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
-      const ORDER = ['Very bullish', 'Bullish', 'Mixed', 'Bearish', 'Very bearish'];
+      const ORDER = ['Strong buy', 'Buy', 'Mixed', 'Sell', 'Strong sell'];
       const rows = ORDER.map(l => d.labels.find(x => x.label === l)).filter(Boolean).map(x =>
         `<tr><td>${esc(x.label)}</td><td>${x.n}</td><td>${pc(x.mean)}</td>`
         + `<td>${x.mean == null || d.baseline == null ? '—' : pc(x.mean - d.baseline)}</td>`

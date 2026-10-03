@@ -142,6 +142,12 @@
             <div class="price"><span id="price"></span> <span class="chg" id="chg"></span></div>
           </div>
           <div class="verdict" id="verdict">
+            <!-- Named, because this chip and the measured Buy / Sell / Hold badge
+                 are both buy/sell words now and point opposite ways more often
+                 than not. One is what the indicators add up to, the other is what
+                 that has actually preceded on this symbol; unlabelled they just
+                 look like the page contradicting itself. -->
+            <div class="verdict-kicker">Indicators</div>
             <div class="verdict-action" id="vAction"></div>
             <div class="verdict-meta" id="vMeta"></div>
           </div>
@@ -163,6 +169,7 @@
                  with a measurement behind it. The indicator score below is the
                  unbacked claim, so it comes second. -->
             <div class="signal-row hidden" id="signalRow">
+              <span class="signal-kicker">Measured</span>
               <span class="signal-badge" id="signalBadge"></span>
               <span class="signal-why" id="signalWhy"></span>
             </div>
@@ -281,7 +288,7 @@
 
         <div class="card ai-card upload-card">
           <div class="ai-head">Read a chart screenshot</div>
-          <p class="upload-sub">Upload a screenshot of a chart. Claude reads the trend off the picture alone — no price data behind it — and says whether it looks bullish, bearish or mixed.</p>
+          <p class="upload-sub">Upload a screenshot of a chart. Claude reads the trend off the picture alone — no price data behind it — and says whether it looks like a buy, a sell or mixed.</p>
           <label class="dropzone" id="dropzone">
             <input type="file" id="imgInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
             <span id="dropText">Click to choose an image, or drag one here</span>
@@ -644,7 +651,7 @@
     <p class="foot-note">ChartGauge is a charting tool for learning to read charts. Nothing on it is financial advice.</p>
   </footer>
 
-  <p class="disclaimer">For education only — <strong>not financial advice</strong>. The Buy / Sell / Hold signal is measured, not predicted: it reports how bars like the current one performed on that symbol&rsquo;s own history against its base rate, and reads Hold whenever that gap is inside the margin of error. The separate bullish / bearish score describes how far the past-price indicators agree (and, for images, a read of one picture) &mdash; it is not a recommendation, and it has been measured against future returns and did not predict them. Signals like these are wrong <em>often</em> — no tool reliably predicts markets. This is not a recommendation to trade; decisions and their consequences are yours alone. Never trade based on this tool.</p>
+  <p class="disclaimer">For education only — <strong>not financial advice</strong>. The Buy / Sell / Hold signal is measured, not predicted: it reports how bars like the current one performed on that symbol&rsquo;s own history against its base rate, and reads Hold whenever that gap is inside the margin of error. The separate buy / sell score describes how far the past-price indicators agree (and, for images, a read of one picture) &mdash; it is not a recommendation, and it has been measured against future returns and did not predict them. Signals like these are wrong <em>often</em> — no tool reliably predicts markets. This is not a recommendation to trade; decisions and their consequences are yours alone. Never trade based on this tool.</p>
 </main>
 
 <div class="modal-overlay hidden" id="authModal">

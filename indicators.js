@@ -54,8 +54,8 @@ function computeSignal(closes) {
   let label = 'Neutral', reason = 'Not enough clear signal.';
   if (s20 != null && s50 != null && r != null) {
     const up = s20 > s50;
-    if (up && r < 70) { label = 'Bullish'; reason = 'Short-term average is above the long-term average (uptrend), and momentum is not overbought.'; }
-    else if (!up && r > 30) { label = 'Bearish'; reason = 'Short-term average is below the long-term average (downtrend), and momentum is not oversold.'; }
+    if (up && r < 70) { label = 'Buy'; reason = 'Short-term average is above the long-term average (uptrend), and momentum is not overbought.'; }
+    else if (!up && r > 30) { label = 'Sell'; reason = 'Short-term average is below the long-term average (downtrend), and momentum is not oversold.'; }
     else if (r >= 70) { label = 'Neutral'; reason = 'Uptrend, but RSI is overbought (>70) — pullback risk.'; }
     else if (r <= 30) { label = 'Neutral'; reason = 'Downtrend, but RSI is oversold (<30) — possible bounce.'; }
   }
@@ -434,7 +434,7 @@ function overallRating(rep) {
 
   // Data sufficiency. The weights below are renormalised over whichever groups
   // could be computed, so on a very short history two groups drove the whole
-  // scale: ten bars of a rising series returned score 100, "Very bullish", and
+  // scale: ten bars of a rising series returned score 100, "Strong buy", and
   // reported its agreement as 2 of 2 — 100% — while three of the five groups
   // had no data at all. That is the same "confidence near-100 by construction"
   // problem the grouping above was introduced to kill, arriving by a different
@@ -462,7 +462,12 @@ function overallRating(rep) {
   // this score showed no relationship with forward returns — "Strong Buy"
   // preceded below-average returns at both horizons tested. It does reliably
   // describe how aligned the indicators are, so that is what it now says.
-  const label = score >= 72 ? 'Very bullish' : score >= 58 ? 'Bullish' : score >= 42 ? 'Mixed' : score >= 28 ? 'Bearish' : 'Very bearish';
+  // Named buy / sell rather than bullish / bearish. Same thresholds, same
+  // bands, same numbers -- only the wording. The score still describes how far
+  // the indicators agree, and still has no measured relationship with forward
+  // returns, which is why the separate Buy / Sell / Hold badge is driven by
+  // historicalEdge() and not by this.
+  const label = score >= 72 ? 'Strong buy' : score >= 58 ? 'Buy' : score >= 42 ? 'Mixed' : score >= 28 ? 'Sell' : 'Strong sell';
   const tone = score >= 58 ? 'bullish' : score <= 41 ? 'bearish' : 'neutral';
 
   // Agreement is now a countable fact — how many of the independent groups

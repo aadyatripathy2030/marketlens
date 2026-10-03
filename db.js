@@ -90,6 +90,16 @@ async function init() {
         out_price DOUBLE PRECISION, out_day TEXT, ret DOUBLE PRECISION, graded BIGINT)`);
       await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS predictions_sym_day ON predictions (symbol, day)');
       await pool.query('CREATE INDEX IF NOT EXISTS predictions_ungraded ON predictions (symbol) WHERE graded IS NULL');
+      // The record stores the reading's display name, and those names changed
+      // from bullish/bearish to buy/sell. The bands and thresholds did not move
+      // -- "Very bullish" and "Strong buy" are the same 72-and-above band -- so
+      // the stored names are brought along rather than left to show up as extra
+      // rows on the accuracy page beside their own renamed selves. Idempotent,
+      // so it is harmless on every boot after the first.
+      for (const [was, now] of [['Very bullish', 'Strong buy'], ['Bullish', 'Buy'],
+                                ['Bearish', 'Sell'], ['Very bearish', 'Strong sell']]) {
+        await pool.query('UPDATE predictions SET label=$2 WHERE label=$1', [was, now]);
+      }
       await pool.query(`CREATE TABLE IF NOT EXISTS usage_daily (
         k TEXT NOT NULL, kind TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (k, kind, day))`);
