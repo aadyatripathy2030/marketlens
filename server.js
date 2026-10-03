@@ -77,7 +77,7 @@ const usage = { total: 0 };            // per-endpoint request counters (reset o
 const KNOWN_API = new Set([
   '/api/stock', '/api/quotes', '/api/fundamentals', '/api/analyze', '/api/analyze-stream',
   '/api/analyze-image', '/api/compare', '/api/screen', '/api/watchlist', '/api/alerts',
-  '/api/movers', '/api/ranked', '/api/accuracy', '/api/admin', '/api/admin/plan', '/api/config', '/api/stream',
+  '/api/movers', '/api/ranked', '/api/accuracy', '/api/admin', '/api/admin/plan', '/api/stream',
   '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
   '/api/auth/delete', '/api/auth/google', '/api/auth/google/callback',
   '/api/billing/webhook', '/api/billing/checkout', '/api/billing/portal',
@@ -258,6 +258,23 @@ function buildDemo(symbol, interval) {
   return { name: symbol, currency: 'USD', prices };
 }
 
+// Demo mode has data for these and nothing else. buildDemo will happily
+// generate a plausible chart for any string, which is how "ASDFG" used to come
+// back as candles, indicators and a rating; the live path refuses that, and
+// without this list the demo path still did it.
+const DEMO_SYMBOLS = new Set([
+  'AAPL', 'MSFT', 'NVDA', 'TSLA', 'AMD', 'META', 'AMZN', 'GOOGL', 'GOOG', 'INTC',
+  'PFE', 'XOM', 'KO', 'DIS', 'BA', 'NKE', 'WBA', 'F', 'T', 'VZ', 'PYPL', 'JPM',
+  'WMT', 'COST', 'NFLX', 'ORCL', 'CRM', 'AVGO', 'QCOM', 'MU', 'UBER', 'SBUX',
+  'MCD', 'CVX', 'JNJ', 'LLY', 'SPY', 'QQQ', 'DIA', 'IWM',
+  'BTC/USD', 'ETH/USD', 'SOL/USD', 'XRP/USD', 'DOGE/USD',
+]);
+// Demo data is a convenience for running the app locally without a key, not a
+// fallback. A database means this is a real deployment, where a missing key is
+// a configuration fault to report plainly rather than paper over with invented
+// prices under a small "demo data" note. DEMO_DATA=1 forces it back on.
+const demoAllowed = () => process.env.DEMO_DATA === '1' || !db.hasUrl();
+
 // A typo used to become a stock: any upstream failure fell through to
 // buildDemo, which generates a plausible chart for any string at all, so
 // "ASDFG" returned candles, indicators and a rating. Telling the reasons apart
@@ -400,6 +417,11 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
       if (kind === 'rate_limited') return json(res, 503, { error: 'Market data is rate-limited right now. Try again in a minute.', kind });
       return json(res, 503, { error: 'Market data is unavailable right now. Try again shortly.', kind });
     }
+  } else if (!demoAllowed()) {
+    return json(res, 503, { error: 'Market data is not configured correctly. This is our problem, not yours.', kind: 'auth' });
+  } else if (!DEMO_SYMBOLS.has(symbol)) {
+    // Same answer the live branch gives, rather than inventing a chart for it.
+    return json(res, 404, noSuchTicker(symbol));
   } else {
     data = buildDemo(symbol, interval);
     note = 'Demo data — set STOCK_API_KEY (twelvedata.com, free) for real prices.';
@@ -1762,7 +1784,18 @@ async function handleCompare(req, res, raw) {
     try {
       const enc = encodeURIComponent(sym);
       const [data, prof, rat, km, inc] = await Promise.all([
-        (async () => { if (STOCK_API_KEY) { try { return await fetchLive(sym, '1day', 260); } catch { return buildDemo(sym, '1day'); } } return buildDemo(sym, '1day'); })(),
+        // This used to swallow a failed fetch and return buildDemo instead,
+        // which is precisely what the note above classifyDataError says was
+        // removed -- a typo came back here as a chart, a score and metrics,
+        // with nothing marking it as invented. Letting it throw hands the row
+        // to the outer catch, which flags it as failed, and the client already
+        // renders that.
+        (async () => {
+          if (STOCK_API_KEY) return await fetchLive(sym, '1day', 260);
+          if (!demoAllowed()) throw new Error('Market data is not configured');
+          if (!DEMO_SYMBOLS.has(sym)) throw new Error(`No such ticker: ${sym}`);
+          return buildDemo(sym, '1day');
+        })(),
         FMP_API_KEY ? fmpSafe(`/stable/profile?symbol=${enc}`) : null,
         FMP_API_KEY ? fmpSafe(`/stable/ratios-ttm?symbol=${enc}`) : null,
         FMP_API_KEY ? fmpSafe(`/stable/key-metrics-ttm?symbol=${enc}`) : null,
