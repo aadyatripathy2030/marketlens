@@ -77,7 +77,7 @@ const usage = { total: 0 };            // per-endpoint request counters (reset o
 const KNOWN_API = new Set([
   '/api/stock', '/api/quotes', '/api/fundamentals', '/api/analyze', '/api/analyze-stream',
   '/api/analyze-image', '/api/compare', '/api/screen', '/api/watchlist', '/api/alerts',
-  '/api/movers', '/api/ranked', '/api/accuracy', '/api/admin', '/api/config', '/api/stream',
+  '/api/movers', '/api/ranked', '/api/accuracy', '/api/admin', '/api/admin/plan', '/api/config', '/api/stream',
   '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
   '/api/auth/delete', '/api/auth/google', '/api/auth/google/callback',
   '/api/billing/webhook', '/api/billing/checkout', '/api/billing/portal',
@@ -1534,8 +1534,14 @@ async function handleAdmin(req, res) {
   // plan stays the database truth — what this account is actually paying for —
   // with complimentary Pro flagged separately, so comped accounts are never
   // counted as customers when reading this table.
-  const users = (await db.listUsers(200)).map(x => ({
-    ...x, comp: isPro(x) && x.plan !== 'pro', admin: isAdmin(x),
+  // plan='pro' used to mean one thing — Stripe put it there — so it stood in
+  // for "paying". The plan panel writes that same column by hand, so the column
+  // alone no longer says who is a customer; a live subscription id does.
+  const users = (await db.listUsers(200)).map(({ stripe_sub, ...x }) => ({
+    ...x,
+    comp: isPro(x) && x.plan !== 'pro',
+    paying: x.plan === 'pro' && !!stripe_sub,
+    admin: isAdmin(x),
   }));
   return json(res, 200, {
     counts: await db.counts(),
@@ -1548,6 +1554,53 @@ async function handleAdmin(req, res) {
       dailyQuotaOut: dailyQuotaOut(), dailyQuotaMsg,
       finnhubUsedLastMinute: finnhubUsed(), finnhubPerMinute: FINNHUB_PER_MIN,
       rankedScanned: rankedStore.rows.length, rankedUniverse: RANKED_UNIVERSE.length, rankedRunning: rankedStore.running },
+  });
+}
+
+// Grant or remove Pro for an account, by email, from the admin panel.
+//
+// The database plan column is the only thing this writes. An account that is
+// Pro because its address sits in ADMIN_EMAILS or PRO_EMAILS stays Pro whatever
+// is written here, and a paying subscriber stays billed by Stripe either way,
+// so the reply says which of those is true rather than reporting a change that
+// did not actually take effect.
+async function handleAdminPlan(req, res) {
+  const me = await currentUser(req);
+  if (!isAdmin(me)) return json(res, 403, { error: 'Admin access only.' });
+  const b = await readBody(req);
+  const email = String(b.email || '').toLowerCase().trim();
+  const plan = b.plan === 'free' ? 'free' : 'pro';
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json(res, 400, { error: 'That is not an email address.' });
+  const before = await db.getUserByEmail(email);
+  if (!before) return json(res, 404, { error: `No account for ${email}. They have to sign up first.` });
+  // Read off the plan now: in memory mode getUserByEmail hands back the live
+  // record, so the write below mutates this very object and 'before' would
+  // report the state after the change. Postgres returns a copy and would not.
+  const wasPlan = before.plan;
+
+  if (plan === 'pro') {
+    // setPro writes stripe_customer and stripe_sub from its arguments, so the
+    // existing values are handed back to it. Letting them go null would orphan
+    // a live subscription: the cancellation webhook finds the account by sub
+    // id, would no longer find this one, and the account would keep Pro for
+    // good after the customer stopped paying.
+    await db.setPro(before.id, before.stripe_customer || null, before.stripe_sub || null);
+  } else {
+    await db.setFree(before.id);
+  }
+
+  const after = await db.getUserByEmail(email);
+  const stillPro = isPro(after);
+  return json(res, 200, {
+    email,
+    plan: after ? after.plan : plan,
+    pro: stillPro,
+    // Set when the row now says free but the account is Pro anyway, because a
+    // list outranks the column. Naming the list saves hunting for why.
+    overriddenBy: (plan === 'free' && stillPro) ? (isAdmin(after) ? 'ADMIN_EMAILS' : 'PRO_EMAILS') : null,
+    // Set when access was removed from an account Stripe is still charging.
+    stillBilled: (plan === 'free' && after && after.stripe_sub) ? after.stripe_sub : null,
+    wasAlready: wasPlan === plan,
   });
 }
 
@@ -2633,6 +2686,7 @@ const server = http.createServer(async (req, res) => {
       if (await requireAccount(req, res)) return;
     }
     if (url === '/api/admin' && req.method === 'GET') return await handleAdmin(req, res);
+    if (url === '/api/admin/plan' && req.method === 'POST') return await handleAdminPlan(req, res);
     if (url === '/api/stock' && req.method === 'GET') {
       const q = new URLSearchParams(req.url.split('?')[1] || '');
       return await handleStock(req, res, q.get('symbol'), q.get('strategy'), q.get('direction'), q.get('interval'));

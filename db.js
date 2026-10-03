@@ -420,8 +420,8 @@ async function markTriggered(uid, id, ts) {
 // ---- admin ----
 async function listUsers(limit) {
   limit = limit || 200;
-  if (mode === 'postgres') { const r = await pool.query('SELECT id, email, plan, created FROM users ORDER BY created DESC LIMIT $1', [limit]); return r.rows.map(u => ({ ...u, created: Number(u.created) })); }
-  return [...mem.users.values()].map(u => ({ id: u.id, email: u.email, plan: u.plan, created: u.created })).sort((a, b) => b.created - a.created).slice(0, limit);
+  if (mode === 'postgres') { const r = await pool.query('SELECT id, email, plan, created, stripe_sub FROM users ORDER BY created DESC LIMIT $1', [limit]); return r.rows.map(u => ({ ...u, created: Number(u.created) })); }
+  return [...mem.users.values()].map(u => ({ id: u.id, email: u.email, plan: u.plan, created: u.created, stripe_sub: u.stripe_sub })).sort((a, b) => b.created - a.created).slice(0, limit);
 }
 async function counts() {
   if (mode === 'postgres') {

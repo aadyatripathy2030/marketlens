@@ -2810,6 +2810,10 @@
   }
 
   // ---- Admin dashboard ----
+  // Held outside loadAdmin so the result of a plan change survives the table
+  // refresh that follows it — otherwise the answer is wiped by the redraw that
+  // proves it worked.
+  let adminPlanNote = '';
   async function loadAdmin() {
     if (!currentUser || !currentUser.admin) { $('adminBody').innerHTML = `<div class="view-empty">Admin access only.</div>`; return; }
     $('adminBody').innerHTML = `<p class="compare-note">Loading…</p>`;
@@ -2825,12 +2829,46 @@
     html += `<div class="admin-sec"><div class="mkt-h">Services</div>` + Object.entries(d.services || {}).map(([k, v]) => `<span class="svc-pill ${v ? 'svc-on' : 'svc-off'}">${esc(k)}: ${v ? 'on' : 'off'}</span>`).join('') + `<span class="svc-pill ${d.store === 'postgres' ? 'svc-on' : 'svc-off'}">store: ${esc(d.store || '')}</span></div>`;
     const usageEntries = Object.entries(d.usage || {}).filter(([k]) => k !== 'total').sort((a, b) => b[1] - a[1]).slice(0, 12);
     if (usageEntries.length) html += `<div class="admin-sec"><div class="mkt-h">Top endpoints</div><div class="compare-scroll"><table class="admin-table"><thead><tr><th>Endpoint</th><th>Calls</th></tr></thead><tbody>` + usageEntries.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join('') + `</tbody></table></div></div>`;
+    html += `<div class="admin-sec"><div class="mkt-h">Plan</div>
+      <div class="admin-plan">
+        <input id="planEmail" class="input" type="email" placeholder="name@example.com" autocomplete="off" spellcheck="false">
+        <button id="planPro" class="btn btn-primary">Make Pro</button>
+        <button id="planFree" class="btn btn-ghost">Make free</button>
+      </div>
+      <p class="compare-note">The account has to have signed up already. This writes the plan on the account; it does not start or cancel anything in Stripe.</p>
+      <div id="planMsg" class="admin-plan-msg">${esc(adminPlanNote)}</div></div>`;
     html += `<div class="admin-sec"><div class="mkt-h">Users (${(d.users || []).length})</div><div class="compare-scroll"><table class="admin-table"><thead><tr><th>Email</th><th>Plan</th><th>Joined</th></tr></thead><tbody>` + (d.users || []).map(u => {
-      const plan = u.plan === 'pro' ? 'pro (paying)' : u.comp ? 'pro (comp)' : 'free';
+      const plan = u.comp ? 'pro (comp)' : u.plan !== 'pro' ? 'free' : u.paying ? 'pro (paying)' : 'pro (granted)';
       return `<tr><td>${esc(u.email)}${u.admin ? ' <span class="svc-pill svc-on">admin</span>' : ''}</td><td>${esc(plan)}</td><td>${esc(ymd(u.created))}</td></tr>`;
     }).join('') + `</tbody></table></div></div>`;
     html += `<div class="admin-sec"><div class="mkt-h">Recent errors (${(d.errors || []).length})</div>` + ((d.errors || []).length ? d.errors.map(e => `<div class="err-line">${esc(hms(e.t))} \u2014 ${esc(e.msg)}</div>`).join('') : `<p class="compare-note">No errors logged.</p>`) + `</div>`;
     $('adminBody').innerHTML = html;
+
+    const setPlan = async (plan) => {
+      const email = ($('planEmail').value || '').trim();
+      const msg = $('planMsg'), btns = [$('planPro'), $('planFree')];
+      if (!email) { msg.textContent = 'Enter an email address.'; return; }
+      btns.forEach(b => b.disabled = true);
+      msg.textContent = plan === 'pro' ? 'Granting\u2026' : 'Removing\u2026';
+      let r;
+      try {
+        r = await (await fetch('/api/admin/plan', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, plan }),
+        })).json();
+      } catch { r = { error: 'Couldn\u2019t reach the server.' }; }
+      if (r.error) { msg.textContent = r.error; btns.forEach(b => b.disabled = false); return; }
+      let note = r.pro ? `${r.email} is Pro.` : `${r.email} is on the free plan.`;
+      if (r.wasAlready) note += ' It already was \u2014 nothing changed.';
+      // Two ways the plan column can be written and the account not follow it.
+      if (r.overriddenBy) note += ` The account is still Pro because the address is listed in ${r.overriddenBy}; take it out of there to finish the job.`;
+      if (r.stillBilled) note += ' Stripe is still charging this account \u2014 cancel the subscription there as well.';
+      adminPlanNote = note;
+      await loadAdmin();
+    };
+    $('planPro').onclick = () => setPlan('pro');
+    $('planFree').onclick = () => setPlan('free');
+    $('planEmail').onkeydown = (e) => { if (e.key === 'Enter') setPlan('pro'); };
   }
 
   // ---- Movers ----
