@@ -643,20 +643,20 @@
   // the only navigation, so a label alone is not enough — someone opening
   // "Movers" or "Accuracy" for the first time should not have to guess.
   const DESTINATIONS = [
-    { v: 'home', c: '#4c9eff',      t: 'Home',      d: 'Look up any ticker, and see where the major indices sit today.' },
-    { v: 'analyze', c: '#5ac8fa',   t: 'Analyze',   d: 'The full read on one symbol: candlestick chart, thirteen indicators, exit levels and the measured base rate.' },
-    { v: 'compare', c: '#a78bfa',   t: 'Compare',   d: 'Put two or more companies side by side on valuation, margins, growth and debt.' },
-    { v: 'screener', c: '#2dd4bf',  t: 'Screener',  d: 'Filter a curated list of stocks by sector, market capitalization and price.' },
-    { v: 'markets', c: '#f0b429',   t: 'Markets',   d: 'Live quotes for the major US indices and the most active stocks.' },
-    { v: 'movers', c: '#ff8a3d',    t: 'Movers',    d: 'What is actually moving right now, ranked by how unusual the volume and the day\u2019s range are.' },
-    { v: 'accuracy', c: '#3ddc84',  t: 'Accuracy',  d: 'The measured record of how this site\u2019s own readings have performed, published whether or not it flatters them.' },
-    { v: 'watchlist', c: '#ffcf5c', t: 'Watchlist', d: 'The tickers you follow, with live prices and one-click analysis.' },
-    { v: 'alerts', c: '#ff5f56',    t: 'Alerts',    d: 'Set a target above or below the current price and get flagged when a stock crosses it.', badge: 'alertBadge' },
-    { v: 'practice', c: '#c084fc',  t: 'Practice',  d: 'A practice account with pretend money, so you can rehearse position sizing against your own risk limits. Nothing here touches a broker.' },
-    { v: 'learn', c: '#38bdf8',     t: 'Learn',     d: 'Nineteen plain-English lessons with quizzes, split by whether they apply to day trading or long-term investing.' },
-    { v: 'pricing', c: '#e0a33e',   t: 'Billing',   d: 'What a free account includes, what Pro adds, and what each billing period works out to per month.' },
-    { v: 'settings', c: '#8a94a3',  t: 'Settings',  d: 'Turn any part of the analysis on or off \u2014 the score, the indicators, the projection, the summary.' },
-    { v: 'admin', c: '#6b7484',     t: 'Admin',     d: 'Registered accounts, service status, usage and recent errors.', admin: true },
+    { v: 'home', t: 'Home',      d: 'Look up any ticker, and see where the major indices sit today.' },
+    { v: 'analyze', t: 'Analyze',   d: 'The full read on one symbol: candlestick chart, thirteen indicators, exit levels and the measured base rate.' },
+    { v: 'compare', t: 'Compare',   d: 'Put two or more companies side by side on valuation, margins, growth and debt.' },
+    { v: 'screener', t: 'Screener',  d: 'Filter a curated list of stocks by sector, market capitalization and price.' },
+    { v: 'markets', t: 'Markets',   d: 'Live quotes for the major US indices and the most active stocks.' },
+    { v: 'movers', t: 'Movers',    d: 'What is actually moving right now, ranked by how unusual the volume and the day\u2019s range are.' },
+    { v: 'accuracy', t: 'Accuracy',  d: 'The measured record of how this site\u2019s own readings have performed, published whether or not it flatters them.' },
+    { v: 'watchlist', t: 'Watchlist', d: 'The tickers you follow, with live prices and one-click analysis.' },
+    { v: 'alerts', t: 'Alerts',    d: 'Set a target above or below the current price and get flagged when a stock crosses it.', badge: 'alertBadge' },
+    { v: 'practice', t: 'Practice',  d: 'A practice account with pretend money, so you can rehearse position sizing against your own risk limits. Nothing here touches a broker.' },
+    { v: 'learn', t: 'Learn',     d: 'Nineteen plain-English lessons with quizzes, split by whether they apply to day trading or long-term investing.' },
+    { v: 'pricing', t: 'Billing',   d: 'What a free account includes, what Pro adds, and what each billing period works out to per month.' },
+    { v: 'settings', t: 'Settings',  d: 'Turn any part of the analysis on or off \u2014 the score, the indicators, the projection, the summary.' },
+    { v: 'admin', t: 'Admin',     d: 'Registered accounts, service status, usage and recent errors.', admin: true },
   ];
 
   function buildDrawerNav() {
@@ -669,7 +669,6 @@
       const a = document.createElement('a');
       a.className = 'drawer-link' + (dst.v === currentView ? ' active' : '');
       a.dataset.view = dst.v;
-      if (dst.c) a.style.setProperty('--dl', dst.c);
       a.innerHTML = `<span class="drawer-link-top"><span class="dl-dot" aria-hidden="true"></span>`
         + `<span class="drawer-link-name">${esc(dst.t)}</span>`
         + (dst.badge ? `<span class="nav-badge hidden" id="${dst.badge}"></span>` : '')
@@ -923,7 +922,7 @@
         for (let g = 0; g < 14 && usedY.some(u => Math.abs(u - ty) < 17); g++) ty -= 17;
         if (ty < padT + 8) return;
         usedY.push(ty);
-        priceTag(label, ty, color, '#0b0e12');
+        priceTag(label, ty, color, '#121211');
       };
       mark(L.stop, col('--bad'), pxFmt(L.stop), false);
       targetsFor(L).forEach(t => mark(t.price, col('--good'), pxFmt(t.price), true));
@@ -1008,7 +1007,7 @@
       // live, rather than over the newest candles.
       const money = (good ? '+' : '\u2212') + '$' + Math.abs(live)
         .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      priceTag(money, y, good ? col('--good') : col('--bad'), '#0b0e12');
+      priceTag(money, y, good ? col('--good') : col('--bad'), '#121211');
     }
 
     if (hover && hover.x > padL && hover.x < axX && hover.y > padT && hover.y < axY) {
