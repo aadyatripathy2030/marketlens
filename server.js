@@ -1303,7 +1303,7 @@ async function currentUser(req) { return db.getSessionUser(parseCookies(req).ses
 // Pro covers the features that cost money every time they run: the written
 // reports, reading an uploaded chart, and the screener and compare
 // pages (which fan out into dozens of price-API calls). Everything that is
-// pure computation on data already fetched — the chart, every indicator, the
+// pure computation on data already fetched (the chart, every indicator, the
 // levels, the measured base rate, the lessons) stays free with any account.
 // The bare chart is open to anyone.
 const AI_FREE_DAILY = Number(process.env.AI_FREE_DAILY || 3);
