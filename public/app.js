@@ -2306,38 +2306,55 @@
   // The modal has two faces: the form, and the note that replaces it once a
   // confirmation link has gone out. Nothing is signed in while the note is up.
   let pendingEmail = '';
-  function showPending(email, message) {
+  // Everything but the face itself goes away, so each face owns the modal.
+  function hideFormChrome() {
+    ['authTitle', 'authSub', 'authForm', 'authToggleRow', 'authPending', 'authCode'].forEach(id => $(id).classList.add('hidden'));
+  }
+  // o.again: the address was already registered but never confirmed, and a
+  // new link has just gone out, which is worth saying differently.
+  function showPending(email, o) {
+    o = o || {};
     pendingEmail = email;
-    $('authTitle').textContent = 'Confirm your email';
-    $('authPendingText').textContent = message;
-    $('authForm').classList.add('hidden');
-    $('authSub').classList.add('hidden');
-    $('authToggleRow').classList.add('hidden');
-    $('authResend').classList.toggle('hidden', !email);
-    $('authBack').classList.toggle('hidden', !email);
+    hideFormChrome();
+    $('authPendingTitle').textContent = o.title || 'Confirm your email';
+    $('authPendingText').textContent = o.again ? 'This address has not been confirmed yet. We just sent a new link to' : 'We sent a confirmation link to';
+    $('authPendingEmail').textContent = email;
+    $('authPendingSub').textContent = o.sub != null ? o.sub : 'Open it to finish creating your account. The link works once and expires in 24 hours.';
+    $('authPendingStatus').textContent = ''; $('authPendingStatus').className = 'auth-status';
+    $('authPendingLinks').classList.add('hidden');
     $('authPending').classList.remove('hidden');
   }
+  function showConfirmed() {
+    showPending('', { title: 'Email confirmed', sub: 'Your address is confirmed and you are signed in.' });
+    $('authPendingText').classList.add('hidden'); $('authPendingEmail').classList.add('hidden');
+    $('authPendingIcon').classList.add('hidden'); $('authDoneIcon').classList.remove('hidden');
+  }
   function showAuthForm() {
-    $('authForm').classList.remove('hidden');
-    $('authSub').classList.remove('hidden');
-    $('authToggleRow').classList.remove('hidden');
+    ['authTitle', 'authSub', 'authForm', 'authToggleRow'].forEach(id => $(id).classList.remove('hidden'));
     $('authPending').classList.add('hidden');
     $('authCode').classList.add('hidden');
+    // Undo what showConfirmed hid, so the next pending face is whole.
+    $('authPendingText').classList.remove('hidden'); $('authPendingEmail').classList.remove('hidden');
+    $('authPendingIcon').classList.remove('hidden'); $('authDoneIcon').classList.add('hidden');
   }
   // The third face: the emailed code. The server already holds the attempt
   // in a short-lived cookie; this only collects the digits.
-  function showCode(message) {
-    $('authTitle').textContent = 'Enter your code';
-    $('authCodeText').textContent = message;
-    $('authForm').classList.add('hidden');
-    $('authSub').classList.add('hidden');
-    $('authToggleRow').classList.add('hidden');
-    $('authPending').classList.add('hidden');
+  function showCode(email) {
+    hideFormChrome();
+    $('authCodeEmail').textContent = email || 'your email address';
     $('authCodeErr').classList.add('hidden');
+    $('authCodeStatus').textContent = ''; $('authCodeStatus').className = 'auth-status';
     $('authCodeInput').value = '';
     $('authCode').classList.remove('hidden');
     $('authCodeInput').focus();
   }
+  // Digits only, and six of them is the whole answer, so submit on the sixth.
+  $('authCodeInput').addEventListener('input', () => {
+    const el = $('authCodeInput');
+    const digits = el.value.replace(/\D/g, '').slice(0, 6);
+    if (digits !== el.value) el.value = digits;
+    if (digits.length === 6 && !$('authCodeSubmit').disabled) $('authCodeForm').requestSubmit();
+  });
   // What happens once the server has handed over a session, whichever door
   // it came through.
   function signedIn(user, event, method) {
@@ -2374,18 +2391,20 @@
         if (j.restart) { openAuth('login'); $('authErr').textContent = j.error; $('authErr').classList.remove('hidden'); return; }
         throw new Error(j.error || 'Could not send a new code. Try again in a minute.');
       }
-      $('authCodeText').textContent = j.message || 'Sent again.';
+      status('authCodeStatus', 'Sent again. Check your inbox.', true);
+      $('authCodeInput').value = ''; $('authCodeInput').focus();
     } catch (err) { codeErr(err.message); }
     finally { $('authCodeResend').disabled = false; }
   });
   $('authCodeBack').addEventListener('click', () => openAuth('login'));
+  const status = (id, text, ok) => { const el = $(id); el.textContent = text; el.className = 'auth-status' + (ok ? ' ok' : ''); };
   $('authResend').addEventListener('click', async () => {
     $('authResend').disabled = true;
     try {
       const r = await fetch('/api/auth/resend', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: pendingEmail }) });
       const j = await r.json();
-      $('authPendingText').textContent = r.ok ? 'Sent again. ' + (j.message || '') : (j.error || 'Could not send it. Try again in a minute.');
-    } catch (e) { $('authPendingText').textContent = 'Could not send it. Try again in a minute.'; }
+      status('authPendingStatus', r.ok ? 'Sent again.' : (j.error || 'Could not send it. Try again in a minute.'), r.ok);
+    } catch (e) { status('authPendingStatus', 'Could not send it. Try again in a minute.'); }
     finally { $('authResend').disabled = false; }
   });
   $('authBack').addEventListener('click', () => openAuth('signup'));
@@ -2405,7 +2424,7 @@
         track(authMode === 'signup' ? 'sign_up_pending' : 'login_unconfirmed', { method: 'password' });
         $('authPass').value = '';
         setAgreed();
-        showPending(j.email || email, j.message || 'Check your email for a confirmation link.');
+        showPending(j.email || email, { again: j.error === 'verify_required' });
         return;
       }
       if (!r.ok) throw new Error(j.error || 'Something went wrong.');
@@ -2413,7 +2432,7 @@
         // Password accepted; the session waits on the emailed code.
         $('authPass').value = '';
         setAgreed();
-        showCode(j.message || 'Enter the code we just emailed you.');
+        showCode(j.email || email);
         return;
       }
       signedIn(j.user, authMode === 'signup' ? 'sign_up' : 'login', 'password');
@@ -3423,9 +3442,9 @@
         try {
           const r = await fetch('/api/auth/challenge');
           const j = await r.json();
-          if (r.ok) showCode(j.message || 'Enter the code we just emailed you.');
+          if (r.ok) showCode(j.email);
           else { $('authErr').textContent = 'That sign-in has expired. Please try again.'; $('authErr').classList.remove('hidden'); }
-        } catch (e) { showCode('Enter the code we just emailed you.'); }
+        } catch (e) { showCode(''); }
       }, 50);
     }
     p.delete('google'); p.delete('google_error');
@@ -3442,8 +3461,7 @@
     window.setTimeout(() => {
       openAuth('login');
       if (v === 'ok') {
-        showPending('', 'Your email address is confirmed and you are signed in.');
-        $('authTitle').textContent = 'Email confirmed';
+        showConfirmed();
       } else {
         $('authErr').textContent = 'That confirmation link has expired or was already used. Sign in to get a new one.';
         $('authErr').classList.remove('hidden');

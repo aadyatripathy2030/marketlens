@@ -655,22 +655,38 @@
         <span id="authGoogleText">Continue with Google</span>
       </button>
     </form>
-    <!-- Replaces the form once a confirmation link has gone out. -->
-    <div class="auth-pending hidden" id="authPending">
-      <p class="auth-pending-p" id="authPendingText"></p>
-      <button type="button" class="btn btn-ghost btn-block" id="authResend">Send the link again</button>
-      <p class="auth-toggle"><button type="button" class="link-btn" id="authBack">Use a different email</button></p>
+    <!-- Replaces the form once a confirmation link has gone out, and again
+         when the link brings the visitor back. -->
+    <div class="auth-face hidden" id="authPending">
+      <svg class="auth-icon" id="authPendingIcon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="12" width="36" height="26" rx="3"/><path d="M6 15l18 12 18-12"/></svg>
+      <svg class="auth-icon hidden" id="authDoneIcon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="24" cy="24" r="18"/><path d="M15 24l6 6 12-12"/></svg>
+      <h2 class="auth-face-h" id="authPendingTitle">Confirm your email</h2>
+      <p class="auth-face-p" id="authPendingText">We sent a confirmation link to</p>
+      <p class="auth-face-email" id="authPendingEmail"></p>
+      <p class="auth-face-p" id="authPendingSub"></p>
+      <div class="auth-face-links" id="authPendingLinks">
+        <button type="button" class="link-btn" id="authResend">Didn’t get it? Send the link again</button>
+        <button type="button" class="link-btn quiet" id="authBack">Use a different email</button>
+      </div>
+      <p class="auth-status" id="authPendingStatus"></p>
     </div>
     <!-- The second step of every sign-in: the code that was emailed. -->
-    <div class="auth-pending hidden" id="authCode">
-      <p class="auth-pending-p" id="authCodeText"></p>
+    <div class="auth-face hidden" id="authCode">
+      <svg class="auth-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="12" width="36" height="26" rx="3"/><path d="M6 15l18 12 18-12"/></svg>
+      <h2 class="auth-face-h">Check your email</h2>
+      <p class="auth-face-p">We sent a 6-digit code to</p>
+      <p class="auth-face-email" id="authCodeEmail"></p>
       <form id="authCodeForm">
-        <input type="text" id="authCodeInput" class="input auth-code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code" aria-label="Sign-in code" />
+        <input type="text" id="authCodeInput" class="input auth-code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="······" aria-label="Sign-in code" />
         <div class="auth-err hidden" id="authCodeErr"></div>
         <button type="submit" class="btn btn-primary btn-block" id="authCodeSubmit">Sign in</button>
       </form>
-      <button type="button" class="btn btn-ghost btn-block" id="authCodeResend">Send a new code</button>
-      <p class="auth-toggle"><button type="button" class="link-btn" id="authCodeBack">Start over</button></p>
+      <p class="auth-face-p small">The code expires in 10 minutes.</p>
+      <div class="auth-face-links">
+        <button type="button" class="link-btn" id="authCodeResend">Didn’t get it? Send a new code</button>
+        <button type="button" class="link-btn quiet" id="authCodeBack">Start over</button>
+      </div>
+      <p class="auth-status" id="authCodeStatus"></p>
     </div>
     <p class="auth-toggle" id="authToggleRow"><span id="authToggleText">New to ChartGauge?</span> <button type="button" class="link-btn" id="authToggle">Create an account</button></p>
     <p class="auth-note">By continuing you agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>. ChartGauge is for learning, not for trading, and nothing on it is financial advice.<br /><br />Never enter a real trading or bank password here. This is a demo; passwords are hashed, never stored in plain text.</p>

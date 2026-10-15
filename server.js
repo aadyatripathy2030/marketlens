@@ -1359,10 +1359,42 @@ const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || ''));
 // an API call that is not working.
 let mailFailedAt = 0;
 const mailHealthy = () => mailEnabled() && Date.now() - mailFailedAt > 2 * 60000;
-async function sendMail(to, subject, text) {
-  if (MAIL_TRANSPORT === 'log') { console.log(`[mail] to ${to}: ${subject}\n${text}`); return; }
+// The email, in the site's own colours. Tables and inline styles because
+// that is what mail clients render; no images, so nothing to block or load.
+const MAIL_FONT = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+function emailHtml(o) {
+  const code = o.code
+    ? `<div style="margin:22px 0 4px;padding:18px 0;border:1px solid #423f38;border-radius:4px;background:#121211;text-align:center;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:34px;letter-spacing:10px;color:#f0efec;">${esc(o.code)}</div>`
+    : '';
+  const button = o.button
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 14px;"><tr><td style="background:#e9e4d9;border-radius:3px;">`
+      + `<a href="${esc(o.button.url)}" style="display:inline-block;padding:13px 26px;font-family:${MAIL_FONT};font-size:15px;font-weight:700;color:#121211;text-decoration:none;">${esc(o.button.label)}</a></td></tr></table>`
+      + `<p style="margin:0;font-family:${MAIL_FONT};font-size:12px;line-height:1.6;color:#9a958c;word-break:break-all;">Or paste this link into your browser:<br><a href="${esc(o.button.url)}" style="color:#9a958c;">${esc(o.button.url)}</a></p>`
+    : '';
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${esc(o.title)}</title></head>`
+    + `<body style="margin:0;padding:0;background:#121211;">`
+    + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#121211;"><tr><td align="center" style="padding:32px 16px;">`
+    + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;">`
+    + `<tr><td style="padding:0 2px 16px;font-family:${MAIL_FONT};font-size:17px;font-weight:700;color:#f0efec;">`
+    + `<span style="display:inline-block;width:5px;height:14px;background:#ff5f56;border-radius:1px;vertical-align:-1px;margin-right:3px;"></span>`
+    + `<span style="display:inline-block;width:5px;height:20px;background:#3ddc84;border-radius:1px;vertical-align:-4px;margin-right:9px;"></span>ChartGauge</td></tr>`
+    + `<tr><td style="background:#1d1d1a;border:1px solid #2e2d28;border-radius:4px;padding:28px 26px;">`
+    + `<h1 style="margin:0 0 10px;font-family:${MAIL_FONT};font-size:22px;font-weight:700;color:#f0efec;">${esc(o.title)}</h1>`
+    + `<p style="margin:0;font-family:${MAIL_FONT};font-size:15px;line-height:1.6;color:#d6d2c8;">${esc(o.intro)}</p>`
+    + code + button
+    + `<p style="margin:18px 0 0;font-family:${MAIL_FONT};font-size:13px;line-height:1.6;color:#9a958c;">${esc(o.outro)}</p>`
+    + `</td></tr>`
+    + `<tr><td style="padding:16px 4px 0;font-family:${MAIL_FONT};font-size:12px;line-height:1.5;color:#7a756b;">ChartGauge is a charting tool for learning to read charts. Nothing on it is financial advice.<br><a href="https://chartgauge.com" style="color:#9a958c;">chartgauge.com</a></td></tr>`
+    + `</table></td></tr></table></body></html>`;
+}
+async function sendMail(to, subject, text, html) {
+  if (MAIL_TRANSPORT === 'log') {
+    console.log(`[mail] to ${to}: ${subject}\n${text}`);
+    if (process.env.MAIL_DUMP && html) require('fs').writeFileSync(process.env.MAIL_DUMP, html);
+    return;
+  }
   try {
-    const body = JSON.stringify({ from: MAIL_FROM, to: [to], subject, text });
+    const body = JSON.stringify({ from: MAIL_FROM, to: [to], subject, text, html });
     const r = await httpsJson({ method: 'POST', hostname: 'api.resend.com', path: '/emails',
       headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, body);
     if (r.status >= 300) throw new Error('mail: ' + ((r.json && (r.json.message || r.json.error)) || ('HTTP ' + r.status)));
@@ -1374,9 +1406,11 @@ async function sendVerification(req, user) {
   if (tooMany('verify:acct:' + user.id, 3, 15 * 60000)) return false;
   const raw = await db.createVerifyToken(user.id);
   const link = siteOrigin(req) + '/api/auth/verify?token=' + raw;
+  const outro = 'The link works once and expires in 24 hours. If you did not create an account, ignore this email and nothing will happen.';
   await sendMail(user.email, 'Confirm your ChartGauge email',
-    `Open this link to confirm your email address and finish creating your ChartGauge account:\n\n${link}\n\n`
-    + `The link works once and expires in 24 hours. If you did not create an account, ignore this email and nothing will happen.`);
+    `Open this link to confirm your email address and finish creating your ChartGauge account:\n\n${link}\n\n${outro}`,
+    emailHtml({ title: 'Confirm your email', intro: 'One click finishes creating your ChartGauge account.',
+      button: { label: 'Confirm my email', url: link }, outro }));
   return true;
 }
 const VERIFY_MSG = (email) => `Check ${email} for a link to confirm your address. The link works once and expires in 24 hours.`;
@@ -1397,8 +1431,10 @@ function cookieStr(req, name, value, maxAge) {
 async function startCodeStep(req, res, user) {
   const { id, code } = await db.createLoginCode(user.id);
   try {
-    await sendMail(user.email, 'Your ChartGauge sign-in code',
-      `Your sign-in code is ${code}\n\nIt expires in 10 minutes. If you did not try to sign in, ignore this email; nobody can get in without the code.`);
+    const outro = 'It expires in 10 minutes. If you did not try to sign in, ignore this email; nobody can get in without the code.';
+    await sendMail(user.email, `${code} is your ChartGauge sign-in code`,
+      `Your sign-in code is ${code}\n\n${outro}`,
+      emailHtml({ title: 'Your sign-in code', intro: 'Enter this code on ChartGauge to finish signing in.', code, outro }));
   } catch (e) { await db.deleteLoginCode(id).catch(() => {}); throw e; }
   res.setHeader('Set-Cookie', cookieStr(req, 'login', id, 600));
 }
