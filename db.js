@@ -11,7 +11,7 @@ let pool = null;
 let mode = 'memory';
 let lastErr = null;
 const mem = { users: new Map(), byEmail: new Map(), sessions: new Map(), watch: new Map(),
-  alerts: new Map(), usage: new Map(), preds: new Map(),
+  alerts: new Map(), usage: new Map(), preds: new Map(), etokens: new Map(),
   paper: new Map(), pos: new Map(), fills: new Map() };
 
 // Render's INTERNAL Postgres host has no dot (e.g. dpg-xxxx-a) and speaks plain
@@ -36,6 +36,12 @@ async function init() {
       // reused, unlike an email address, so it is what a Google login is
       // matched on once the two are linked.
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT');
+      // Whether the address has been confirmed by a link sent to it. Accounts
+      // that predate confirmation default to TRUE; a new password account is
+      // inserted FALSE and flips when its link is opened.
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT TRUE');
+      await pool.query(`CREATE TABLE IF NOT EXISTS email_tokens (
+        hash TEXT PRIMARY KEY, uid TEXT NOT NULL, expires BIGINT NOT NULL)`);
       // Streak, counted in trading days. streak_day is the market day the run
       // was last extended to, so a second visit the same day is a no-op and a
       // weekend cannot advance or break it.
@@ -132,7 +138,7 @@ function verifyPw(pw, stored) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-const pub = (u) => u && { id: u.id, email: u.email, plan: u.plan };
+const pub = (u) => u && { id: u.id, email: u.email, plan: u.plan, verified: u.email_verified !== false };
 
 // ---- risk limits ----
 const RISK_DEFAULTS = { maxPosition: 20, perTrade: 2 };
@@ -258,19 +264,21 @@ async function getUserByGoogleId(gid) {
   return null;
 }
 
+// Google has confirmed the address by the time this runs, so a password
+// account that was never confirmed becomes confirmed here.
 async function linkGoogleId(uid, gid) {
-  if (mode === 'postgres') { await pool.query('UPDATE users SET google_id=$1 WHERE id=$2', [String(gid), uid]); return; }
-  const u = mem.users.get(uid); if (u) u.google_id = String(gid);
+  if (mode === 'postgres') { await pool.query('UPDATE users SET google_id=$1, email_verified=TRUE WHERE id=$2', [String(gid), uid]); return; }
+  const u = mem.users.get(uid); if (u) { u.google_id = String(gid); u.email_verified = true; }
 }
 
 // Created with no password: the only way in is Google until one is set.
 async function createGoogleUser(email, gid) {
   email = String(email).toLowerCase().trim();
   const id = crypto.randomUUID();
-  const rec = { id, email, pw: '', google_id: String(gid), plan: 'free', created: Date.now() };
+  const rec = { id, email, pw: '', google_id: String(gid), plan: 'free', created: Date.now(), email_verified: true };
   if (mode === 'postgres') {
     try {
-      await pool.query('INSERT INTO users (id, email, pw, plan, created, google_id) VALUES ($1,$2,$3,$4,$5,$6)',
+      await pool.query('INSERT INTO users (id, email, pw, plan, created, google_id, email_verified) VALUES ($1,$2,$3,$4,$5,$6,TRUE)',
         [id, email, '', 'free', rec.created, String(gid)]);
     } catch (e) { if (/duplicate|unique/i.test(e.message)) throw new Error('EMAIL_TAKEN'); throw e; }
   } else {
@@ -281,13 +289,15 @@ async function createGoogleUser(email, gid) {
 }
 
 // ---- users ----
-async function createUser(email, pw) {
+// `verified` is true only when there is no way to send a confirmation link,
+// in which case the account is usable at once.
+async function createUser(email, pw, verified) {
   email = String(email).toLowerCase().trim();
   const id = crypto.randomUUID();
-  const rec = { id, email, pw: hashPw(pw), plan: 'free', created: Date.now() };
+  const rec = { id, email, pw: hashPw(pw), plan: 'free', created: Date.now(), email_verified: !!verified };
   if (mode === 'postgres') {
     try {
-      await pool.query('INSERT INTO users (id, email, pw, plan, created) VALUES ($1,$2,$3,$4,$5)', [id, email, rec.pw, 'free', rec.created]);
+      await pool.query('INSERT INTO users (id, email, pw, plan, created, email_verified) VALUES ($1,$2,$3,$4,$5,$6)', [id, email, rec.pw, 'free', rec.created, !!verified]);
     } catch (e) { if (/duplicate|unique/i.test(e.message)) throw new Error('EMAIL_TAKEN'); throw e; }
   } else {
     if (mem.byEmail.has(email)) throw new Error('EMAIL_TAKEN');
@@ -303,6 +313,48 @@ async function getUserByEmail(email) {
 async function getUserById(id) {
   if (mode === 'postgres') { const r = await pool.query('SELECT * FROM users WHERE id=$1', [id]); return r.rows[0] || null; }
   return mem.users.get(id) || null;
+}
+
+// ---- email confirmation ----
+const VERIFY_TTL = 24 * 60 * 60 * 1000;
+const tokenHash = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
+// The raw token goes in the link; only its hash is stored, so a copy of the
+// database does not contain working links.
+async function createVerifyToken(uid) {
+  const raw = crypto.randomBytes(32).toString('hex');
+  const rec = { hash: tokenHash(raw), uid, expires: Date.now() + VERIFY_TTL };
+  if (mode === 'postgres') await pool.query('INSERT INTO email_tokens (hash, uid, expires) VALUES ($1,$2,$3)', [rec.hash, uid, rec.expires]);
+  else mem.etokens.set(rec.hash, rec);
+  return raw;
+}
+// Single use: the row goes whether or not it was still valid.
+async function consumeVerifyToken(raw) {
+  if (!raw) return null;
+  const h = tokenHash(raw);
+  let rec;
+  if (mode === 'postgres') {
+    const r = await pool.query('DELETE FROM email_tokens WHERE hash=$1 RETURNING uid, expires', [h]);
+    rec = r.rows[0];
+  } else { rec = mem.etokens.get(h); mem.etokens.delete(h); }
+  if (!rec || Number(rec.expires) < Date.now()) return null;
+  return rec.uid;
+}
+async function markVerified(uid) {
+  if (mode === 'postgres') {
+    await pool.query('UPDATE users SET email_verified=TRUE WHERE id=$1', [uid]);
+    await pool.query('DELETE FROM email_tokens WHERE uid=$1', [uid]);
+    return;
+  }
+  const u = mem.users.get(uid); if (u) u.email_verified = true;
+  for (const [h, t] of mem.etokens) if (t.uid === uid) mem.etokens.delete(h);
+}
+// For a sign-up over an address that is registered but never confirmed: the
+// new password replaces the old, so whoever can open the inbox ends up with
+// the account rather than whoever typed the address first.
+async function setPassword(uid, pw) {
+  const hashed = hashPw(pw);
+  if (mode === 'postgres') { await pool.query('UPDATE users SET pw=$1 WHERE id=$2', [hashed, uid]); return; }
+  const u = mem.users.get(uid); if (u) u.pw = hashed;
 }
 
 // ---- sessions ----
@@ -332,6 +384,9 @@ async function deleteSession(token) {
 // Postgres plan that table is the one thing that grows without a ceiling.
 async function purgeExpiredSessions() {
   const now = Date.now();
+  // Confirmation links that were never opened go the same way.
+  if (mode === 'postgres') await pool.query('DELETE FROM email_tokens WHERE expires < $1', [now]);
+  else for (const [h, t] of mem.etokens) if (t.expires < now) mem.etokens.delete(h);
   if (mode === 'postgres') {
     const r = await pool.query('DELETE FROM sessions WHERE expires < $1', [now]);
     return r.rowCount || 0;
@@ -458,12 +513,14 @@ async function setFree(uid) {
 async function deleteUser(uid) {
   if (mode === 'postgres') {
     await pool.query('DELETE FROM usage_daily WHERE k=$1', ['u:' + uid]);
+    await pool.query('DELETE FROM email_tokens WHERE uid=$1', [uid]);
     await pool.query('DELETE FROM users WHERE id=$1', [uid]);
     return;
   }
   const u = mem.users.get(uid);
   if (u) mem.byEmail.delete(u.email);
   mem.users.delete(uid);
+  for (const [h, t] of mem.etokens) if (t.uid === uid) mem.etokens.delete(h);
   mem.watch.delete(uid);
   mem.alerts.delete(uid);
   for (const [t, s] of mem.sessions) if (s && (s.uid === uid || s === uid)) mem.sessions.delete(t);
@@ -590,6 +647,7 @@ module.exports = {
   init, storeMode, hasUrl, lastError, verifyPw,
   createUser, getUserByEmail, getUserById,
   createSession, getSessionUser, deleteSession, purgeExpiredSessions,
+  createVerifyToken, consumeVerifyToken, markVerified, setPassword,
   getStreak, saveStreak,
   getRisk, saveRisk, RISK_DEFAULTS,
   getPaper, openPaper, clearPaper, setCash, listPositions, savePosition, dropPosition, addFill, listFills,

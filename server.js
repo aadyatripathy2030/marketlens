@@ -26,6 +26,15 @@ const AI_MODEL = (process.env.ANTHROPIC_MODEL || 'claude-opus-4-8').trim();
 const AI_MODEL_FREE = (process.env.ANTHROPIC_MODEL_FREE || 'claude-haiku-4-5').trim();
 const FMP_API_KEY = (process.env.FMP_API_KEY || '').replace(/\s/g, ''); // Financial Modeling Prep — fundamentals
 const FINNHUB_API_KEY = (process.env.FINNHUB_API_KEY || '').replace(/\s/g, ''); // Finnhub — company news and plain quotes
+// Email, for the confirmation link sent when an account is created. Dormant
+// until a Resend key is set: without one, accounts are created confirmed and
+// a line says so at boot. MAIL_TRANSPORT=log prints the link to the console
+// instead of sending it, for working on the flow locally.
+const RESEND_API_KEY = (process.env.RESEND_API_KEY || '').replace(/\s/g, '');
+const MAIL_FROM = (process.env.MAIL_FROM || 'ChartGauge <noreply@chartgauge.com>').trim();
+const MAIL_TRANSPORT = (process.env.MAIL_TRANSPORT || (RESEND_API_KEY ? 'resend' : 'off')).trim().toLowerCase();
+const mailEnabled = () => MAIL_TRANSPORT === 'resend' || MAIL_TRANSPORT === 'log';
+if (!mailEnabled()) console.log('email: off (set RESEND_API_KEY to require a confirmed address; until then accounts are created confirmed)');
 // Google Analytics 4 measurement id. No default on purpose: a hard-coded one
 // meant that if the env var were ever missing the site would quietly report to
 // a property nobody here can open. Unset means analytics simply does not load,
@@ -80,6 +89,7 @@ const KNOWN_API = new Set([
   '/api/movers', '/api/ranked', '/api/accuracy', '/api/admin', '/api/admin/plan', '/api/stream',
   '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
   '/api/auth/delete', '/api/auth/google', '/api/auth/google/callback',
+  '/api/auth/verify', '/api/auth/resend',
   '/api/billing/webhook', '/api/billing/checkout', '/api/billing/portal',
   // practice account, the risk limits it is measured against, and the
   // sentiment read over the headlines that were already being fetched
@@ -1340,21 +1350,81 @@ const PRO_ONLY = (what) => ({ error: 'pro_required', feature: what,
   message: `${what} is part of Pro. Everything else on ChartGauge (the chart, the indicators, the levels and the measured base rate) stays free.` });
 
 const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || ''));
+
+// ---- Email confirmation ----
+async function sendMail(to, subject, text) {
+  if (MAIL_TRANSPORT === 'log') { console.log(`[mail] to ${to}: ${subject}\n${text}`); return; }
+  const body = JSON.stringify({ from: MAIL_FROM, to: [to], subject, text });
+  const r = await httpsJson({ method: 'POST', hostname: 'api.resend.com', path: '/emails',
+    headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, body);
+  if (r.status >= 300) throw new Error('mail: ' + ((r.json && (r.json.message || r.json.error)) || ('HTTP ' + r.status)));
+}
+// A few links per account per quarter hour, however often the button is
+// pressed. Returns false when the send was skipped for that reason.
+async function sendVerification(req, user) {
+  if (tooMany('verify:acct:' + user.id, 3, 15 * 60000)) return false;
+  const raw = await db.createVerifyToken(user.id);
+  const link = siteOrigin(req) + '/api/auth/verify?token=' + raw;
+  await sendMail(user.email, 'Confirm your ChartGauge email',
+    `Open this link to confirm your email address and finish creating your ChartGauge account:\n\n${link}\n\n`
+    + `The link works once and expires in 24 hours. If you did not create an account, ignore this email and nothing will happen.`);
+  return true;
+}
+const VERIFY_MSG = (email) => `Check ${email} for a link to confirm your address. The link works once and expires in 24 hours.`;
+const slim = (u) => ({ id: u.id, email: u.email, plan: u.plan });
+
 async function handleSignup(req, res) {
   const b = await readBody(req);
   const email = String(b.email || '').toLowerCase().trim();
   if (throttled(res, [['signup:ip:' + clientIp(req), 5, 60 * 60000]])) return;
   if (!validEmail(email)) return json(res, 400, { error: 'Enter a valid email.' });
   if (String(b.password || '').length < 8) return json(res, 400, { error: 'Password must be at least 8 characters.' });
+  let user;
   try {
-    const user = await db.createUser(email, b.password);
+    user = await db.createUser(email, b.password, !mailEnabled());
+  } catch (e) {
+    if (e.message !== 'EMAIL_TAKEN') { logError(e); return json(res, 500, { error: 'Could not create account.' }); }
+    // An address that was registered but never confirmed is not yet anyone's.
+    // Whoever can open the inbox gets it, with the password they just chose.
+    const existing = await db.getUserByEmail(email).catch(() => null);
+    if (!existing || existing.email_verified !== false || !mailEnabled()) {
+      return json(res, 409, { error: 'That email already has an account. Try logging in.' });
+    }
+    await db.setPassword(existing.id, b.password);
+    user = existing;
+  }
+  if (!mailEnabled()) {
     const token = await db.createSession(user.id);
     setSessionCookie(req, res, token);
-    return json(res, 200, { user });
-  } catch (e) {
-    if (e.message === 'EMAIL_TAKEN') return json(res, 409, { error: 'That email already has an account. Try logging in.' });
-    return json(res, 500, { error: 'Could not create account.' });
+    return json(res, 200, { user: slim(user) });
   }
+  // No session until the link is opened: the account exists but cannot be
+  // used, so typing an address that is not yours gets you nothing.
+  try { await sendVerification(req, user); }
+  catch (e) { logError(e); return json(res, 502, { error: 'Could not send the confirmation email just now. Try again in a minute.' }); }
+  return json(res, 200, { pending: true, email: user.email, message: VERIFY_MSG(user.email) });
+}
+async function handleVerify(req, res) {
+  const q = new URLSearchParams(req.url.split('?')[1] || '');
+  const uid = await db.consumeVerifyToken(q.get('token') || '').catch(() => null);
+  const back = (state) => { res.writeHead(302, { Location: '/?verified=' + state }); res.end(); };
+  if (!uid) return back('expired');
+  await db.markVerified(uid);
+  const token = await db.createSession(uid);
+  setSessionCookie(req, res, token);
+  return back('ok');
+}
+// Always answers ok, so the endpoint does not say which addresses have accounts.
+async function handleResend(req, res) {
+  const b = await readBody(req).catch(() => ({}));
+  const email = String((b && b.email) || '').toLowerCase().trim();
+  if (throttled(res, [['resend:ip:' + clientIp(req), 10, 15 * 60000]])) return;
+  if (!validEmail(email)) return json(res, 400, { error: 'Enter a valid email.' });
+  if (mailEnabled()) {
+    const user = await db.getUserByEmail(email).catch(() => null);
+    if (user && user.email_verified === false) { try { await sendVerification(req, user); } catch (e) { logError(e); } }
+  }
+  return json(res, 200, { ok: true, message: VERIFY_MSG(email) });
 }
 async function handleLogin(req, res) {
   const b = await readBody(req);
@@ -1366,6 +1436,14 @@ async function handleLogin(req, res) {
   ])) return;
   const user = await db.getUserByEmail(b.email || '');
   if (!user || !db.verifyPw(b.password || '', user.pw)) return json(res, 401, { error: 'Wrong email or password.' });
+  if (user.email_verified === false && mailEnabled()) {
+    // Right password, unconfirmed inbox. A fresh link goes out with the
+    // refusal, so the way in is waiting where the first one went.
+    let sent = false;
+    try { sent = await sendVerification(req, user); } catch (e) { logError(e); }
+    return json(res, 403, { error: 'verify_required', pending: true, email: user.email,
+      message: 'Your email address has not been confirmed yet. ' + (sent ? 'A new link was just sent. ' : '') + VERIFY_MSG(user.email) });
+  }
   const token = await db.createSession(user.id);
   setSessionCookie(req, res, token);
   return json(res, 200, { user: { id: user.id, email: user.email, plan: isPro(user) ? 'pro' : user.plan } });
@@ -2759,6 +2837,8 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/auth/login' && req.method === 'POST') return await handleLogin(req, res);
     if (url === '/api/auth/google' && req.method === 'GET') return await handleGoogleStart(req, res);
     if (url === '/api/auth/google/callback' && req.method === 'GET') return await handleGoogleCallback(req, res);
+    if (url === '/api/auth/verify' && req.method === 'GET') return await handleVerify(req, res);
+    if (url === '/api/auth/resend' && req.method === 'POST') return await handleResend(req, res);
     if (url === '/api/auth/logout' && req.method === 'POST') return await handleLogout(req, res);
     if (url === '/api/auth/delete' && req.method === 'POST') return await handleDeleteAccount(req, res);
     if (url === '/api/auth/me' && req.method === 'GET') return await handleMe(req, res);

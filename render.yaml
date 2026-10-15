@@ -62,6 +62,8 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      - key: RESEND_API_KEY       # Resend (resend.com) — confirmation email on sign-up; dormant until set
+        sync: false
       - key: GOOGLE_SITE_VERIFICATION  # Search Console token; omit once DNS-verified
         sync: false
       - key: PRO_EMAILS           # comma-separated emails given complimentary Pro
@@ -75,5 +77,7 @@ services:
 # default and listing them would prompt for a value on every blueprint sync:
 #   AI_FREE_DAILY, ACCURACY_HORIZON, ANTHROPIC_MODEL_FREE, DATA_CREDITS_PER_MIN,
 #   DATA_USER_RESERVE, FINNHUB_PER_MIN, FREE_ALERT_MAX, FREE_WATCH_MAX,
-#   MOVERS_SYMBOLS, RANKED_REFRESH_MS, RANKED_SYMBOLS, STRIPE_PRICE_ID (legacy).
+#   MAIL_FROM (sender of the confirmation email; its domain must be verified in
+#   Resend), MAIL_TRANSPORT (resend | log | off), MOVERS_SYMBOLS,
+#   RANKED_REFRESH_MS, RANKED_SYMBOLS, STRIPE_PRICE_ID (legacy).
 # PORT is set by Render itself — never declare it.

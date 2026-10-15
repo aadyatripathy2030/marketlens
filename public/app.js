@@ -2293,6 +2293,7 @@
   }
   function openAuth(mode) {
     authMode = mode;
+    showAuthForm();
     $('authTitle').textContent = mode === 'signup' ? 'Create your account' : 'Sign in';
     $('authSubmit').textContent = mode === 'signup' ? 'Create account' : 'Sign in';
     $('authToggleText').textContent = mode === 'signup' ? 'Already have an account?' : 'New to ChartGauge?';
@@ -2302,6 +2303,36 @@
     $('authEmail').focus();
   }
   const closeAuth = () => $('authModal').classList.add('hidden');
+  // The modal has two faces: the form, and the note that replaces it once a
+  // confirmation link has gone out. Nothing is signed in while the note is up.
+  let pendingEmail = '';
+  function showPending(email, message) {
+    pendingEmail = email;
+    $('authTitle').textContent = 'Confirm your email';
+    $('authPendingText').textContent = message;
+    $('authForm').classList.add('hidden');
+    $('authSub').classList.add('hidden');
+    $('authToggleRow').classList.add('hidden');
+    $('authResend').classList.toggle('hidden', !email);
+    $('authBack').classList.toggle('hidden', !email);
+    $('authPending').classList.remove('hidden');
+  }
+  function showAuthForm() {
+    $('authForm').classList.remove('hidden');
+    $('authSub').classList.remove('hidden');
+    $('authToggleRow').classList.remove('hidden');
+    $('authPending').classList.add('hidden');
+  }
+  $('authResend').addEventListener('click', async () => {
+    $('authResend').disabled = true;
+    try {
+      const r = await fetch('/api/auth/resend', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: pendingEmail }) });
+      const j = await r.json();
+      $('authPendingText').textContent = r.ok ? 'Sent again. ' + (j.message || '') : (j.error || 'Could not send it. Try again in a minute.');
+    } catch (e) { $('authPendingText').textContent = 'Could not send it. Try again in a minute.'; }
+    finally { $('authResend').disabled = false; }
+  });
+  $('authBack').addEventListener('click', () => openAuth('signup'));
   $('authClose').addEventListener('click', closeAuth);
   $('authModal').addEventListener('click', (e) => { if (e.target === $('authModal')) closeAuth(); });
   $('authToggle').addEventListener('click', (e) => { e.preventDefault(); openAuth(authMode === 'signup' ? 'login' : 'signup'); });
@@ -2312,6 +2343,15 @@
     try {
       const r = await fetch('/api/auth/' + authMode, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
       const j = await r.json();
+      if (j.pending) {
+        // The account exists but its inbox has not confirmed it yet. The
+        // link is on its way; the modal turns into the note saying so.
+        track(authMode === 'signup' ? 'sign_up_pending' : 'login_unconfirmed', { method: 'password' });
+        $('authPass').value = '';
+        setAgreed();
+        showPending(j.email || email, j.message || 'Check your email for a confirmation link.');
+        return;
+      }
       if (!r.ok) throw new Error(j.error || 'Something went wrong.');
       currentUser = j.user; closeAuth(); renderAcct();
       setAgreed();
@@ -3317,6 +3357,27 @@
     };
     if (err) window.setTimeout(() => alert(MSG[err] || MSG.failed), 100);
     p.delete('google'); p.delete('google_error');
+    const qs = p.toString();
+    try { history.replaceState({}, '', location.pathname + (qs ? '?' + qs : '')); } catch (e) {}
+  })();
+
+  // Back from the confirmation link. The session cookie is already set, so
+  // checkAuth signs the page in; this only says so, or says why it did not.
+  (function readVerifyResult() {
+    const p = new URLSearchParams(location.search);
+    const v = p.get('verified');
+    if (!v) return;
+    window.setTimeout(() => {
+      openAuth('login');
+      if (v === 'ok') {
+        showPending('', 'Your email address is confirmed and you are signed in.');
+        $('authTitle').textContent = 'Email confirmed';
+      } else {
+        $('authErr').textContent = 'That confirmation link has expired or was already used. Sign in to get a new one.';
+        $('authErr').classList.remove('hidden');
+      }
+    }, 50);
+    p.delete('verified');
     const qs = p.toString();
     try { history.replaceState({}, '', location.pathname + (qs ? '?' + qs : '')); } catch (e) {}
   })();

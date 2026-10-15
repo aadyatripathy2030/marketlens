@@ -18,6 +18,7 @@ it works with no keys. Add keys for the real thing:
 | `STOCK_API_KEY`     | Real prices via Twelve Data (twelvedata.com — free tier).   |
 | `ANTHROPIC_API_KEY` | AI-written analysis via Claude (else a rule-based summary).  |
 | `ANTHROPIC_MODEL`   | Defaults to `claude-opus-4-8`; set a cheaper model to save.  |
+| `RESEND_API_KEY`    | Sends a confirmation link on sign-up (resend.com); accounts cannot sign in until it is opened. Off until set. `MAIL_FROM` sets the sender; `MAIL_TRANSPORT=log` prints the link instead of sending it. |
 
 Set them without pasting into any chat, e.g.:
     STOCK_API_KEY=xxxx ANTHROPIC_API_KEY=sk-ant-xxxx node server.js
