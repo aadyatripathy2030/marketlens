@@ -1353,12 +1353,20 @@ const PRO_ONLY = (what) => ({ error: 'pro_required', feature: what,
 const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || ''));
 
 // ---- Email confirmation ----
+// Email is a convenience, not a lock. When a send fails the sign-in goes
+// through the ordinary way, the same as with no mail configured, and mail is
+// treated as down for two minutes so the next sign-ins do not each wait on
+// an API call that is not working.
+let mailFailedAt = 0;
+const mailHealthy = () => mailEnabled() && Date.now() - mailFailedAt > 2 * 60000;
 async function sendMail(to, subject, text) {
   if (MAIL_TRANSPORT === 'log') { console.log(`[mail] to ${to}: ${subject}\n${text}`); return; }
-  const body = JSON.stringify({ from: MAIL_FROM, to: [to], subject, text });
-  const r = await httpsJson({ method: 'POST', hostname: 'api.resend.com', path: '/emails',
-    headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, body);
-  if (r.status >= 300) throw new Error('mail: ' + ((r.json && (r.json.message || r.json.error)) || ('HTTP ' + r.status)));
+  try {
+    const body = JSON.stringify({ from: MAIL_FROM, to: [to], subject, text });
+    const r = await httpsJson({ method: 'POST', hostname: 'api.resend.com', path: '/emails',
+      headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, body);
+    if (r.status >= 300) throw new Error('mail: ' + ((r.json && (r.json.message || r.json.error)) || ('HTTP ' + r.status)));
+  } catch (e) { mailFailedAt = Date.now(); throw e; }
 }
 // A few links per account per quarter hour, however often the button is
 // pressed. Returns false when the send was skipped for that reason.
@@ -1451,16 +1459,20 @@ async function handleSignup(req, res) {
     await db.setPassword(existing.id, b.password);
     user = existing;
   }
-  if (!mailEnabled()) {
-    const token = await db.createSession(user.id);
-    setSessionCookie(req, res, token);
-    return json(res, 200, { user: slim(user) });
+  if (mailHealthy()) {
+    // No session until the link is opened: the account exists but cannot be
+    // used, so typing an address that is not yours gets you nothing.
+    try {
+      await sendVerification(req, user);
+      return json(res, 200, { pending: true, email: user.email, message: VERIFY_MSG(user.email) });
+    } catch (e) { logError(e); }
   }
-  // No session until the link is opened: the account exists but cannot be
-  // used, so typing an address that is not yours gets you nothing.
-  try { await sendVerification(req, user); }
-  catch (e) { logError(e); return json(res, 502, { error: 'Could not send the confirmation email just now. Try again in a minute.' }); }
-  return json(res, 200, { pending: true, email: user.email, message: VERIFY_MSG(user.email) });
+  // No way to reach the inbox, so the account is usable at once, the same as
+  // when no mail is configured at all.
+  if (user.email_verified === false) await db.markVerified(user.id).catch(logError);
+  const token = await db.createSession(user.id);
+  setSessionCookie(req, res, token);
+  return json(res, 200, { user: slim(user) });
 }
 async function handleVerify(req, res) {
   const q = new URLSearchParams(req.url.split('?')[1] || '');
@@ -1494,18 +1506,20 @@ async function handleLogin(req, res) {
   ])) return;
   const user = await db.getUserByEmail(b.email || '');
   if (!user || !db.verifyPw(b.password || '', user.pw)) return json(res, 401, { error: 'Wrong email or password.' });
-  if (user.email_verified === false && mailEnabled()) {
+  if (user.email_verified === false && mailHealthy()) {
     // Right password, unconfirmed inbox. A fresh link goes out with the
-    // refusal, so the way in is waiting where the first one went.
-    let sent = false;
+    // refusal, so the way in is waiting where the first one went. If the
+    // link cannot be sent, the refusal would be a dead end, so it is not made.
+    let sent = null;
     try { sent = await sendVerification(req, user); } catch (e) { logError(e); }
-    return json(res, 403, { error: 'verify_required', pending: true, email: user.email,
+    if (sent !== null) return json(res, 403, { error: 'verify_required', pending: true, email: user.email,
       message: 'Your email address has not been confirmed yet. ' + (sent ? 'A new link was just sent. ' : '') + VERIFY_MSG(user.email) });
   }
-  if (mailEnabled()) {
-    try { await startCodeStep(req, res, user); }
-    catch (e) { logError(e); return json(res, 502, { error: 'Could not send the sign-in code just now. Try again in a minute.' }); }
-    return json(res, 200, { code_required: true, email: user.email, message: CODE_MSG(user.email) });
+  if (mailHealthy()) {
+    try {
+      await startCodeStep(req, res, user);
+      return json(res, 200, { code_required: true, email: user.email, message: CODE_MSG(user.email) });
+    } catch (e) { logError(e); }
   }
   const token = await db.createSession(user.id);
   setSessionCookie(req, res, token);
@@ -1608,13 +1622,15 @@ async function handleGoogleCallback(req, res) {
       else user = await db.createGoogleUser(email, claims.sub);
     }
     const sep = st.next.includes('?') ? '&' : '?';
-    if (mailEnabled()) {
+    if (mailHealthy()) {
       // Google vouched for the address; the code proves the inbox is still
-      // in the same hands right now, the same as a password sign-in.
-      try { await startCodeStep(req, res, user); }
-      catch (e) { logError(e); return googleFail(res, 'mail'); }
-      res.writeHead(302, { Location: st.next + sep + 'google=code' });
-      return res.end();
+      // in the same hands right now, the same as a password sign-in. If the
+      // code cannot be sent, Google's word is enough, as it was before.
+      try {
+        await startCodeStep(req, res, user);
+        res.writeHead(302, { Location: st.next + sep + 'google=code' });
+        return res.end();
+      } catch (e) { logError(e); }
     }
     const token = await db.createSession(user.id);
     setSessionCookie(req, res, token);
