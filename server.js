@@ -311,7 +311,7 @@ function knownUnknown(sym) {
   if (Date.now() > t) { unknownSymbols.delete(sym); return false; }
   return true;
 }
-const noSuchTicker = (sym) => ({ error: `No such ticker: ${sym}. Check the symbol — try AAPL, TSLA, or BTC/USD for crypto.`, kind: 'not_found' });
+const noSuchTicker = (sym) => ({ error: `No such ticker: ${sym}. Check the symbol, or try AAPL, TSLA, or BTC/USD for crypto.`, kind: 'not_found' });
 
 // Does this symbol actually exist? Used before saving one, so a typo cannot be
 // stored forever. Answers from the rejected-symbol memory or the bars cache
@@ -431,7 +431,7 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
     return json(res, 404, noSuchTicker(symbol));
   } else {
     data = buildDemo(symbol, interval);
-    note = 'Demo data — set STOCK_API_KEY (twelvedata.com, free) for real prices.';
+    note = 'Demo data. Set STOCK_API_KEY (twelvedata.com, free) for real prices.';
   }
   const closes = data.prices.map(p => p.close);
   const last = closes[closes.length - 1];
@@ -491,14 +491,14 @@ function ruleBasedSummary(p) {
   const trendUp = sma[50] != null && sma[200] != null ? sma[50] > sma[200] : null;
   const rsi = t.rsi14;
   const lead = r.insufficient
-    ? `${sym} does not have enough price history for a technical read — only ${r.groupCount} of ${r.groupsPossible} indicator groups could be computed, so no score is shown. `
-    : `${sym} scores ${r.score}/100 on the technical composite — a "${r.label}" read, with ${r.agreeing} of its ${r.groupCount} indicator groups pointing that way. `;
+    ? `${sym} does not have enough price history for a technical read: only ${r.groupCount} of ${r.groupsPossible} indicator groups could be computed, so no score is shown. `
+    : `${sym} scores ${r.score}/100 on the technical composite, a "${r.label}" read, with ${r.agreeing} of its ${r.groupCount} indicator groups pointing that way. `;
   const trend = trendUp == null ? '' : trendUp ? 'The long-term trend is up (50-day above the 200-day), ' : 'The long-term trend is down (50-day below the 200-day), ';
-  const mom = rsi == null ? '' : rsi >= 70 ? `and momentum is hot — RSI at ${rsi} is overbought, so a pullback wouldn't surprise. `
-    : rsi <= 30 ? `and momentum is washed out — RSI at ${rsi} is oversold, which can precede a bounce. `
+  const mom = rsi == null ? '' : rsi >= 70 ? `and momentum is hot: RSI at ${rsi} is overbought, so a pullback wouldn't surprise. `
+    : rsi <= 30 ? `and momentum is washed out: RSI at ${rsi} is oversold, which can precede a bounce. `
     : rsi >= 50 ? `and momentum is firm (RSI ${rsi}). ` : `but momentum is soft (RSI ${rsi}). `;
   const volTxt = t.volatility ? `Volatility is ${t.volatility.annual < 25 ? 'low' : t.volatility.annual < 45 ? 'moderate' : 'elevated'} (~${Math.round(t.volatility.annual)}% annualized). ` : '';
-  const closer = `It's a mechanical blend of trend, momentum, and volatility — a starting point for your research, not a call to act.`;
+  const closer = `It's a mechanical blend of trend, momentum, and volatility, a starting point for your research, not a call to act.`;
   return `${lead}${trend}${mom}${volTxt}${closer}`;
 }
 // Rule-based bull/bear/conclusion from the computed technicals (no AI needed).
@@ -510,7 +510,7 @@ function ruleBasedReport(p) {
   if (sma[50] != null && sma[200] != null) (sma[50] > sma[200] ? bull : bear).push(`Long-term trend is ${sma[50] > sma[200] ? 'up (golden-cross regime)' : 'down (death-cross regime)'}.`);
   if (macd && macd.hist != null) (macd.hist > 0 ? bull : bear).push(`MACD momentum ${macd.hist > 0 ? 'favors buyers (histogram positive)' : 'favors sellers (histogram negative)'}.`);
   if (t.vwap != null && t.price != null) (t.price > t.vwap ? bull : bear).push(`Price is trading ${t.price > t.vwap ? 'above' : 'below'} VWAP.`);
-  if (t.rsi14 != null) { if (t.rsi14 >= 70) bear.push(`RSI is overbought (${t.rsi14}) — pullback risk.`); else if (t.rsi14 <= 30) bull.push(`RSI is oversold (${t.rsi14}) — possible bounce.`); else (t.rsi14 >= 50 ? bull : bear).push(`RSI momentum is ${t.rsi14 >= 50 ? 'firm' : 'soft'} (${t.rsi14}).`); }
+  if (t.rsi14 != null) { if (t.rsi14 >= 70) bear.push(`RSI is overbought (${t.rsi14}), so there is pullback risk.`); else if (t.rsi14 <= 30) bull.push(`RSI is oversold (${t.rsi14}), so a bounce is possible.`); else (t.rsi14 >= 50 ? bull : bear).push(`RSI momentum is ${t.rsi14 >= 50 ? 'firm' : 'soft'} (${t.rsi14}).`); }
   if (trend && trend.strength >= 45) (trend.direction === 'up' ? bull : bear).push(`Price is trending ${trend.direction} cleanly (trend strength ${trend.strength}/100).`);
   if (t.volatility) (t.volatility.annual >= 45 ? bear : bull).push(`Volatility is ${t.volatility.annual >= 45 ? 'elevated' : 'contained'} (~${Math.round(t.volatility.annual)}% annualized).`);
   if (!bull.length) bull.push('No clear buy signals right now.');
@@ -520,7 +520,7 @@ function ruleBasedReport(p) {
     : "";
   const conclusion = r.insufficient
     ? `There is not enough price history for ${p.symbol} to score it; ${r.groupCount} of ${r.groupsPossible} indicator groups could be computed.`
-    : `The technical model scores ${p.symbol} ${r.score}/100 — a "${r.label}" read, ${r.agreeing} of ${r.groupCount} indicator groups agreeing, ${String(r.risk).toLowerCase()} risk.`
+    : `The technical model scores ${p.symbol} ${r.score}/100, a "${r.label}" read, ${r.agreeing} of ${r.groupCount} indicator groups agreeing, ${String(r.risk).toLowerCase()} risk.`
     + edgeLine
     + " This is a mechanical read of price action, not advice; confirm with your own research.";
   return { summary: ruleBasedSummary(p), bull: bull.slice(0, 4), bear: bear.slice(0, 4), conclusion };
@@ -529,11 +529,11 @@ function ruleBasedReport(p) {
 function reportPrompt(p) {
   const t = p.tech || {}, r = p.rating || {}, sma = t.sma || {};
   const fmt = (x) => x == null ? 'n/a' : (typeof x === 'number' ? x.toFixed(2) : x);
-  const system = 'You are a sharp, balanced equity analyst writing for curious beginners. You will be given a stock and a set of already-computed technical indicators plus a mechanical rating. Respond with ONLY a JSON object (no markdown, no prose outside it) of the form: {"summary": string (3-4 lively plain-English sentences on where the stock stands and what is driving the rating), "bull": [3 short bullet strings — the strongest reasons it could go up], "bear": [3 short bullet strings — the strongest risks], "conclusion": string (2 sentences tying it together)}. Ground every point in the numbers provided; do not invent fundamentals, news, or price targets. Be explicit in the conclusion that this is a mechanical technical read, often wrong, and NOT financial advice.';
+  const system = 'You are a sharp, balanced equity analyst writing for curious beginners. You will be given a stock and a set of already-computed technical indicators plus a mechanical rating. Respond with ONLY a JSON object (no markdown, no prose outside it) of the form: {"summary": string (3-4 lively plain-English sentences on where the stock stands and what is driving the rating), "bull": [2 to 4 short bullet strings: the strongest reasons it could go up, as many as the numbers support], "bear": [2 to 4 short bullet strings: the strongest risks, as many as the numbers support], "conclusion": string (2 sentences tying it together)}. Ground every point in the numbers provided; do not invent fundamentals, news, or price targets. Be explicit in the conclusion that this is a mechanical technical read, often wrong, and NOT financial advice. Write in plain sentences and do not use em dashes.';
   const user = `SYMBOL: ${p.symbol} @ ${fmt(p.latest)} ${p.currency} (${fmt(p.changePct)}% today)\n`
     + (r.insufficient
-        ? `RATING: none — not enough price history (${r.groupCount} of ${r.groupsPossible} indicator groups computable). Say plainly that there is too little history to read, and do not invent a rating.\n`
-        : `RATING: ${r.label} — score ${r.score}/100, ${r.agreeing}/${r.groupCount} indicator groups agreeing, risk ${r.risk}\n`)
+        ? `RATING: none. Not enough price history (${r.groupCount} of ${r.groupsPossible} indicator groups computable). Say plainly that there is too little history to read, and do not invent a rating.\n`
+        : `RATING: ${r.label}, score ${r.score}/100, ${r.agreeing}/${r.groupCount} indicator groups agreeing, risk ${r.risk}\n`)
     + `RSI14: ${fmt(t.rsi14)} | SMA20 ${fmt(sma[20])} / SMA50 ${fmt(sma[50])} / SMA200 ${fmt(sma[200])}\n`
     + `MACD hist: ${fmt(t.macd && t.macd.hist)} | VWAP: ${fmt(t.vwap)} | Bollinger %B: ${fmt(t.bollinger && t.bollinger.pctB)}\n`
     + `ATR: ${fmt(t.atr)} | Volatility(annual %): ${fmt(t.volatility && t.volatility.annual)} | Trend: ${t.trend ? t.trend.strength + '/100 ' + t.trend.direction : 'n/a'}\n`
@@ -715,7 +715,7 @@ async function handleAnalyze(req, res) {
 
 // ---- Uploaded-chart analysis (Claude vision) ----
 async function callClaudeVision(base64, mediaType) {
-  const system = 'You are a cautious technical-analysis assistant reading a stock chart image. Describe what you see: overall trend, notable support/resistance levels, chart patterns, and what the visible momentum suggests. Then give a single mechanical read — "Buy", "Sell", or "Mixed" — naming which way the visible price action points, based ONLY on the visible price action, and explain why in one sentence. Be explicit that this is a mechanical read of one image, is frequently wrong, and is NOT financial advice. Keep it to 4-6 sentences. If the image is not a stock/price chart, say so instead.';
+  const system = 'You are a cautious technical-analysis assistant reading a stock chart image. Write in plain sentences and do not use em dashes. Describe what you see: overall trend, notable support/resistance levels, chart patterns, and what the visible momentum suggests. Then give a single mechanical read ("Buy", "Sell", or "Mixed") naming which way the visible price action points, based ONLY on the visible price action, and explain why in one sentence. Be explicit that this is a mechanical read of one image, is frequently wrong, and is NOT financial advice. Keep it to 4-6 sentences. If the image is not a stock/price chart, say so instead.';
   const user = 'Analyze this chart and give your read plus a buy / sell / mixed description of what it shows.';
   const body = JSON.stringify({
     model: AI_MODEL, max_tokens: 500, system,
@@ -739,7 +739,7 @@ async function handleAnalyzeImage(req, res) {
     return json(res, 400, { error: 'Upload a PNG, JPEG, GIF, or WebP image.' });
   }
   // Base64 payload guard: ~5MB decoded is Anthropic's per-image ceiling.
-  if (p.image.length > 7e6) return json(res, 413, { error: 'Image too large — please use one under ~5 MB.' });
+  if (p.image.length > 7e6) return json(res, 413, { error: 'Image too large. Please use one under 5 MB.' });
   if (!ANTHROPIC_API_KEY) {
     return json(res, 200, { source: 'none',
       summary: 'Image analysis needs Claude vision. Set ANTHROPIC_API_KEY on the server to analyze uploaded charts. (Ticker analysis above works without a key.)' });
@@ -818,7 +818,7 @@ function sentimentByWords(items) {
 async function sentimentByClaude(items, symbol) {
   const list = items.map((n, i) => (i + 1) + '. ' + n.title).join('\n');
   const system = 'You classify stock news headlines. For each numbered headline, answer with its number, a colon, '
-    + 'and exactly one of: positive, negative, neutral — judged only by what the headline says about the company\'s '
+    + 'and exactly one of: positive, negative, neutral, judged only by what the headline says about the company\'s '
     + 'prospects. One per line, nothing else. Do not predict the share price.';
   const user = 'Company: ' + symbol + '\n\n' + list;
   const body = JSON.stringify({ model: AI_MODEL_FREE, max_tokens: 400, system,
@@ -1304,10 +1304,10 @@ async function currentUser(req) { return db.getSessionUser(parseCookies(req).ses
 // reports, reading an uploaded chart, and the screener and compare
 // pages (which fan out into dozens of price-API calls). Everything that is
 // pure computation on data already fetched — the chart, every indicator, the
-// levels, the measured base rate, the lessons — stays free for everyone,
-// with or without an account.
+// levels, the measured base rate, the lessons) stays free with any account.
+// The bare chart is open to anyone.
 const AI_FREE_DAILY = Number(process.env.AI_FREE_DAILY || 3);
-const aiLimitNote = () => `That is today's ${AI_FREE_DAILY} written reports. This one is the rule-based read, which is always free and always available — Pro lifts the daily limit.`;
+const aiLimitNote = () => `That is today's ${AI_FREE_DAILY} written reports. This one is the rule-based read, which is always free and always available. Pro lifts the daily limit.`;
 const FREE_WATCH_MAX = Number(process.env.FREE_WATCH_MAX || 10);
 const FREE_ALERT_MAX = Number(process.env.FREE_ALERT_MAX || 3);
 
@@ -1337,7 +1337,7 @@ async function requireAccount(req, res) {
 }
 
 const PRO_ONLY = (what) => ({ error: 'pro_required', feature: what,
-  message: `${what} is part of Pro. Everything else on ChartGauge — the chart, the indicators, the levels and the measured base rate — stays free.` });
+  message: `${what} is part of Pro. Everything else on ChartGauge (the chart, the indicators, the levels and the measured base rate) stays free.` });
 
 const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || ''));
 async function handleSignup(req, res) {
@@ -1352,7 +1352,7 @@ async function handleSignup(req, res) {
     setSessionCookie(req, res, token);
     return json(res, 200, { user });
   } catch (e) {
-    if (e.message === 'EMAIL_TAKEN') return json(res, 409, { error: 'That email already has an account — try logging in.' });
+    if (e.message === 'EMAIL_TAKEN') return json(res, 409, { error: 'That email already has an account. Try logging in.' });
     return json(res, 500, { error: 'Could not create account.' });
   }
 }
@@ -2014,7 +2014,7 @@ async function handleRanked(req, res) {
   // early. Better to say it is still gathering.
   if (rows.length < 6) {
     return json(res, 200, { available: false, building: true,
-      message: 'Ratings are still being gathered — check back in a minute.' });
+      message: 'Ratings are still being gathered. Check back in a minute.' });
   }
   const byScore = rows.slice().sort((a, b) => b.score - a.score);
   return json(res, 200, {
@@ -2357,31 +2357,31 @@ const LEGAL = require('./legal');
 const siteOrigin = (req) => (req.headers['x-forwarded-proto'] || 'http') + '://' + (req.headers.host || 'chartgauge.com');
 
 const VIEW_SEO = {
-  '': { view: 'home', title: 'ChartGauge — stock charts, indicators and a plain-English read',
-    desc: 'Stock and crypto charts: thirteen indicators, stop-loss and take-profit levels, all in plain English \u2014 plus a public record of how often the reading was right.' },
-  'analyze': { view: 'analyze', title: 'Analyze a stock or crypto pair — ChartGauge',
+  '': { view: 'home', title: 'ChartGauge | stock charts, indicators and a plain-English read',
+    desc: 'Stock and crypto charts: thirteen indicators, stop-loss and take-profit levels, all in plain English, plus a public record of how often the reading was right.' },
+  'analyze': { view: 'analyze', title: 'Analyze a stock or crypto pair | ChartGauge',
     desc: 'Enter a ticker or crypto pair for a candlestick chart, 13 technical indicators, an indicator score, and stop-loss and take-profit levels derived from ATR and recent swing highs and lows.' },
-  'markets': { view: 'markets', title: 'Market snapshot — indices and trending stocks — ChartGauge',
+  'markets': { view: 'markets', title: 'Market snapshot: indices and trending stocks | ChartGauge',
     desc: 'Live quotes for the major US indices and the most active stocks, with the percentage move on the day.' },
-  'compare': { view: 'compare', title: 'Compare stocks side by side — ChartGauge',
+  'compare': { view: 'compare', title: 'Compare stocks side by side | ChartGauge',
     desc: 'Put two or more tickers next to each other on market cap, revenue, P/E, PEG, margins, ROE, debt to equity, dividend yield and beta.' },
-  'screener': { view: 'screener', title: 'Stock screener — filter by sector, market cap and price — ChartGauge',
+  'screener': { view: 'screener', title: 'Stock screener: filter by sector, market cap and price | ChartGauge',
     desc: 'Filter a curated universe of stocks by sector, market capitalisation and price range to find candidates worth a closer look.' },
-  'alerts': { view: 'alerts', title: 'Price alerts — ChartGauge',
+  'alerts': { view: 'alerts', title: 'Price alerts | ChartGauge',
     desc: 'Set a target above or below the current price and get flagged when a stock crosses it.' },
-  'watchlist': { view: 'watchlist', title: 'Your watchlist — ChartGauge',
+  'watchlist': { view: 'watchlist', title: 'Your watchlist | ChartGauge',
     desc: 'Keep the tickers you follow in one place, with live prices and one-click analysis.' },
-  'learn': { view: 'learn', title: 'Learn investing — free plain-English lessons — ChartGauge',
-    desc: 'Nineteen short lessons covering market basics, technical and fundamental analysis, valuation, financial statements, risk management, order types, candlesticks, volume, trading psychology, costs and index funds — each with a quiz.' },
-  'practice': { view: 'practice', title: 'Paper trading — practice with pretend money — ChartGauge',
+  'learn': { view: 'learn', title: 'Learn investing: free plain-English lessons | ChartGauge',
+    desc: 'Nineteen short lessons covering market basics, technical and fundamental analysis, valuation, financial statements, risk management, order types, candlesticks, volume, trading psychology, costs and index funds, each with a quiz.' },
+  'practice': { view: 'practice', title: 'Paper trading: practice with pretend money | ChartGauge',
     desc: 'A practice account with a starting balance you choose. Fills use the live price, positions are valued in real time, and a risk meter measures the book against limits you set. None of it is real money.' },
-  'settings': { view: 'settings', title: 'Settings — choose what the analysis shows — ChartGauge',
+  'settings': { view: 'settings', title: 'Settings: choose what the analysis shows | ChartGauge',
     desc: 'Turn any part of the analysis on or off: the indicator score, the measured base rate, exit levels, the thirteen technical readings, the projection, fundamentals, news and the written summary.' },
-  'accuracy': { view: 'accuracy', title: 'How accurate is ChartGauge? — the measured record',
+  'accuracy': { view: 'accuracy', title: 'How accurate is ChartGauge? The measured record',
     desc: 'Every reading ChartGauge has shown is written down before the outcome is known, then graded against what the price actually did 20 trading days later. The running record is published here, including when the score does worse than doing nothing.' },
-  'movers': { view: 'movers', title: 'What is moving right now — ChartGauge',
+  'movers': { view: 'movers', title: 'What is moving right now | ChartGauge',
     desc: 'A live scan of the most active US stocks ranked by unusual volume, the size of the move and where price sits in the day range. A description of what is happening, not a prediction of what happens next.' },
-  'pricing': { view: 'pricing', title: 'Plans and billing — ChartGauge',
+  'pricing': { view: 'pricing', title: 'Plans and billing | ChartGauge',
     desc: 'What a free ChartGauge account includes, what Pro adds, and what each billing period costs per month. Charts, indicators, stop-loss and take-profit levels and the measured base rate are free on any account.' },
 };
 
@@ -2390,7 +2390,7 @@ function lessonSeo(id) {
   if (!l) return null;
   return {
     view: 'learn', lesson: l,
-    title: `${l.title} — ${l.level} investing lesson — ${SITE_NAME}`,
+    title: `${l.title}: ${l.level} investing lesson | ${SITE_NAME}`,
     desc: `${l.intro} A free ${l.minutes}-minute ${String(l.level).toLowerCase()} lesson with a ${l.quiz.length}-question quiz. ${APPLIES_WORD[l.applies] || ''}.`,
   };
 }
@@ -2424,7 +2424,7 @@ function seoFor(urlPath, req) {
     const sym = parts.slice(1).join('/').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
     if (sym) return {
       view: 'analyze', symbol: sym,
-      title: `${sym} chart, indicators and stop-loss levels — ${SITE_NAME}`,
+      title: `${sym} chart, indicators and stop-loss levels | ${SITE_NAME}`,
       desc: `${sym} candlestick chart with SMA, RSI, MACD, Bollinger bands, ATR and VWAP, an indicator score, and ATR-based stop-loss and take-profit levels. Educational, not financial advice.`,
       canonical: `${origin}/stock/${sym}`,
     };
@@ -2493,7 +2493,7 @@ function seoHead(seo, origin) {
     `<meta property="og:image" content="${esc(img)}" />`,
     `<meta property="og:image:width" content="1200" />`,
     `<meta property="og:image:height" content="630" />`,
-    `<meta property="og:image:alt" content="ChartGauge — charts that show their work" />`,
+    `<meta property="og:image:alt" content="ChartGauge: charts that show their work" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:title" content="${esc(seo.title)}" />`,
     `<meta name="twitter:description" content="${esc(seo.desc)}" />`,
@@ -2542,7 +2542,7 @@ function notFound(req, res) {
   const origin = siteOrigin(req);
   const body = `<!doctype html><html lang="en"><head><meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Page not found \u2014 ${SITE_NAME}</title>
+<title>Page not found | ${SITE_NAME}</title>
 <meta name="robots" content="noindex" />
 <link rel="canonical" href="${esc(origin)}/" />
 <link rel="stylesheet" href="/styles.css" />
@@ -2631,12 +2631,12 @@ function accuracyHtml(st, horizon) {
   const best = st.labels.slice().sort((a, b) => (b.mean ?? -1e9) - (a.mean ?? -1e9))[0];
   return `<div class="acc-ssr">`
     + `<p><strong>${st.graded}</strong> of ${st.recorded} recorded readings have reached their `
-    + `${horizon}-trading-day outcome. Across all of them the average return was <strong>${pc(st.baseline)}</strong> — `
-    + `that is what you would have had without consulting the score at all.</p>`
+    + `${horizon}-trading-day outcome. Across all of them the average return was <strong>${pc(st.baseline)}</strong>, `
+    + `which is what you would have had without consulting the score at all.</p>`
     + `<table class="acc-table"><thead><tr><th>Reading</th><th>Count</th><th>Average return</th><th>vs doing nothing</th><th>Higher after</th></tr></thead>`
     + `<tbody>${rows}</tbody></table>`
     + (best ? `<p>Strongest by average return so far: <strong>${esc(best.label)}</strong> at ${pc(best.mean)}. `
-      + `If that is not the strongest buy reading, the score is not ordering outcomes the way its wording implies — `
+      + `If that is not the strongest buy reading, the score is not ordering outcomes the way its wording implies, `
       + `which is exactly the sort of thing this page exists to show.</p>` : '')
     + `</div>`;
 }

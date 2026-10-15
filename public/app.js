@@ -119,7 +119,7 @@
       h.className = 'wall-h'; h.textContent = 'Sign in to see this';
       const p = document.createElement('p');
       p.className = 'wall-p';
-      p.textContent = 'This needs an account. It is free — an email address and a password.';
+      p.textContent = 'This needs an account. It is free: an email address and a password.';
       const btns = document.createElement('div');
       btns.className = 'wall-btns';
       const mk = (label, cls, mode) => {
@@ -188,19 +188,19 @@
     const f2 = (v) => v == null ? '—' : (+v).toFixed(2);
     const items = [];
     const add = (name, val, note, cls) => items.push({ name, val, note, cls: cls || '' });
-    if (t.rsi14 != null) add('RSI (14)', t.rsi14, t.rsi14 >= 70 ? 'Overbought — stretched up, pullback risk' : t.rsi14 <= 30 ? 'Oversold — stretched down, possible bounce' : t.rsi14 >= 50 ? 'Firm momentum, buyers in control' : 'Soft momentum, sellers leaning in', t.rsi14 >= 70 ? 'bear' : t.rsi14 <= 30 ? 'bull' : t.rsi14 >= 50 ? 'bull' : 'bear');
-    if (t.macd) add('MACD', f2(t.macd.hist), t.macd.hist > 0 ? 'Buy — MACD above its signal line' : 'Sell — MACD below its signal line', t.macd.hist > 0 ? 'bull' : 'bear');
+    if (t.rsi14 != null) add('RSI (14)', t.rsi14, t.rsi14 >= 70 ? 'Overbought: stretched up, pullback risk' : t.rsi14 <= 30 ? 'Oversold: stretched down, possible bounce' : t.rsi14 >= 50 ? 'Firm momentum, buyers in control' : 'Soft momentum, sellers leaning in', t.rsi14 >= 70 ? 'bear' : t.rsi14 <= 30 ? 'bull' : t.rsi14 >= 50 ? 'bull' : 'bear');
+    if (t.macd) add('MACD', f2(t.macd.hist), t.macd.hist > 0 ? 'Buy: MACD above its signal line' : 'Sell: MACD below its signal line', t.macd.hist > 0 ? 'bull' : 'bear');
     if (t.sma && t.sma[20] != null && t.sma[50] != null) add('SMA 20 / 50', f2(t.sma[20]) + ' / ' + f2(t.sma[50]), t.sma[20] > t.sma[50] ? 'Short-term uptrend (20 above 50)' : 'Short-term downtrend (20 below 50)', t.sma[20] > t.sma[50] ? 'bull' : 'bear');
-    if (t.sma && t.sma[200] != null) add('SMA 200', f2(t.sma[200]), t.price > t.sma[200] ? 'Price above 200-day — long-term uptrend' : 'Price below 200-day — long-term downtrend', t.price > t.sma[200] ? 'bull' : 'bear');
-    if (t.ema && t.ema[20] != null && t.ema[50] != null) add('EMA 20 / 50', f2(t.ema[20]) + ' / ' + f2(t.ema[50]), t.ema[20] > t.ema[50] ? 'Fast EMA above slow — momentum up' : 'Fast EMA below slow — momentum down', t.ema[20] > t.ema[50] ? 'bull' : 'bear');
-    if (t.bollinger) { const pb = t.bollinger.pctB; add('Bollinger %B', Math.round(pb * 100) + '%', pb > 1 ? 'Above upper band — overextended' : pb < 0 ? 'Below lower band — oversold stretch' : pb > 0.8 ? 'Near upper band' : pb < 0.2 ? 'Near lower band' : 'Mid-range, no extreme', pb > 1 ? 'bear' : pb < 0 ? 'bull' : ''); }
-    if (t.vwap != null) add('VWAP', f2(t.vwap), t.price > t.vwap ? 'Price above VWAP — buyers in control' : 'Price below VWAP — sellers in control', t.price > t.vwap ? 'bull' : 'bear');
+    if (t.sma && t.sma[200] != null) add('SMA 200', f2(t.sma[200]), t.price > t.sma[200] ? 'Price above 200-day, long-term uptrend' : 'Price below 200-day, long-term downtrend', t.price > t.sma[200] ? 'bull' : 'bear');
+    if (t.ema && t.ema[20] != null && t.ema[50] != null) add('EMA 20 / 50', f2(t.ema[20]) + ' / ' + f2(t.ema[50]), t.ema[20] > t.ema[50] ? 'Fast EMA above slow, momentum up' : 'Fast EMA below slow, momentum down', t.ema[20] > t.ema[50] ? 'bull' : 'bear');
+    if (t.bollinger) { const pb = t.bollinger.pctB; add('Bollinger %B', Math.round(pb * 100) + '%', pb > 1 ? 'Above upper band, overextended' : pb < 0 ? 'Below lower band, oversold stretch' : pb > 0.8 ? 'Near upper band' : pb < 0.2 ? 'Near lower band' : 'Mid-range, no extreme', pb > 1 ? 'bear' : pb < 0 ? 'bull' : ''); }
+    if (t.vwap != null) add('VWAP', f2(t.vwap), t.price > t.vwap ? 'Price above VWAP, buyers in control' : 'Price below VWAP, sellers in control', t.price > t.vwap ? 'bull' : 'bear');
     if (t.atr != null) add('ATR (14)', f2(t.atr), '~' + (t.atr / t.price * 100).toFixed(1) + '% typical daily move', '');
     if (t.supportResistance) { const s = t.supportResistance; add('Support / Resistance', f2(s.support) + ' / ' + f2(s.resistance), ((t.price - s.support) / t.price * 100).toFixed(1) + '% above support · ' + ((s.resistance - t.price) / t.price * 100).toFixed(1) + '% below resistance', ''); }
     if (t.fibonacci) { const L = t.fibonacci.levels; add('Fibonacci', f2(L['61.8%']) + ' / ' + f2(L['50.0%']) + ' / ' + f2(L['38.2%']), 'Retracement levels (61.8 / 50 / 38.2%)', ''); }
-    if (t.volatility) { const a = t.volatility.annual; add('Volatility', a.toFixed(0) + '%', (a < 25 ? 'Low' : a < 45 ? 'Moderate' : a < 70 ? 'High' : 'Very high') + ' — annualized', a >= 45 ? 'bear' : ''); }
+    if (t.volatility) { const a = t.volatility.annual; add('Volatility', a.toFixed(0) + '%', (a < 25 ? 'Low' : a < 45 ? 'Moderate' : a < 70 ? 'High' : 'Very high') + ', annualized', a >= 45 ? 'bear' : ''); }
     if (t.trend) add('Trend strength', t.trend.strength + '/100', (t.trend.strength >= 60 ? 'Strong' : t.trend.strength >= 35 ? 'Moderate' : 'Weak') + ' ' + t.trend.direction + 'trend', t.trend.strength >= 35 ? (t.trend.direction === 'up' ? 'bull' : 'bear') : '');
-    if (t.volume != null && t.avgVolume != null) add('Volume', (t.volume / 1e6).toFixed(1) + 'M', t.volume > t.avgVolume ? 'Above 20-day average — active' : 'Below average — quiet', '');
+    if (t.volume != null && t.avgVolume != null) add('Volume', (t.volume / 1e6).toFixed(1) + 'M', t.volume > t.avgVolume ? 'Above 20-day average, active' : 'Below average, quiet', '');
     $('techGrid').innerHTML = items.map(it => `<div class="tech-item"><div class="tech-top"><span class="tech-name">${esc(it.name)}</span><span class="tech-val">${esc(String(it.val))}</span></div><div class="tech-note ${it.cls}">${esc(it.note)}</div></div>`).join('');
   }
 
@@ -243,7 +243,7 @@
     el.innerHTML = `<a class="edge-more" href="/accuracy">What is this?</a>`
       + `Measured on this symbol's own history: at scores near <b>${rt.score}</b>, it was higher `
       + `${e.horizon} bars later <b>${e.winRate}%</b> of the time across <b>${e.n}</b> past occurrences. `
-      + `On any bar it was higher <b>${e.baseWinRate}%</b> of the time — so this setup ${verdict}.`;
+      + `On any bar it was higher <b>${e.baseWinRate}%</b> of the time, so this setup ${verdict}.`;
   }
 
   // Buy / Sell / Hold, and the measurement it came from on the same line, so
@@ -272,7 +272,7 @@
       `<div class="lv"><div class="lv-top"><span class="lv-name">${esc(name)}</span><span class="lv-val ${cls || ''}">${esc(val)}</span></div>${note ? `<div class="lv-note">${esc(note)}</div>` : ''}</div>`;
 
     const rows = [
-      cell('Entry (last)', f(L.entry), '', `ATR ${f(L.atr)} — the average daily range this is sized from`),
+      cell('Entry (last)', f(L.entry), '', `ATR ${f(L.atr)}, the average daily range this is sized from`),
       cell('Stop loss', f(L.stop), 'stop',
         `${f(L.stopPct)}% away · risk ${f(L.riskPerShare)} ${ccy} per share · ` +
         (L.method === 'structure'
@@ -284,7 +284,7 @@
     }
     rows.push(L.structureTarget
       ? cell('Swing level ahead', f(L.structureTarget.price), 'target',
-          `${f(L.structureTarget.pct)}% away · ${f(L.structureTarget.r)}R — the 60-bar ${dirWord === 'long' ? 'high' : 'low'}, where price has turned before`)
+          `${f(L.structureTarget.pct)}% away · ${f(L.structureTarget.r)}R, the 60-bar ${dirWord === 'long' ? 'high' : 'low'}, where price has turned before`)
       : cell('Swing level ahead', 'none', '',
           `Price is already outside its 60-bar range, so there is no prior level ahead of it to aim at`));
 
@@ -711,7 +711,7 @@
     { v: 'practice', t: 'Practice',  d: 'A practice account with pretend money, so you can rehearse position sizing against your own risk limits. Nothing here touches a broker.' },
     { v: 'learn', t: 'Learn',     d: 'Nineteen plain-English lessons with quizzes, split by whether they apply to day trading or long-term investing.' },
     { v: 'pricing', t: 'Billing',   d: 'What a free account includes, what Pro adds, and what each billing period works out to per month.' },
-    { v: 'settings', t: 'Settings',  d: 'Turn any part of the analysis on or off \u2014 the score, the indicators, the projection, the summary.' },
+    { v: 'settings', t: 'Settings',  d: 'Turn any part of the analysis on or off: the score, the indicators, the projection, the summary.' },
     { v: 'admin', t: 'Admin',     d: 'Registered accounts, service status, usage and recent errors.', admin: true },
   ];
 
@@ -1633,7 +1633,7 @@
   // waited out in full), so say so rather than showing a bare spinner-word
   // that looks identical to a dead request.
   function setAnalysisPending() {
-    $('aiBody').textContent = 'Writing the summary — this usually takes a few seconds.';
+    $('aiBody').textContent = 'Writing the summary. This usually takes a few seconds.';
     $('aiTag').textContent = '';
     $('bullList').innerHTML = '<li>Working…</li>';
     $('bearList').innerHTML = '<li>Working…</li>';
@@ -1663,8 +1663,8 @@
 
   const SOURCE_LABEL = {
     ai: 'written by Claude',
-    'ai-partial': 'written by Claude — reply was cut short',
-    rule: 'rule-based fallback — no model key set',
+    'ai-partial': 'written by Claude, reply was cut short',
+    rule: 'rule-based fallback, no model key set',
   };
   function applyReport(j) {
     $('aiBody').textContent = j.summary || 'No analysis available.';
@@ -1823,7 +1823,7 @@
       // in fact loaded fine a moment later.
       if (e && e.gated) return;      // the wall is handling it; a retry follows
       console.error('practice: loadPaper failed', e);
-      paperMsg('Could not load the practice account — ' + (e && e.message ? e.message : e), true);
+      paperMsg('Could not load the practice account: ' + (e && e.message ? e.message : e), true);
     }
   }
 
@@ -2086,7 +2086,7 @@
     const cash = paperState && paperState.account ? paperState.account.cash : 0;
     const cost = q * px;
     el.innerHTML = 'About <b>' + pMoney(cost) + '</b> at ' + pMoney(px)
-      + (cost > cash ? ' <span class="over">— more than your cash</span>' : '');
+      + (cost > cash ? ' <span class="over">(more than your cash)</span>' : '');
   }
 
   // The server checks cash against what it read before fetching a quote, so
@@ -2535,8 +2535,8 @@
       + d.weak.map(rankedCard).join('') + `</div>`;
     note.innerHTML = `Highest and lowest of ${d.scanned || ''} stocks scanned. `
       + `These are ChartGauge\u2019s own indicator scores, not advice. `
-      + `Measured across 36,524 past setups, this score did not predict which way price went next \u2014 `
-      + `open any symbol to see the base rate for its own history. Nothing here is a recommendation to buy or sell.`;
+      + `Measured across 36,524 past setups, this score did not predict which way price went next. `
+      + `Open any symbol to see the base rate for its own history. Nothing here is a recommendation to buy or sell.`;
     body.querySelectorAll('.rk').forEach(el =>
       el.addEventListener('click', () => goAnalyze(el.dataset.s)));
   }
@@ -2732,7 +2732,7 @@
     try { data = await (await fetch('/api/compare?symbols=' + encodeURIComponent(compareSymbols.join(',')))).json(); } catch { $('compareResult').innerHTML = `<p class="compare-note">Couldn’t load comparison.</p>`; return; }
     if (isProGate(data)) { $('compareResult').innerHTML = proGateHtml(data); return; }
     const rows = (data.compare || []).filter(r => !r.error);
-    if (rows.length < 2) { $('compareResult').innerHTML = `<p class="compare-note">Couldn’t load enough data — check the tickers.</p>`; return; }
+    if (rows.length < 2) { $('compareResult').innerHTML = `<p class="compare-note">Couldn’t load enough data. Check the tickers.</p>`; return; }
     let html = `<div class="compare-scroll"><table class="compare-table"><thead><tr><th></th>` +
       rows.map(r => `<th data-s="${esc(r.symbol)}">${esc(r.symbol)}<span class="ct-name">${esc(r.name || '')}</span></th>`).join('') + `</tr></thead><tbody>`;
     html += ctRow('Price', rows.map(r => '$' + (+r.price).toFixed(2)));
@@ -2764,7 +2764,7 @@
     try { d = await (await fetch('/api/screen?' + p.toString())).json(); } catch { $('screenResult').innerHTML = `<p class="compare-note">Couldn’t run the screen.</p>`; return; }
     if (isProGate(d)) { $('screenResult').innerHTML = proGateHtml(d); return; }
     if (!d.available) { $('screenResult').innerHTML = `<p class="compare-note">${esc(d.message || 'Screener unavailable.')}</p>`; return; }
-    if (!d.results.length) { $('screenResult').innerHTML = `<p class="compare-note">No matches — try loosening the filters.</p>`; return; }
+    if (!d.results.length) { $('screenResult').innerHTML = `<p class="compare-note">No matches. Try loosening the filters.</p>`; return; }
     $('screenResult').innerHTML = `<div class="mkt-h">${d.results.length} matches</div><div class="quote-grid">` + d.results.map(screenCard).join('') + `</div><p class="compare-note">Screening a curated list of popular US stocks with live prices. Full-market screening needs a paid data plan.</p>`;
     $('screenResult').querySelectorAll('.quote-card').forEach(c => c.addEventListener('click', () => goAnalyze(c.dataset.s)));
   }
@@ -2784,7 +2784,7 @@
     let d; try { d = await (await fetch('/api/alerts')).json(); } catch { $('alertList').innerHTML = `<p class="compare-note">Couldn’t load alerts.</p>`; return; }
     const alerts = d.alerts || [];
     updateAlertBadge(alerts.filter(a => a.triggered).length);
-    if (!alerts.length) { $('alertList').innerHTML = `<div class="view-empty">No alerts yet. Add one above — e.g. <b>AAPL rises above 250</b>.</div>`; return; }
+    if (!alerts.length) { $('alertList').innerHTML = `<div class="view-empty">No alerts yet. Add one above, for example <b>AAPL rises above 250</b>.</div>`; return; }
     $('alertList').innerHTML = alerts.map(a => {
       const hit = !!a.triggered;
       return `<div class="alert-item ${hit ? 'triggered' : ''}"><span class="alert-sym" data-s="${esc(a.symbol)}">${esc(a.symbol)}</span><span class="alert-cond">${a.direction === 'above' ? 'rises above' : 'falls below'} <b>$${(+a.target).toFixed(2)}</b></span><span class="alert-now">${a.price != null ? 'now $' + (+a.price).toFixed(2) : ''}</span><span class="spacer"></span><span class="alert-status ${hit ? 'hit' : 'active'}">${hit ? '✓ Triggered' : 'Active'}</span><button class="alert-del" data-id="${esc(a.id)}" title="Delete">×</button></div>`;
@@ -2827,29 +2827,29 @@
   // What the daily allowance becomes once the launch period ends. The server
   // reports null while everything is open, so this cannot be read from limits.
   const AI_FALLBACK_N = 3;
-  const PRICING_LEAD_AFTER = 'The chart, every indicator, the stop-loss and take-profit levels and the measured base rate are free for everyone with an account. Pro adds the parts that cost money to run each time: unlimited written reports, chart-image reading, the screener and side-by-side compare, and more take-profit levels.';
+  const PRICING_LEAD_AFTER = 'The chart is open to anyone. Every indicator, the stop-loss and take-profit levels and the measured base rate are free with an account. Pro adds the parts that cost money to run each time: unlimited written reports, chart-image reading, the screener and side-by-side compare, and more take-profit levels.';
   function renderPricing() {
     const pro = !!(currentUser && currentUser.plan === 'pro');
     const li = (arr) => arr.map(([t, on]) => `<li class="${on ? '' : 'off'}">${esc(t)}</li>`).join('');
     const aiN = limits.aiPerDay || AI_FALLBACK_N;
     const freeList = [
       ['Full charts, every indicator, stocks and crypto', 1],
-      ['Free account — email and password', 1],
-      [launch.free ? `Stop-loss and take-profit levels — one from ${launchDateAfter()}` : 'Stop-loss and one take-profit level', 1],
+      ['Free account: email and password', 1],
+      [launch.free ? `Stop-loss and take-profit levels (one from ${launchDateAfter()})` : 'Stop-loss and one take-profit level', 1],
       ['The score and the measured base rate', 1],
       // During the launch period these rows described the limits that start
       // later, which read as if they were already in force.
       [launch.free
-        ? `Written reports, no daily limit — ${AI_FALLBACK_N} a day from ${launchDateAfter()}`
+        ? `Written reports, no daily limit (${AI_FALLBACK_N} a day from ${launchDateAfter()})`
         : `${aiN} written reports a day, then the rule-based read`, 1],
       [launch.free
-        ? `Watchlist and price alerts, no limit — capped from ${launchDateAfter()}`
+        ? `Watchlist and price alerts, no limit (capped from ${launchDateAfter()})`
         : `Watchlist up to ${limits.watchMax || 10}, ${limits.alertMax || 3} price alerts`, 1],
       ['Every lesson', 1],
       // Open right now, but saying so without saying they change would be the
       // kind of small dishonesty people notice on the day it changes.
-      ['Chart-image reading' + (launch.free ? ` — Pro from ${launchDateAfter()}` : ''), launch.free ? 1 : 0],
-      ['Screener and side-by-side compare' + (launch.free ? ` — Pro from ${launchDateAfter()}` : ''), launch.free ? 1 : 0],
+      ['Chart-image reading' + (launch.free ? ` (Pro from ${launchDateAfter()})` : ''), launch.free ? 1 : 0],
+      ['Screener and side-by-side compare' + (launch.free ? ` (Pro from ${launchDateAfter()})` : ''), launch.free ? 1 : 0],
     ];
     const periods = [['weekly', 'Weekly'], ['monthly', 'Monthly'], ['yearly', 'Yearly']].filter(([k]) => billingPlans && billingPlans[k]);
     // Cheapest per month gets the tag, computed rather than hardcoded.
@@ -2896,7 +2896,7 @@
     // is open to everyone right now, and exactly what changes, and when.
     $('pricingLead').innerHTML = launch.free
       ? `<strong>Everything is free for everyone through ${esc(launchDate())}.</strong> `
-        + `Every feature listed below is open on a free account until then — no subscription, no daily limits. `
+        + `Every feature listed below is open on a free account until then, with no subscription and no daily limits. `
         + `From ${esc(launchDateAfter())}, unlimited written reports, chart-image reading, the screener, `
         + `side-by-side compare and extra take-profit levels become part of Pro. The chart, every indicator, the `
         + `stop-loss and take-profit levels and the measured base rate stay free after that date too.`
@@ -2954,7 +2954,7 @@
       const plan = u.comp ? 'pro (comp)' : u.plan !== 'pro' ? 'free' : u.paying ? 'pro (paying)' : 'pro (granted)';
       return `<tr><td>${esc(u.email)}${u.admin ? ' <span class="svc-pill svc-on">admin</span>' : ''}</td><td>${esc(plan)}</td><td>${esc(ymd(u.created))}</td></tr>`;
     }).join('') + `</tbody></table></div></div>`;
-    html += `<div class="admin-sec"><div class="mkt-h">Recent errors (${(d.errors || []).length})</div>` + ((d.errors || []).length ? d.errors.map(e => `<div class="err-line">${esc(hms(e.t))} \u2014 ${esc(e.msg)}</div>`).join('') : `<p class="compare-note">No errors logged.</p>`) + `</div>`;
+    html += `<div class="admin-sec"><div class="mkt-h">Recent errors (${(d.errors || []).length})</div>` + ((d.errors || []).length ? d.errors.map(e => `<div class="err-line">${esc(hms(e.t))}: ${esc(e.msg)}</div>`).join('') : `<p class="compare-note">No errors logged.</p>`) + `</div>`;
     $('adminBody').innerHTML = html;
 
     const setPlan = async (plan) => {
@@ -2972,10 +2972,10 @@
       } catch { r = { error: 'Couldn\u2019t reach the server.' }; }
       if (r.error) { msg.textContent = r.error; btns.forEach(b => b.disabled = false); return; }
       let note = r.pro ? `${r.email} is Pro.` : `${r.email} is on the free plan.`;
-      if (r.wasAlready) note += ' It already was \u2014 nothing changed.';
+      if (r.wasAlready) note += ' It already was, so nothing changed.';
       // Two ways the plan column can be written and the account not follow it.
       if (r.overriddenBy) note += ` The account is still Pro because the address is listed in ${r.overriddenBy}; take it out of there to finish the job.`;
-      if (r.stillBilled) note += ' Stripe is still charging this account \u2014 cancel the subscription there as well.';
+      if (r.stillBilled) note += ' Stripe is still charging this account. Cancel the subscription there as well.';
       adminPlanNote = note;
       await loadAdmin();
     };
@@ -3004,7 +3004,7 @@
       + `<div class="mover-head"><span class="mover-sym">${esc(r.symbol)}</span>`
       + `<span class="mover-pct ${up ? 'up' : 'down'}">${pct}</span></div>`
       + `<div class="mover-facts">`
-      + `<span><b>${rv}</b> volume — ${esc(relVolWord(r.relVol))}</span>`
+      + `<span><b>${rv}</b> volume, ${esc(relVolWord(r.relVol))}</span>`
       + `<span>${esc(rangeWord(r.rangePos))}</span>`
       + `<span>day range ${r.rangePct == null ? '—' : r.rangePct.toFixed(1) + '%'}</span>`
       + `</div></div>`;
@@ -3042,8 +3042,8 @@
         + `<td>${x.mean == null || d.baseline == null ? '—' : pc(x.mean - d.baseline)}</td>`
         + `<td>${x.winRate == null ? '—' : x.winRate.toFixed(0) + '%'}</td></tr>`).join('');
       host.innerHTML = `<p><strong>${d.graded}</strong> of ${d.recorded} recorded readings have reached their `
-        + `${d.horizon}-trading-day outcome. Across all of them the average return was <strong>${pc(d.baseline)}</strong> — `
-        + `what you would have had without consulting the score at all.</p>`
+        + `${d.horizon}-trading-day outcome. Across all of them the average return was <strong>${pc(d.baseline)}</strong>, `
+        + `which is what you would have had without consulting the score at all.</p>`
         + `<div class="compare-scroll"><table class="acc-table"><thead><tr><th>Reading</th><th>Count</th>`
         + `<th>Average return</th><th>vs doing nothing</th><th>Higher after</th></tr></thead><tbody>${rows}</tbody></table></div>`;
       host.dataset.loaded = '1';
@@ -3076,7 +3076,7 @@
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();                            // we choose when to ask
     deferredInstall = e;
-    showInstallBar('<b>Install ChartGauge</b> &mdash; add it to your device and it opens like an app, full screen.', true);
+    showInstallBar('<b>Install ChartGauge</b>: add it to your device and it opens like an app, full screen.', true);
   });
 
   if ($('installBtn')) $('installBtn').addEventListener('click', async () => {
@@ -3101,7 +3101,7 @@
   // in Safari, since Add to Home Screen does not exist in Chrome on iOS.
   if (isIOS() && isSafari() && !standalone()) {
     setTimeout(() => showInstallBar(
-      '<b>Add ChartGauge to your Home Screen</b> &mdash; tap the Share button, then <b>Add to Home Screen</b>.', false), 2500);
+      '<b>Add ChartGauge to your Home Screen</b>: tap the Share button, then <b>Add to Home Screen</b>.', false), 2500);
   }
 
   // The worker only provides installability and an offline page; it caches no
@@ -3128,7 +3128,7 @@
       : hours >= 1 ? `${hours} hours left` : 'less than an hour left';
     const until = new Date(launch.lastFree || launch.until)
       .toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' });
-    $('launchText').innerHTML = `<b>Everything is free until ${esc(until)}</b> &mdash; ${esc(left)}. `
+    $('launchText').innerHTML = `<b>Everything is free until ${esc(until)}</b>, ${esc(left)}. `
       + `After that, written reports, chart reading, the screener and compare become part of Pro.`;
     bar.classList.remove('hidden');
   }
@@ -3178,7 +3178,7 @@
     const age = Math.round((Date.now() - d.asOf) / 60000);
     const same = lastMoversAsOf === d.asOf;
     lastMoversAsOf = d.asOf;
-    status.textContent = (d.marketOpen ? 'Market open' : 'Market closed — showing the last session')
+    status.textContent = (d.marketOpen ? 'Market open' : 'Market closed, showing the last session')
       + ' · ' + (age < 1 ? 'just updated' : `updated ${age} min ago`)
       + (same ? ' · already current, the scan refreshes every 15 minutes' : '');
     body.innerHTML = `<div class="movers-grid">` + d.rows.map(moverRow).join('') + `</div>`;

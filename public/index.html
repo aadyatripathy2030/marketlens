@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ChartGauge — stock charts, indicators and a plain-English read</title>
+<title>ChartGauge | stock charts, indicators and a plain-English read</title>
 <meta name="description" content="Free stock charts with SMA, RSI, MACD, Bollinger bands, ATR and VWAP, plus ATR-based stop-loss and take-profit levels and a written read of what the indicators say. Stocks and crypto. Educational, not financial advice." />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <!-- 180px is what iOS asks for. This used to point at avatar.png, the
@@ -61,9 +61,9 @@
   <section class="view" id="view-home">
     <div class="hero">
       <h1 class="hero-h">Charts that show their work.</h1>
-      <p class="hero-sub">Type a ticker. Thirteen indicators computed on real price data, drawn on the chart and explained in plain English, with stop-loss and take-profit levels from ATR and recent swings. It is a study tool &mdash; the indicators disagree with each other often. Every reading is written down before the outcome is known and graded against what the price actually did, and <a href="/accuracy">the record is public</a>, including the stretches where it did worse than doing nothing.</p>
+      <p class="hero-sub">Type a ticker. Thirteen indicators computed on real price data, drawn on the chart and explained in plain English, with stop-loss and take-profit levels from ATR and recent swings. It is a study tool, and the indicators disagree with each other often. Every reading is written down before the outcome is known and graded against what the price actually did, and <a href="/accuracy">the record is public</a>, including the stretches where it did worse than doing nothing.</p>
       <form class="hero-search" id="heroForm">
-        <input id="heroInput" class="input" aria-label="Search for a ticker, company or crypto pair" placeholder="Search a ticker, company, or crypto — AAPL, Tesla, BTC/USD…" autocomplete="off" maxlength="16" />
+        <input id="heroInput" class="input" aria-label="Search for a ticker, company or crypto pair" placeholder="Search a ticker, company, or crypto: AAPL, Tesla, BTC/USD…" autocomplete="off" maxlength="16" />
         <button type="submit" class="btn btn-primary">Analyze</button>
       </form>
       <div class="hero-cta">
@@ -91,7 +91,7 @@
   <div class="controls">
     <form class="search" id="searchForm">
       <div class="search-box">
-        <input type="text" id="symbol" class="input" aria-label="Ticker or crypto pair" placeholder="Ticker or crypto pair — AAPL, TSLA, BTC/USD" autocomplete="off" maxlength="16" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest" />
+        <input type="text" id="symbol" class="input" aria-label="Ticker or crypto pair" placeholder="Ticker or crypto pair: AAPL, TSLA, BTC/USD" autocomplete="off" maxlength="16" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest" />
         <div class="suggest hidden" id="suggest" role="listbox"></div>
       </div>
       <button type="submit" class="btn btn-primary" id="goBtn">Analyze</button>
@@ -170,7 +170,7 @@
             <div class="chart-time">
               <div class="tf-group tf-interval">
                 <span class="tf-label">Each candle</span>
-                <div class="range" id="interval" role="tablist" aria-label="Candle interval — how much time each candle covers">
+                <div class="range" id="interval" role="tablist" aria-label="Candle interval: how much time each candle covers">
                   <button class="range-btn" data-iv="1min">1m</button>
                   <button class="range-btn active" data-iv="5min">5m</button>
                   <button class="range-btn" data-iv="15min">15m</button>
@@ -217,7 +217,7 @@
              session. It says only what to do, not what is missing. -->
         <div class="card" id="chartWall">
           <h2 class="wall-h">Create an account and sign in to view the full chart.</h2>
-          <p class="wall-p">It is free — an email address and a password.</p>
+          <p class="wall-p">It is free: an email address and a password.</p>
           <div class="wall-btns">
             <button type="button" class="btn btn-primary" id="chartWallSignup">Create account</button>
             <button type="button" class="btn btn-ghost" id="chartWallLogin">Sign in</button>
@@ -274,7 +274,7 @@
 
         <div class="card ai-card upload-card">
           <div class="ai-head">Read a chart screenshot</div>
-          <p class="upload-sub">Upload a screenshot of a chart. Claude reads the trend off the picture alone — no price data behind it — and says whether it looks like a buy, a sell or mixed.</p>
+          <p class="upload-sub">Upload a screenshot of a chart. Claude reads the trend off the picture alone, with no price data behind it, and says whether it looks like a buy, a sell or mixed.</p>
           <label class="dropzone" id="dropzone">
             <input type="file" id="imgInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden />
             <span id="dropText">Click to choose an image, or drag one here</span>
@@ -386,7 +386,7 @@
   <section class="view hidden" id="view-compare">
     <h1 class="view-h">Compare stocks</h1>
     <form class="compare-add" id="compareForm">
-      <input id="compareInput" class="input" placeholder="Add a ticker or pair — NVDA, BTC/USD" maxlength="16" autocomplete="off" />
+      <input id="compareInput" class="input" placeholder="Add a ticker or pair: NVDA, BTC/USD" maxlength="16" autocomplete="off" />
       <button class="btn btn-primary" type="submit">Add</button>
     </form>
     <div class="compare-chips" id="compareChips"></div>
@@ -396,16 +396,16 @@
   <!-- PRICING -->
   <section class="view hidden" id="view-pricing">
     <h1 class="view-h">Plans and billing</h1>
-    <p class="learn-lead" id="pricingLead">The chart, every indicator, the stop-loss and take-profit levels and the measured base rate are free for everyone, account or not. Pro adds the parts that cost money to run each time: unlimited written reports, chart-image reading, the screener and side-by-side compare, and more take-profit levels.</p>
+    <p class="learn-lead" id="pricingLead">The chart is open to anyone. Every indicator, the stop-loss and take-profit levels and the measured base rate are free with an account. Pro adds the parts that cost money to run each time: unlimited written reports, chart-image reading, the screener and side-by-side compare, and more take-profit levels.</p>
     <div class="pricing" id="pricingBody"></div>
   </section>
 
   <!-- ACCURACY -->
   <section class="view hidden" id="view-accuracy">
     <h1 class="view-h">How accurate is ChartGauge?</h1>
-    <p class="learn-lead">Every reading this site shows is written down when it is shown &mdash; before anyone knows what happens next &mdash; and graded against what the price actually did afterwards. The record below is published whether it flatters the tool or not.</p>
+    <p class="learn-lead">Every reading this site shows is written down when it is shown, before anyone knows what happens next, and graded against what the price actually did afterwards. The record below is published whether it flatters the tool or not.</p>
     <div id="accuracySsr"></div>
-    <p class="acc-note">This is not a backtest. A backtest can be adjusted until the past looks good; these are timestamped readings recorded in advance and never revised. The comparison column is every graded reading taken together &mdash; the return you would have had without consulting the score at all.</p>
+    <p class="acc-note">This is not a backtest. A backtest can be adjusted until the past looks good; these are timestamped readings recorded in advance and never revised. The comparison column is every graded reading taken together: the return you would have had without consulting the score at all.</p>
     <p class="acc-note"><strong>Why publish this?</strong> Because the alternative is asking you to take it on faith, and the measured answer so far is that this score has not predicted direction. A tool that tells you when it does not work is more useful than one that never admits it.</p>
   </section>
 
@@ -418,7 +418,7 @@
       <span class="movers-status" id="moversStatus"></span>
     </div>
     <div id="moversBody"></div>
-    <p class="movers-note">Unusual volume tells you people are trading it, not which way it goes next. ChartGauge&rsquo;s own score was measured against 36,524 past setups and did not predict direction — every symbol below links to its chart, where the measured base rate for that setup is shown honestly. Nothing here is a recommendation to buy or sell.</p>
+    <p class="movers-note">Unusual volume tells you people are trading it, not which way it goes next. ChartGauge&rsquo;s own score was measured against 36,524 past setups and did not predict direction. Every symbol below links to its chart, where the measured base rate for that setup is shown honestly. Nothing here is a recommendation to buy or sell.</p>
   </section>
 
   <!-- ADMIN -->
@@ -567,9 +567,9 @@
             <div id="pFlags" class="risk-flags"></div>
             <details class="risk-set">
               <summary>Your limits</summary>
-              <label class="tk-lbl" for="rMaxPos">Most in one position &mdash; <b id="rMaxPosV">20%</b></label>
+              <label class="tk-lbl" for="rMaxPos">Most in one position: <b id="rMaxPosV">20%</b></label>
               <input id="rMaxPos" type="range" min="1" max="100" value="20" />
-              <label class="tk-lbl" for="rPerTrade">Risk per trade &mdash; <b id="rPerTradeV">2%</b></label>
+              <label class="tk-lbl" for="rPerTrade">Risk per trade: <b id="rPerTradeV">2%</b></label>
               <input id="rPerTrade" type="range" min="1" max="25" value="2" />
               <p class="muted" style="font-size:12.5px;margin:8px 0 0">
                 Your limits, not a house view. The meter measures against them; nothing is blocked.
@@ -594,7 +594,7 @@
 
   <section class="view hidden" id="view-settings">
     <h1 class="view-h">Settings</h1>
-    <p class="learn-lead">Turn any part of the analysis on or off. This only changes what is shown &mdash; the numbers behind it are computed the same either way, and nothing here is sent to the server.</p>
+    <p class="learn-lead">Turn any part of the analysis on or off. This only changes what is shown. The numbers behind it are computed the same either way, and nothing here is sent to the server.</p>
     <div class="set-bar">
       <button type="button" class="btn btn-ghost" id="setAllOn">Turn everything on</button>
       <button type="button" class="btn btn-ghost" id="setAllOff">Chart only</button>
@@ -604,7 +604,7 @@
 
     <div class="danger" id="dangerZone">
       <h2 class="danger-h">Delete your account</h2>
-      <p class="danger-p">This removes your account, your watchlist and your price alerts permanently. It cannot be undone. If you have a Pro subscription it is cancelled first &mdash; you will not be charged again.</p>
+      <p class="danger-p">This removes your account, your watchlist and your price alerts permanently. It cannot be undone. If you have a Pro subscription it is cancelled first, so you will not be charged again.</p>
       <label class="danger-label" for="delConfirm">Type <b>DELETE</b> to confirm</label>
       <div class="danger-row">
         <input type="text" id="delConfirm" class="input" placeholder="DELETE" autocomplete="off" spellcheck="false" />
@@ -622,7 +622,7 @@
   <!-- LEARN -->
   <section class="view hidden" id="view-learn">
     <h1 class="view-h">Learn</h1>
-    <p class="learn-lead">Free, plain-English lessons — each with a quick quiz. Tap any lesson to start.</p>
+    <p class="learn-lead">Free, plain-English lessons, each with a quick quiz. Tap any lesson to start.</p>
     <div id="learnHost"></div>
   </section>
 
@@ -637,7 +637,7 @@
     <p class="foot-note">ChartGauge is a charting tool for learning to read charts. Nothing on it is financial advice.</p>
   </footer>
 
-  <p class="disclaimer">For education only — <strong>not financial advice</strong>. The Buy / Sell / Hold signal is measured, not predicted: it reports how bars like the current one performed on that symbol&rsquo;s own history against its base rate, and reads Hold whenever that gap is inside the margin of error. The separate buy / sell score describes how far the past-price indicators agree (and, for images, a read of one picture) &mdash; it is not a recommendation, and it has been measured against future returns and did not predict them. Signals like these are wrong <em>often</em> — no tool reliably predicts markets. This is not a recommendation to trade; decisions and their consequences are yours alone. Never trade based on this tool.</p>
+  <p class="disclaimer">For education only. <strong>Not financial advice</strong>. The Buy / Sell / Hold signal is measured, not predicted: it reports how bars like the current one performed on that symbol&rsquo;s own history against its base rate, and reads Hold whenever that gap is inside the margin of error. The separate buy / sell score describes how far the past-price indicators agree (and, for images, a read of one picture). It is not a recommendation, and it has been measured against future returns and did not predict them. Signals like these are wrong <em>often</em>, because no tool reliably predicts markets. This is not a recommendation to trade; decisions and their consequences are yours alone. Never trade based on this tool.</p>
 </main>
 
 <div class="modal-overlay hidden" id="authModal">
@@ -663,7 +663,7 @@
 <!-- Cookie consent. Hidden until app.js decides the visitor has not chosen
      yet; analytics does not load until Accept is pressed. -->
 <div class="consent hidden" id="consent" role="region" aria-label="Cookie choices">
-  <p class="consent-text">ChartGauge uses a cookie to keep you signed in, which is always on. It can also use Google Analytics to count visits — only if you say yes. See the <a href="/privacy">Privacy Policy</a>.</p>
+  <p class="consent-text">ChartGauge uses a cookie to keep you signed in, which is always on. It can also use Google Analytics to count visits, but only if you say yes. See the <a href="/privacy">Privacy Policy</a>.</p>
   <div class="consent-btns">
     <button type="button" class="btn btn-ghost consent-btn" id="consentNo">Decline</button>
     <button type="button" class="btn btn-primary consent-btn" id="consentYes">Accept</button>
