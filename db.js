@@ -11,7 +11,7 @@ let pool = null;
 let mode = 'memory';
 let lastErr = null;
 const mem = { users: new Map(), byEmail: new Map(), sessions: new Map(), watch: new Map(),
-  alerts: new Map(), usage: new Map(), preds: new Map(), etokens: new Map(),
+  alerts: new Map(), usage: new Map(), preds: new Map(), etokens: new Map(), codes: new Map(),
   paper: new Map(), pos: new Map(), fills: new Map() };
 
 // Render's INTERNAL Postgres host has no dot (e.g. dpg-xxxx-a) and speaks plain
@@ -42,6 +42,11 @@ async function init() {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT TRUE');
       await pool.query(`CREATE TABLE IF NOT EXISTS email_tokens (
         hash TEXT PRIMARY KEY, uid TEXT NOT NULL, expires BIGINT NOT NULL)`);
+      // A sign-in that is waiting for its emailed code. One row per attempt;
+      // gone once the code is entered, used up, or expired.
+      await pool.query(`CREATE TABLE IF NOT EXISTS login_codes (
+        id TEXT PRIMARY KEY, uid TEXT NOT NULL, hash TEXT NOT NULL, expires BIGINT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0)`);
       // Streak, counted in trading days. streak_day is the market day the run
       // was last extended to, so a second visit the same day is a no-op and a
       // weekend cannot advance or break it.
@@ -357,6 +362,45 @@ async function setPassword(uid, pw) {
   const u = mem.users.get(uid); if (u) u.pw = hashed;
 }
 
+// ---- sign-in codes ----
+// Six digits is little entropy, so the protection is the attempt limit, not
+// the hash: five wrong guesses end the attempt and ten minutes expire it.
+const CODE_TTL = 10 * 60 * 1000, CODE_MAX_ATTEMPTS = 5;
+async function createLoginCode(uid) {
+  const id = crypto.randomBytes(16).toString('hex');
+  const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+  const rec = { id, uid, hash: tokenHash(id + ':' + code), expires: Date.now() + CODE_TTL, attempts: 0 };
+  if (mode === 'postgres') await pool.query('INSERT INTO login_codes (id, uid, hash, expires, attempts) VALUES ($1,$2,$3,$4,0)', [id, uid, rec.hash, rec.expires]);
+  else mem.codes.set(id, rec);
+  return { id, code };
+}
+async function getLoginCode(id) {
+  if (!id) return null;
+  let rec;
+  if (mode === 'postgres') { const r = await pool.query('SELECT * FROM login_codes WHERE id=$1', [id]); rec = r.rows[0]; }
+  else rec = mem.codes.get(id);
+  if (!rec) return null;
+  if (Number(rec.expires) < Date.now()) { await deleteLoginCode(id); return null; }
+  return rec;
+}
+async function deleteLoginCode(id) {
+  if (!id) return;
+  if (mode === 'postgres') await pool.query('DELETE FROM login_codes WHERE id=$1', [id]);
+  else mem.codes.delete(id);
+}
+// { uid } when the code is right; { left } with the guesses remaining when it
+// is wrong (0 means the attempt is over); null when there is no live attempt.
+async function checkLoginCode(id, code) {
+  const rec = await getLoginCode(id);
+  if (!rec) return null;
+  if (rec.hash === tokenHash(id + ':' + code)) { await deleteLoginCode(id); return { uid: rec.uid }; }
+  const attempts = Number(rec.attempts) + 1;
+  if (attempts >= CODE_MAX_ATTEMPTS) { await deleteLoginCode(id); return { left: 0 }; }
+  if (mode === 'postgres') await pool.query('UPDATE login_codes SET attempts=$1 WHERE id=$2', [attempts, id]);
+  else rec.attempts = attempts;
+  return { left: CODE_MAX_ATTEMPTS - attempts };
+}
+
 // ---- sessions ----
 async function createSession(uid) {
   const token = crypto.randomBytes(32).toString('hex');
@@ -385,8 +429,13 @@ async function deleteSession(token) {
 async function purgeExpiredSessions() {
   const now = Date.now();
   // Confirmation links that were never opened go the same way.
-  if (mode === 'postgres') await pool.query('DELETE FROM email_tokens WHERE expires < $1', [now]);
-  else for (const [h, t] of mem.etokens) if (t.expires < now) mem.etokens.delete(h);
+  if (mode === 'postgres') {
+    await pool.query('DELETE FROM email_tokens WHERE expires < $1', [now]);
+    await pool.query('DELETE FROM login_codes WHERE expires < $1', [now]);
+  } else {
+    for (const [h, t] of mem.etokens) if (t.expires < now) mem.etokens.delete(h);
+    for (const [id, c] of mem.codes) if (c.expires < now) mem.codes.delete(id);
+  }
   if (mode === 'postgres') {
     const r = await pool.query('DELETE FROM sessions WHERE expires < $1', [now]);
     return r.rowCount || 0;
@@ -514,6 +563,7 @@ async function deleteUser(uid) {
   if (mode === 'postgres') {
     await pool.query('DELETE FROM usage_daily WHERE k=$1', ['u:' + uid]);
     await pool.query('DELETE FROM email_tokens WHERE uid=$1', [uid]);
+    await pool.query('DELETE FROM login_codes WHERE uid=$1', [uid]);
     await pool.query('DELETE FROM users WHERE id=$1', [uid]);
     return;
   }
@@ -521,6 +571,7 @@ async function deleteUser(uid) {
   if (u) mem.byEmail.delete(u.email);
   mem.users.delete(uid);
   for (const [h, t] of mem.etokens) if (t.uid === uid) mem.etokens.delete(h);
+  for (const [id, c] of mem.codes) if (c.uid === uid) mem.codes.delete(id);
   mem.watch.delete(uid);
   mem.alerts.delete(uid);
   for (const [t, s] of mem.sessions) if (s && (s.uid === uid || s === uid)) mem.sessions.delete(t);
@@ -648,6 +699,7 @@ module.exports = {
   createUser, getUserByEmail, getUserById,
   createSession, getSessionUser, deleteSession, purgeExpiredSessions,
   createVerifyToken, consumeVerifyToken, markVerified, setPassword,
+  createLoginCode, getLoginCode, checkLoginCode, deleteLoginCode,
   getStreak, saveStreak,
   getRisk, saveRisk, RISK_DEFAULTS,
   getPaper, openPaper, clearPaper, setCash, listPositions, savePosition, dropPosition, addFill, listFills,

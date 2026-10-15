@@ -285,6 +285,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .auth-toggle { font-size: 13px; color: var(--muted); margin-top: 14px; text-align: center; }
 .auth-toggle .link-btn { font-size: 13px; }
 .auth-pending-p { font-size: 14px; line-height: 1.55; margin: 4px 0 16px; }
+.auth-code-input { font-size: 22px; letter-spacing: .3em; text-align: center; font-variant-numeric: tabular-nums; }
+.auth-pending .btn-ghost { margin-top: 10px; }
 .auth-note { font-size: 11px; color: var(--muted); margin-top: 14px; line-height: 1.5; border-top: 1px solid var(--border); padding-top: 12px; }
 
 /* Full-width app shell */

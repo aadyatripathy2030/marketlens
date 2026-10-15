@@ -661,6 +661,17 @@
       <button type="button" class="btn btn-ghost btn-block" id="authResend">Send the link again</button>
       <p class="auth-toggle"><button type="button" class="link-btn" id="authBack">Use a different email</button></p>
     </div>
+    <!-- The second step of every sign-in: the code that was emailed. -->
+    <div class="auth-pending hidden" id="authCode">
+      <p class="auth-pending-p" id="authCodeText"></p>
+      <form id="authCodeForm">
+        <input type="text" id="authCodeInput" class="input auth-code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6-digit code" aria-label="Sign-in code" />
+        <div class="auth-err hidden" id="authCodeErr"></div>
+        <button type="submit" class="btn btn-primary btn-block" id="authCodeSubmit">Sign in</button>
+      </form>
+      <button type="button" class="btn btn-ghost btn-block" id="authCodeResend">Send a new code</button>
+      <p class="auth-toggle"><button type="button" class="link-btn" id="authCodeBack">Start over</button></p>
+    </div>
     <p class="auth-toggle" id="authToggleRow"><span id="authToggleText">New to ChartGauge?</span> <button type="button" class="link-btn" id="authToggle">Create an account</button></p>
     <p class="auth-note">By continuing you agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>. ChartGauge is for learning, not for trading, and nothing on it is financial advice.<br /><br />Never enter a real trading or bank password here. This is a demo; passwords are hashed, never stored in plain text.</p>
   </div>

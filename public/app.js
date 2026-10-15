@@ -2322,7 +2322,63 @@
     $('authSub').classList.remove('hidden');
     $('authToggleRow').classList.remove('hidden');
     $('authPending').classList.add('hidden');
+    $('authCode').classList.add('hidden');
   }
+  // The third face: the emailed code. The server already holds the attempt
+  // in a short-lived cookie; this only collects the digits.
+  function showCode(message) {
+    $('authTitle').textContent = 'Enter your code';
+    $('authCodeText').textContent = message;
+    $('authForm').classList.add('hidden');
+    $('authSub').classList.add('hidden');
+    $('authToggleRow').classList.add('hidden');
+    $('authPending').classList.add('hidden');
+    $('authCodeErr').classList.add('hidden');
+    $('authCodeInput').value = '';
+    $('authCode').classList.remove('hidden');
+    $('authCodeInput').focus();
+  }
+  // What happens once the server has handed over a session, whichever door
+  // it came through.
+  function signedIn(user, event, method) {
+    currentUser = user; closeAuth(); renderAcct();
+    setAgreed();
+    track(event, { method });
+    $('watchBtn').classList.remove('hidden'); $('authPass').value = '';
+    loadWatchlist();
+    // Whatever the wall was standing in front of is now allowed.
+    releasePending();
+  }
+  const codeErr = (m) => { $('authCodeErr').textContent = m; $('authCodeErr').classList.remove('hidden'); };
+  $('authCodeForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = $('authCodeInput').value.replace(/\D/g, '');
+    $('authCodeErr').classList.add('hidden'); $('authCodeSubmit').disabled = true;
+    try {
+      const r = await fetch('/api/auth/code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) });
+      const j = await r.json();
+      if (!r.ok) {
+        if (j.restart) { openAuth('login'); $('authErr').textContent = j.error; $('authErr').classList.remove('hidden'); return; }
+        throw new Error(j.error || 'Something went wrong.');
+      }
+      signedIn(j.user, 'login', 'code');
+    } catch (err) { codeErr(err.message); }
+    finally { $('authCodeSubmit').disabled = false; }
+  });
+  $('authCodeResend').addEventListener('click', async () => {
+    $('authCodeResend').disabled = true; $('authCodeErr').classList.add('hidden');
+    try {
+      const r = await fetch('/api/auth/code/resend', { method: 'POST' });
+      const j = await r.json();
+      if (!r.ok) {
+        if (j.restart) { openAuth('login'); $('authErr').textContent = j.error; $('authErr').classList.remove('hidden'); return; }
+        throw new Error(j.error || 'Could not send a new code. Try again in a minute.');
+      }
+      $('authCodeText').textContent = j.message || 'Sent again.';
+    } catch (err) { codeErr(err.message); }
+    finally { $('authCodeResend').disabled = false; }
+  });
+  $('authCodeBack').addEventListener('click', () => openAuth('login'));
   $('authResend').addEventListener('click', async () => {
     $('authResend').disabled = true;
     try {
@@ -2353,13 +2409,14 @@
         return;
       }
       if (!r.ok) throw new Error(j.error || 'Something went wrong.');
-      currentUser = j.user; closeAuth(); renderAcct();
-      setAgreed();
-      track(authMode === 'signup' ? 'sign_up' : 'login', { method: 'password' });
-      $('watchBtn').classList.remove('hidden'); $('authPass').value = '';
-      loadWatchlist();
-      // Whatever the wall was standing in front of is now allowed.
-      releasePending();
+      if (j.code_required) {
+        // Password accepted; the session waits on the emailed code.
+        $('authPass').value = '';
+        setAgreed();
+        showCode(j.message || 'Enter the code we just emailed you.');
+        return;
+      }
+      signedIn(j.user, authMode === 'signup' ? 'sign_up' : 'login', 'password');
     } catch (err) { $('authErr').textContent = err.message; $('authErr').classList.remove('hidden'); }
     finally { $('authSubmit').disabled = false; }
   });
@@ -3350,12 +3407,27 @@
     if (!err && !p.get('google')) return;
     const MSG = {
       cancelled: 'Google sign-in was cancelled.',
+      mail: 'Google signed you in, but the sign-in code could not be emailed. Please try again in a minute.',
       expired: 'That sign-in link expired. Please try again.',
       unverified_email: 'That Google account has no verified email address, so it cannot be used to sign in.',
       no_code: 'Google did not complete the sign-in. Please try again.',
       failed: 'Could not complete Google sign-in. Please try again.',
     };
     if (err) window.setTimeout(() => alert(MSG[err] || MSG.failed), 100);
+    // Google vouched for the account; the code step is still to come. The
+    // attempt lives in a cookie the server set on the way back, so ask it
+    // which address the code went to.
+    if (p.get('google') === 'code') {
+      window.setTimeout(async () => {
+        openAuth('login');
+        try {
+          const r = await fetch('/api/auth/challenge');
+          const j = await r.json();
+          if (r.ok) showCode(j.message || 'Enter the code we just emailed you.');
+          else { $('authErr').textContent = 'That sign-in has expired. Please try again.'; $('authErr').classList.remove('hidden'); }
+        } catch (e) { showCode('Enter the code we just emailed you.'); }
+      }, 50);
+    }
     p.delete('google'); p.delete('google_error');
     const qs = p.toString();
     try { history.replaceState({}, '', location.pathname + (qs ? '?' + qs : '')); } catch (e) {}

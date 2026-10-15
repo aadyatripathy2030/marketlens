@@ -90,6 +90,7 @@ const KNOWN_API = new Set([
   '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
   '/api/auth/delete', '/api/auth/google', '/api/auth/google/callback',
   '/api/auth/verify', '/api/auth/resend',
+  '/api/auth/code', '/api/auth/code/resend', '/api/auth/challenge',
   '/api/billing/webhook', '/api/billing/checkout', '/api/billing/portal',
   // practice account, the risk limits it is measured against, and the
   // sentiment read over the headlines that were already being fetched
@@ -1372,6 +1373,63 @@ async function sendVerification(req, user) {
 }
 const VERIFY_MSG = (email) => `Check ${email} for a link to confirm your address. The link works once and expires in 24 hours.`;
 const slim = (u) => ({ id: u.id, email: u.email, plan: u.plan });
+const sessionUser = (u) => ({ id: u.id, email: u.email, plan: isPro(u) ? 'pro' : u.plan });
+
+// ---- Sign-in codes ----
+// Every sign-in, password or Google, finishes with a six-digit code sent to
+// the account's address. No session exists until the code is entered; what
+// the browser holds in the meantime is a short-lived cookie naming the
+// attempt, which is worth nothing without the code.
+const CODE_MSG = (email) => `We sent a 6-digit code to ${email}. Enter it to finish signing in. It expires in 10 minutes.`;
+function cookieStr(req, name, value, maxAge) {
+  const parts = [`${name}=${value}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${maxAge}`];
+  if (req.headers['x-forwarded-proto'] === 'https') parts.push('Secure');
+  return parts.join('; ');
+}
+async function startCodeStep(req, res, user) {
+  const { id, code } = await db.createLoginCode(user.id);
+  try {
+    await sendMail(user.email, 'Your ChartGauge sign-in code',
+      `Your sign-in code is ${code}\n\nIt expires in 10 minutes. If you did not try to sign in, ignore this email; nobody can get in without the code.`);
+  } catch (e) { await db.deleteLoginCode(id).catch(() => {}); throw e; }
+  res.setHeader('Set-Cookie', cookieStr(req, 'login', id, 600));
+}
+const clearLogin = (req) => cookieStr(req, 'login', '', 0);
+async function handleCode(req, res) {
+  const id = parseCookies(req).login || '';
+  const b = await readBody(req).catch(() => ({}));
+  const code = String((b && b.code) || '').replace(/\D/g, '');
+  if (throttled(res, [['code:ip:' + clientIp(req), 30, 15 * 60000]])) return;
+  if (code.length !== 6) return json(res, 400, { error: 'Enter the 6-digit code from the email.' });
+  const r = await db.checkLoginCode(id, code);
+  if (!r) { res.setHeader('Set-Cookie', clearLogin(req)); return json(res, 400, { error: 'That sign-in has expired. Start again.', restart: true }); }
+  if (r.left === 0) { res.setHeader('Set-Cookie', clearLogin(req)); return json(res, 400, { error: 'Too many wrong codes. Start again.', restart: true }); }
+  if (!r.uid) return json(res, 400, { error: `That code is not right. ${r.left} ${r.left === 1 ? 'try' : 'tries'} left.` });
+  const user = await db.getUserById(r.uid);
+  if (!user) { res.setHeader('Set-Cookie', clearLogin(req)); return json(res, 400, { error: 'That account no longer exists.', restart: true }); }
+  const token = await db.createSession(user.id);
+  res.setHeader('Set-Cookie', [cookieStr(req, 'session', token, 30 * 86400), clearLogin(req)]);
+  return json(res, 200, { user: sessionUser(user) });
+}
+// Which address the current attempt's code went to, so the page coming back
+// from Google can say so.
+async function handleChallenge(req, res) {
+  const rec = await db.getLoginCode(parseCookies(req).login || '').catch(() => null);
+  const user = rec ? await db.getUserById(rec.uid).catch(() => null) : null;
+  if (!user) return json(res, 404, { error: 'No sign-in in progress.' });
+  return json(res, 200, { email: user.email, message: CODE_MSG(user.email) });
+}
+async function handleCodeResend(req, res) {
+  const id = parseCookies(req).login || '';
+  const rec = await db.getLoginCode(id).catch(() => null);
+  const user = rec ? await db.getUserById(rec.uid).catch(() => null) : null;
+  if (!user) { res.setHeader('Set-Cookie', clearLogin(req)); return json(res, 400, { error: 'That sign-in has expired. Start again.', restart: true }); }
+  if (throttled(res, [['code:acct:' + user.id, 3, 15 * 60000]])) return;
+  await db.deleteLoginCode(id);
+  try { await startCodeStep(req, res, user); }
+  catch (e) { logError(e); return json(res, 502, { error: 'Could not send a new code just now. Try again in a minute.' }); }
+  return json(res, 200, { ok: true, message: 'Sent again. ' + CODE_MSG(user.email) });
+}
 
 async function handleSignup(req, res) {
   const b = await readBody(req);
@@ -1444,9 +1502,14 @@ async function handleLogin(req, res) {
     return json(res, 403, { error: 'verify_required', pending: true, email: user.email,
       message: 'Your email address has not been confirmed yet. ' + (sent ? 'A new link was just sent. ' : '') + VERIFY_MSG(user.email) });
   }
+  if (mailEnabled()) {
+    try { await startCodeStep(req, res, user); }
+    catch (e) { logError(e); return json(res, 502, { error: 'Could not send the sign-in code just now. Try again in a minute.' }); }
+    return json(res, 200, { code_required: true, email: user.email, message: CODE_MSG(user.email) });
+  }
   const token = await db.createSession(user.id);
   setSessionCookie(req, res, token);
-  return json(res, 200, { user: { id: user.id, email: user.email, plan: isPro(user) ? 'pro' : user.plan } });
+  return json(res, 200, { user: sessionUser(user) });
 }
 // ---- Sign in with Google ----
 // The authorization-code flow, done by hand because this project has no
@@ -1544,9 +1607,18 @@ async function handleGoogleCallback(req, res) {
       if (existing) { await db.linkGoogleId(existing.id, claims.sub); user = existing; }
       else user = await db.createGoogleUser(email, claims.sub);
     }
+    const sep = st.next.includes('?') ? '&' : '?';
+    if (mailEnabled()) {
+      // Google vouched for the address; the code proves the inbox is still
+      // in the same hands right now, the same as a password sign-in.
+      try { await startCodeStep(req, res, user); }
+      catch (e) { logError(e); return googleFail(res, 'mail'); }
+      res.writeHead(302, { Location: st.next + sep + 'google=code' });
+      return res.end();
+    }
     const token = await db.createSession(user.id);
     setSessionCookie(req, res, token);
-    res.writeHead(302, { Location: st.next + (st.next.includes('?') ? '&' : '?') + 'google=ok' });
+    res.writeHead(302, { Location: st.next + sep + 'google=ok' });
     return res.end();
   } catch (e) {
     logError(e);
@@ -2838,6 +2910,9 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/auth/google' && req.method === 'GET') return await handleGoogleStart(req, res);
     if (url === '/api/auth/google/callback' && req.method === 'GET') return await handleGoogleCallback(req, res);
     if (url === '/api/auth/verify' && req.method === 'GET') return await handleVerify(req, res);
+    if (url === '/api/auth/code' && req.method === 'POST') return await handleCode(req, res);
+    if (url === '/api/auth/code/resend' && req.method === 'POST') return await handleCodeResend(req, res);
+    if (url === '/api/auth/challenge' && req.method === 'GET') return await handleChallenge(req, res);
     if (url === '/api/auth/resend' && req.method === 'POST') return await handleResend(req, res);
     if (url === '/api/auth/logout' && req.method === 'POST') return await handleLogout(req, res);
     if (url === '/api/auth/delete' && req.method === 'POST') return await handleDeleteAccount(req, res);
