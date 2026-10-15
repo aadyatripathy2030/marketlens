@@ -173,11 +173,31 @@ function cachedAt(key) { const hit = dataCache.get(key); return hit ? hit.at : 0
 
 const sweep = setInterval(() => {
   const now = Date.now();
-  for (const [k, v] of dataCache) if (now - v.at > 600000) dataCache.delete(k);
+  // An hour, so a series fetched for one visitor serves the next ones. A
+  // daily series is a few hundred kilobytes; the symbols looked at in an hour
+  // fit comfortably.
+  for (const [k, v] of dataCache) if (now - v.at > 3600000) dataCache.delete(k);
 }, 120000);
 if (sweep.unref) sweep.unref();
 // Intraday bars move constantly; daily and above do not.
-const barsTtl = (interval) => /min|^1h$|^4h$/.test(String(interval)) ? 30000 : 120000;
+// A series cannot change faster than its own bars close, and the bar that is
+// still forming is carried by the live tick on the client, so there is no
+// reason to refetch a 5-minute series every thirty seconds. Thirty seconds was
+// how one visitor flicking between intervals spent a day's credits by lunch.
+const barsTtl = (interval) => {
+  const iv = String(interval);
+  if (/min|^1h$|^4h$/.test(iv)) return Math.min(Math.max(INTERVAL_MS[iv] || 60000, 60000), 15 * 60000);
+  return 30 * 60000;
+};
+// Visitors share one daily allowance of fresh fetches, so an open chart cannot
+// spend the quota that signed-in accounts need. Cached series stay free.
+const ANON_DAILY_CREDITS = Number(process.env.ANON_DAILY_CREDITS || 250);
+let anonSpent = { day: '', n: 0 };
+function anonAllowance() {
+  const day = new Date().toISOString().slice(0, 10);
+  if (anonSpent.day !== day) anonSpent = { day, n: 0 };
+  return ANON_DAILY_CREDITS - anonSpent.n;
+}
 
 // ---- Upstream credit budget ----
 // Twelve Data bills one credit per symbol per request and the plan allows a
@@ -421,6 +441,13 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   let source = 'demo', note = '', data;
   if (STOCK_API_KEY) {
     if (knownUnknown(symbol)) return json(res, 404, noSuchTicker(symbol));
+    if (!user) {
+      const fresh = Date.now() - cachedAt(`bars:${symbol}:${interval}:${OUTPUTSIZE[interval] || 1300}`) < barsTtl(interval);
+      if (!fresh) {
+        if (anonAllowance() <= 0) return json(res, 503, { error: "Today's chart allowance for visitors is used up. Sign in to keep loading charts; an account is free.", kind: 'anon_quota' });
+        anonSpent.n++;
+      }
+    }
     try { data = await fetchLive(symbol, interval); source = 'live'; }
     catch (e) {
       const kind = classifyDataError(e);
