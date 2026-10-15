@@ -61,7 +61,7 @@
   <section class="view" id="view-home">
     <div class="hero">
       <h1 class="hero-h">Charts that show their work.</h1>
-      <p class="hero-sub">Type a ticker. Thirteen indicators computed on real price data, drawn on the chart and explained in plain English, with stop-loss and take-profit levels from ATR and recent swings. It is a study tool, and the indicators disagree with each other often. Every reading is written down before the outcome is known and graded against what the price actually did, and <a href="/accuracy">the record is public</a>, including the stretches where it did worse than doing nothing.</p>
+      <p class="hero-sub">Type a ticker. Get thirteen indicators, stop and target levels, and a plain-English read of the chart, graded in public against what the price actually did.</p>
       <form class="hero-search" id="heroForm">
         <input id="heroInput" class="input" aria-label="Search for a ticker, company or crypto pair" placeholder="Search a ticker, company, or crypto: AAPL, Tesla, BTC/USD…" autocomplete="off" maxlength="16" />
         <button type="submit" class="btn btn-primary">Analyze</button>
@@ -71,6 +71,30 @@
         <span class="hero-examples" id="heroExamples"></span>
       </div>
     </div>
+    <!-- The front page opens on a live chart: the analyze panel, moved in
+         here, on the index fund's daily bars. Anyone can see it; the reading
+         of it is behind the Full analysis link like any other chart. -->
+    <div class="home-chart" id="homeChartWrap">
+      <div class="chart-head">
+        <div class="chart-id">
+          <span class="chart-sym" id="homeSym">SPY</span>
+          <span class="chart-name muted" id="homeName">S&amp;P 500 · daily</span>
+        </div>
+        <div class="chart-px">
+          <span class="chart-last" id="homeLast">&mdash;</span>
+          <span class="chart-chg" id="homeChg"></span>
+          <button type="button" class="wl-full" id="homeFull">Full analysis &rarr;</button>
+        </div>
+      </div>
+      <div id="chartSlotHome"></div>
+    </div>
+    <!-- The record, in public. The thing most tools would hide is the thing
+         this one leads with, for everyone, signed in or not. -->
+    <section class="record" id="homeRecord">
+      <div class="mkt-h">The record, in public</div>
+      <div class="record-grid" id="recordGrid"></div>
+      <p class="record-line">Every reading is written down before the outcome is known, then graded against what the price actually did. The record is published whether it flatters us or not. <a href="/accuracy">See the full record</a></p>
+    </section>
     <!-- The two sections below are market data and are simply not shown when
          there is no session; the search above them stays usable by anyone. -->
     <div id="homeData">

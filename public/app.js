@@ -160,8 +160,8 @@
   // Auth and billing stay open: the sign-in modal needs auth, and checkAuth
   // runs on every page including the ones that carry no market data. The
   // chart endpoint is open too, because the server answers a visitor with the
-  // bars alone and nothing read from them.
-  const PRE_AGREEMENT_OK = /^\/api\/(auth|billing|stock)\b/;
+  // bars alone and nothing read from them, and so is the public record.
+  const PRE_AGREEMENT_OK = /^\/api\/(auth|billing|stock|accuracy)\b/;
   const rawFetch = window.fetch.bind(window);
   const fetch = (input, init) => {
     const url = typeof input === 'string' ? input : (input && input.url) || '';
@@ -1420,7 +1420,8 @@
       if (liveBar == null) liveBar = prices.length - 1;
     }
     lastData.latest = price;
-    $('price').textContent = price.toFixed(2) + ' ' + lastData.currency;
+    setLive('price', price.toFixed(2) + ' ' + lastData.currency, price);
+    if ($('homeLast') && lastData.symbol === HOME_SYMBOL) setLive('homeLast', price.toFixed(2), price);
     if ($('cLast') && chartSym === lastData.symbol) $('cLast').textContent = pMoney(price);
     if ($('wlLast') && wlSym === lastData.symbol) $('wlLast').textContent = pMoney(price);
     drawChart();
@@ -1523,11 +1524,36 @@
   }
 
   let runSeq = 0;           // guards against a slow request landing after a newer one
-  async function run(symbol) {
+  // Numbers that arrive count up, briefly, so a fresh reading is seen to
+  // arrive rather than found. Skipped when the visitor asked for less motion.
+  const lessMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function countUp(id, target, fmt, ms) {
+    const el = $(id); if (!el) return;
+    if (target == null || !Number.isFinite(target)) { el.textContent = '—'; return; }
+    if (lessMotion()) { el.textContent = fmt(target); return; }
+    const t0 = performance.now(); ms = ms || 700;
+    const step = (t) => {
+      const p = Math.min(1, (t - t0) / ms), e = 1 - Math.pow(1 - p, 3);
+      el.textContent = fmt(target * e);
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+  // The chart draws in from the left when a new series lands.
+  function revealChart() {
+    const cv = $('chart'); if (!cv) return;
+    cv.classList.remove('reveal'); void cv.offsetWidth; cv.classList.add('reveal');
+  }
+
+  // opts.quiet: a chart the page loaded on its own (the front page), so it is
+  // not counted as something the visitor asked for and the URL is left alone.
+  async function run(symbol, opts) {
+    const quiet = !!(opts && opts.quiet);
     symbol = (symbol || $('symbol').value || '').trim().toUpperCase();
     if (!symbol) return;
     $('error').classList.add('hidden');
     $('goBtn').disabled = true; $('goBtn').textContent = 'Loading…';
+    $('chartPanel').classList.add('loading');
     const seq = ++runSeq;
     try {
       const r = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&direction=${encodeURIComponent(direction)}&interval=${encodeURIComponent(interval)}`);
@@ -1539,7 +1565,8 @@
       // The activation moment: a chart the visitor asked for actually drew.
       // After the ok-check and the sequence guard, so a failed lookup or a
       // superseded request is never counted as one.
-      track('analyze', { symbol: d.symbol, strategy, interval, locked: !!d.locked });
+      if (!quiet) track('analyze', { symbol: d.symbol, strategy, interval, locked: !!d.locked });
+      lastVals.price = d.latest; lastVals.homeLast = d.latest;
       // The server just extended the streak; pick the new number up so the
       // badge moves on the visit that earned it, not the next page load.
       if (!d.locked) refreshStreak();
@@ -1569,7 +1596,7 @@
         lockOverlays();
         $('note').textContent = d.note || '';
         $('result').classList.remove('hidden');
-        resetView(); drawChart(); startLive();
+        resetView(); drawChart(); revealChart(); startLive();
         return;
       }
       const rt = d.rating || {};
@@ -1582,9 +1609,15 @@
       $('verdict').className = 'verdict ' + (rt.tone || v.tone || 'neutral');
       $('reason').textContent = ratingReason(d);
       const GAUGE_C = 2 * Math.PI * 52;
-      $('gaugeArc').style.strokeDasharray = GAUGE_C;
-      $('gaugeArc').style.strokeDashoffset = GAUGE_C * (1 - (rt.score || 0) / 100);
-      $('gScore').textContent = rt.score != null ? rt.score : '—';
+      const arc = $('gaugeArc');
+      arc.style.strokeDasharray = GAUGE_C;
+      // Sweeps from empty to the reading on every load, tinted the way the
+      // reading leans: the same green and red the verdict chip uses, so the
+      // colour still means direction and nothing else.
+      arc.style.transition = 'none'; arc.style.strokeDashoffset = GAUGE_C; void arc.getBoundingClientRect(); arc.style.transition = '';
+      arc.style.strokeDashoffset = GAUGE_C * (1 - (rt.score || 0) / 100);
+      arc.style.stroke = rt.tone === 'bullish' ? 'var(--good)' : rt.tone === 'bearish' ? 'var(--bad)' : 'var(--ai)';
+      countUp('gScore', rt.score, (v) => String(Math.round(v)));
       $('aiRec').textContent = rt.label || '—';
       $('aiRec').className = 'ai-rec ' + (rt.tone || 'neutral');
       const conf = agreePct(rt.agreeing, rt.groupCount);
@@ -1599,7 +1632,7 @@
       else $('risk').className = 'risk hidden';
       $('note').textContent = d.note || '';
       $('result').classList.remove('hidden');
-      resetView(); drawChart(); tiles(d); renderTech(d.tech); renderBands(d.bands); renderLevels(d);
+      resetView(); drawChart(); revealChart(); tiles(d); renderTech(d.tech); renderBands(d.bands); renderLevels(d);
       setAnalysisPending();
       loadAnalysis(d);
       loadFundamentals(d.symbol);
@@ -1612,7 +1645,61 @@
       // reason into a hidden element: the chart just went blank and said
       // nothing. Put it where the chart actually is.
       chartFailed(e.message);
-    } finally { if (seq === runSeq) { $('goBtn').disabled = false; $('goBtn').textContent = 'Analyze'; } }
+    } finally { if (seq === runSeq) { $('goBtn').disabled = false; $('goBtn').textContent = 'Analyze'; $('chartPanel').classList.remove('loading'); } }
+  }
+
+  // ---- Front page chart and record ----
+  // The index fund on daily bars, whatever interval the analyze page was last
+  // on: the front page shows the market's day, and daily series are the ones
+  // a half-hour cache makes nearly free.
+  const HOME_SYMBOL = 'SPY';
+  function loadHomeChart() {
+    if (interval !== '1day') { interval = '1day'; viewCandles = null; syncIntervalButtons(); }
+    if (lastData && lastData.symbol === HOME_SYMBOL && lastData.interval === '1day') {
+      fillHomeHead();
+      requestAnimationFrame(() => { try { drawChart(); } catch (e) {} });
+      return;
+    }
+    run(HOME_SYMBOL, { quiet: true }).then(fillHomeHead);
+  }
+  function fillHomeHead() {
+    if (!lastData || lastData.symbol !== HOME_SYMBOL) return;
+    $('homeName').textContent = (lastData.name && lastData.name !== lastData.symbol ? lastData.name : 'S&P 500') + ' · daily';
+    $('homeLast').textContent = lastData.latest.toFixed(2);
+    const up = lastData.change >= 0;
+    $('homeChg').textContent = (up ? '▲ ' : '▼ ') + Math.abs(lastData.change).toFixed(2) + ' (' + lastData.changePct.toFixed(2) + '%)';
+    $('homeChg').className = 'chart-chg ' + (up ? 'up' : 'down');
+  }
+  $('homeFull').addEventListener('click', () => goAnalyze(HOME_SYMBOL));
+
+  let homeRecordLoaded = false;
+  async function loadHomeRecord() {
+    const grid = $('recordGrid'); if (!grid || homeRecordLoaded) return;
+    const tile = (id, label) => `<div class="record-tile"><div class="record-val" id="${id}">—</div><div class="record-lbl">${label}</div></div>`;
+    const whole = (v) => Math.round(v).toLocaleString('en-US');
+    const pc = (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+    try {
+      const d = await fetch('/api/accuracy').then(r => r.json());
+      homeRecordLoaded = true;
+      if (!d.graded) {
+        // A young record, not a broken one: readings exist, outcomes do not yet.
+        grid.innerHTML = tile('recRecorded', 'readings written down') + tile('recGraded', 'graded so far');
+        countUp('recRecorded', d.recorded || 0, whole); countUp('recGraded', 0, whole);
+        return;
+      }
+      // How often price was simply higher afterwards, across every reading:
+      // the base rate the full page measures each reading against.
+      let higher = 0, n = 0;
+      (d.labels || []).forEach(l => { if (l.winRate != null && l.n) { higher += l.winRate / 100 * l.n; n += l.n; } });
+      grid.innerHTML = tile('recGraded', 'readings graded')
+        + tile('recBase', `average return ${d.horizon} trading days later`)
+        + tile('recHigher', `price was higher ${d.horizon} days later`)
+        + tile('recPending', 'still waiting for an outcome');
+      countUp('recGraded', d.graded, whole);
+      countUp('recBase', d.baseline, pc);
+      countUp('recHigher', n ? (higher / n) * 100 : null, (v) => Math.round(v) + '%');
+      countUp('recPending', Math.max(0, (d.recorded || 0) - d.graded), whole);
+    } catch (e) { grid.innerHTML = '<div class="record-tile" style="grid-column:1/-1"><div class="record-lbl">The record could not be loaded right now.</div></div>'; }
   }
 
   // The averages, the projection and the levels are each a reading of the
@@ -1843,7 +1930,8 @@
     const panel = $('chartPanel');
     if (!panel) return;
     const slotId = viewName === 'practice' ? 'chartSlotPractice'
-      : viewName === 'watchlist' ? 'chartSlotWatchlist' : 'chartSlotAnalyze';
+      : viewName === 'watchlist' ? 'chartSlotWatchlist'
+      : viewName === 'home' ? 'chartSlotHome' : 'chartSlotAnalyze';
     const slot = $(slotId);
     if (!slot || panel.parentElement === slot) return;
     slot.appendChild(panel);
@@ -2523,6 +2611,11 @@
     currentView = name;
     document.querySelectorAll('.drawer-link').forEach(l => l.classList.toggle('active', l.dataset.view === name));
     window.scrollTo(0, 0);
+    // The chart panel is a single element shared by the views that show a
+    // chart, so it moves to whichever one is on screen. Before the wall check,
+    // because the front page draws its chart for everyone.
+    mountChart(name);
+    if (name === 'home') { loadHomeChart(); loadHomeRecord(); }
     // Nothing about the data is rendered, and none of the loaders below run,
     // so there is nothing on the page to uncover.
     if (!isSignedIn() && DATA_VIEWS.indexOf(name) !== -1) { showWall(name); return; }
@@ -2537,9 +2630,6 @@
     if (name === 'compare') { renderCompareChips(); if (compareSymbols.length >= 2 && !$('compareResult').innerHTML) loadCompare(); }
     if (name === 'screener' && !$('screenResult').innerHTML) loadScreen();
     if (name === 'alerts') loadAlerts();
-    // The chart panel is a single element shared by both views, so it moves
-    // to whichever one is on screen.
-    mountChart(name);
     if (name === 'practice') loadPaper();
     if (name === 'admin') loadAdmin();
     if (name === 'pricing') renderPricing();
