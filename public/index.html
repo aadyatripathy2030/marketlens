@@ -21,35 +21,6 @@
 <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-<div class="gate" id="gate">
-  <div class="gate-card">
-    <div class="gate-brand">ChartGauge</div>
-    <p class="gate-tag">Price charts, technical indicators, and a written read of them. For learning, not for trading.</p>
-    <div class="gate-terms">
-      <p><strong>Please read and agree before continuing.</strong></p>
-      <p>ChartGauge is an <strong>educational and informational tool only</strong>. Nothing here is financial, investment, legal, or tax advice, and nothing here is personalised to you. The Buy / Sell / Hold signal reports what happened on a symbol's own past bars, not what will happen next. The scores, ratings, forecasts, and written analyses are mechanical outputs that are <strong>frequently wrong</strong> — no tool can reliably predict markets.</p>
-      <p>All investing involves risk, including the possible <strong>loss of the money you invest</strong>. You alone are responsible for your decisions and their outcomes. To the fullest extent permitted by law, ChartGauge and its creators are <strong>not liable for any losses, damages, or costs</strong> arising from your use of this tool or your reliance on its content.</p>
-      <p>By continuing, you confirm you are using ChartGauge for personal, educational purposes and accept the Terms of Service and Privacy Policy. The charts and indicators do not load until you do.</p>
-    </div>
-    <label class="gate-check"><input type="checkbox" id="gateAgree" /> <span>I have read and agree to the notice above, the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
-    <div class="gate-auth disabled" id="gateAuth">
-      <button type="button" class="btn btn-google btn-block hidden" id="gateGoogle">
-        <svg viewBox="0 0 18 18" width="17" height="17" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
-        <span id="gateGoogleText">Continue with Google</span>
-      </button>
-      <div class="gate-or hidden" id="gateGoogleOr"><span>or use an email address</span></div>
-      <input type="email" id="gateEmail" class="input" aria-label="Email address" placeholder="you@email.com" autocomplete="email" />
-      <input type="password" id="gatePass" class="input" aria-label="Password" placeholder="Password (8+ characters)" autocomplete="current-password" />
-      <div class="auth-err hidden" id="gateErr"></div>
-      <div class="gate-btns">
-        <button type="button" class="btn btn-primary btn-block" id="gateSignin">Sign in</button>
-        <button type="button" class="btn btn-ghost btn-block" id="gateSignup">Create account</button>
-      </div>
-      <p class="gate-optional">An account is needed to load charts and market data. It is free — an email address and a password.</p>
-    </div>
-    <p class="gate-note">Please don’t reuse a real banking or trading password here. This is a demo login.</p>
-  </div>
-</div>
 
 <header class="topbar">
   <button type="button" class="nav-toggle" id="navToggle" aria-label="Open the menu" aria-expanded="false" aria-controls="drawer">
@@ -100,6 +71,9 @@
         <span class="hero-examples" id="heroExamples"></span>
       </div>
     </div>
+    <!-- The two sections below are market data and are simply not shown when
+         there is no session; the search above them stays usable by anyone. -->
+    <div id="homeData">
     <div class="mkt-section">
       <div class="mkt-h">Where the score sits today</div>
       <div class="ranked-cols" id="rankedBody"></div>
@@ -108,6 +82,7 @@
     <div class="mkt-section">
       <div class="mkt-h">Market snapshot</div>
       <div class="quote-grid" id="homeSnapshot"></div>
+    </div>
     </div>
   </section>
 
@@ -236,6 +211,17 @@
           </div>
           <canvas id="chart"></canvas>
           <p class="chart-hint">Scroll to zoom · drag to pan in any direction · drag the price scale on the right or the time scale along the bottom to stretch that axis · double-click to re-fit</p>
+        </div>
+
+        <!-- Shown in place of everything below the chart when there is no
+             session. It says only what to do, not what is missing. -->
+        <div class="card" id="chartWall">
+          <h2 class="wall-h">Create an account and sign in to view the full chart.</h2>
+          <p class="wall-p">It is free — an email address and a password.</p>
+          <div class="wall-btns">
+            <button type="button" class="btn btn-primary" id="chartWallSignup">Create account</button>
+            <button type="button" class="btn btn-ghost" id="chartWallLogin">Sign in</button>
+          </div>
         </div>
 
         <div class="tiles" id="tiles"></div>
@@ -670,7 +656,7 @@
       </button>
     </form>
     <p class="auth-toggle"><span id="authToggleText">New to ChartGauge?</span> <button type="button" class="link-btn" id="authToggle">Create an account</button></p>
-    <p class="auth-note">Never enter a real trading or bank password here. This is a demo; passwords are hashed, never stored in plain text.</p>
+    <p class="auth-note">By continuing you agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>. ChartGauge is for learning, not for trading, and nothing on it is financial advice.<br /><br />Never enter a real trading or bank password here. This is a demo; passwords are hashed, never stored in plain text.</p>
   </div>
 </div>
 

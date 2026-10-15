@@ -400,6 +400,13 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   strategy = I.STRAT[strategy] ? strategy : 'daytrade';
   direction = direction === 'short' ? 'short' : 'long';
   interval = INTERVALS.includes(interval) ? interval : '1day';
+  // The chart itself is open: anyone can load the candles. Everything read
+  // from them — the indicators, the score, the measured record, the levels,
+  // the projection — goes only to an account, so a visitor's page has nothing
+  // to uncover. Anonymous callers are throttled per IP, since each of these
+  // can be a paid price-API call.
+  const user = await currentUser(req).catch(() => null);
+  if (!user && throttled(res, [['stock:ip:' + clientIp(req), 30, 60000]])) return;
   let source = 'demo', note = '', data;
   if (STOCK_API_KEY) {
     if (knownUnknown(symbol)) return json(res, 404, noSuchTicker(symbol));
@@ -427,6 +434,15 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
     note = 'Demo data — set STOCK_API_KEY (twelvedata.com, free) for real prices.';
   }
   const closes = data.prices.map(p => p.close);
+  const last = closes[closes.length - 1];
+  const prev = closes[closes.length - 2] || last;
+  const head = {
+    symbol, name: data.name, currency: data.currency, source, note, interval,
+    strategy, direction, prices: data.prices,
+    latest: last, change: last - prev, changePct: prev ? ((last - prev) / prev) * 100 : 0,
+  };
+  // No session: the bars and the last price, and nothing derived from them.
+  if (!user) return json(res, 200, Object.assign({ locked: true }, head));
   const a = I.analyze(closes, strategy, direction);
   // Deep-analysis suite (only meaningful on daily-or-longer bars with enough history)
   const candles = data.prices.map(p => ({ open: p.open, high: p.high, low: p.low, close: p.close, volume: p.volume || 0 }));
@@ -444,7 +460,7 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   // for day trading is 5-minute bars, so most visits would not have counted.
   // Fire-and-forget: bumpStreak swallows its own errors, and a streak must
   // never be the reason a chart fails.
-  currentUser(req).then(bumpStreak).catch(() => {});
+  bumpStreak(user).catch(() => {});
   const bands = I.forecastBands(closes);
   const levels = I.tradeLevels(candles, a.direction);
   // What actually happened, historically, at scores like today's. Roughly 50ms
@@ -454,20 +470,15 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   // Buy / Sell / Hold, derived from that measurement and nothing else. Null
   // when there is not enough history on the symbol to measure anything.
   const signal = I.edgeSignal(edge);
-  const last = closes[closes.length - 1];
-  const prev = closes[closes.length - 2] || last;
-  json(res, 200, {
-    symbol, name: data.name, currency: data.currency, source, note,
+  json(res, 200, Object.assign(head, {
     tradeSignal: signal,
-    strategy, direction: a.direction, strategyLabel: stratLabel(strategy, a.direction), interval,
-    prices: data.prices,
-    latest: last, change: last - prev, changePct: prev ? ((last - prev) / prev) * 100 : 0,
+    direction: a.direction, strategyLabel: stratLabel(strategy, a.direction),
     maFast: a.maFast, maSlow: a.maSlow,
     indicators: { maFast: a.maFast.value, maSlow: a.maSlow.value, rsi: a.rsi, rsiPeriod: a.rsiPeriod, trendSlope: a.slope },
     signal: a.signal, verdict: a.verdict, risk: a.risk,
     forecast: a.forecast, horizon: a.horizon,
     tech, rating, bands, levels, edge,
-  });
+  }));
 }
 
 // ---- AI (or rule-based) summary ----
@@ -2727,10 +2738,12 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8' });
       return res.end(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`);
     }
-    // Everything that returns market data, in one list. Auth, billing, robots
-    // and the sitemap are deliberately absent: sign-in has to work before you
-    // are signed in, and crawlers must still reach the documents.
-    if (/^\/api\/(stock|quotes|fundamentals|analyze|analyze-stream|analyze-image|compare|screen|watchlist|alerts|movers|ranked)\b/.test(url)) {
+    // Everything that returns a reading of market data, in one list. Auth,
+    // billing, robots and the sitemap are deliberately absent: sign-in has to
+    // work before you are signed in, and crawlers must still reach the
+    // documents. /api/stock is absent too: the bare chart is open to anyone,
+    // and handleStock itself decides how much of the rest to send.
+    if (/^\/api\/(quotes|fundamentals|analyze|analyze-stream|analyze-image|compare|screen|watchlist|alerts|movers|ranked)\b/.test(url)) {
       if (await requireAccount(req, res)) return;
     }
     if (url === '/api/admin' && req.method === 'GET') return await handleAdmin(req, res);

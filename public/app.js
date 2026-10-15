@@ -66,36 +66,89 @@
   }
   initConsent();
 
-  // First-visit gate. The overlay is opaque, but covering the chart is not the
-  // same as withholding it: before this, a deep link like /stock/AAPL fetched
-  // and drew the whole chart underneath, so anything that removed the overlay —
-  // a stylesheet that failed to load, an element deleted in devtools — revealed
-  // a working chart nobody had agreed to. Nothing is fetched or drawn now until
-  // the box is ticked.
-  // Pages with no market data on them stay readable without an account: the
-  // policy pages, which must be reachable to be agreed to, and the lessons,
-  // which are the site's search-visible writing and would otherwise meet
-  // arrivals from Google with a sign-in wall.
-  const ON_OPEN_PAGE = /^\/(terms|privacy|refunds|contact|learn|accuracy)(\/|$)/.test(location.pathname);
-  // Versioned, so a future change to the terms can ask again. The old key still
-  // counts: the substance of what it accepted has not changed.
+  // Nobody is asked to sign in on arrival. The site is browsable: the lessons,
+  // the measured record, the pricing, the policies, and the chart itself —
+  // anyone can type a ticker and see the candles. What needs an account is
+  // the reading of the chart: the indicators, the score, the measured record,
+  // the levels, the written summary, and every other page that is nothing but
+  // market data. That is withheld rather than covered. Before this there was
+  // an opaque overlay, but a deep link like /stock/AAPL had already fetched
+  // and drawn everything underneath it, so deleting the overlay in devtools
+  // revealed a working page to someone with no account. Now the server sends
+  // a visitor the bars and nothing else, the fetch shadow below refuses every
+  // other market-data call, and the wall is only what a visitor sees in
+  // place of what was not sent.
+  // Versioned, so a future change to the terms can ask again.
   const AGREE_KEY = 'chartgauge_agreed_v1';
-  const LEGACY_AGREE_KEY = 'marketlens_agreed';
-  function hasAgreed() {
-    try { return !!(localStorage.getItem(AGREE_KEY) || localStorage.getItem(LEGACY_AGREE_KEY)); }
-    catch (e) { return false; }   // storage blocked → treat as not agreed
-  }
   function setAgreed() { try { localStorage.setItem(AGREE_KEY, '1'); } catch (e) {} }
 
-  // Hidden immediately only on the legal pages. Everywhere else it waits for
-  // checkAuth to say whether there is a session, so the chart is never briefly
-  // reachable on the strength of a localStorage flag alone.
-  if (ON_OPEN_PAGE) document.getElementById('gate').classList.add('hidden');
-  function hideGate() { const g = document.getElementById('gate'); if (g) g.classList.add('hidden'); }
-  function showGate() { const g = document.getElementById('gate'); if (g) g.classList.remove('hidden'); }
+  // Set whenever something was withheld from this page for want of a session —
+  // a refused fetch, a wall, a locked chart — and cleared when signing in asks
+  // for it again. Without it, a signed-in visitor's first chart would be
+  // fetched twice: once by the opening route and again when checkAuth landed.
+  let withheld = false;
 
-  // A symbol asked for before agreeing, loaded once the gate is cleared.
-  let pendingSymbol = null;
+  // The views that are nothing but market data. Each one is replaced whole by
+  // the wall when there is no session, so a visitor never sees a disabled
+  // chart, a blurred one, or a list of the indicators they are missing — just
+  // the one thing they have to do. learn / accuracy / pricing / settings carry
+  // no market data and stay open.
+  // analyze is not here: its chart is open and only the reading of it is
+  // withheld, which run() handles. home is here, but only its data sections
+  // are withheld, and quietly — the search box above them stays usable, and
+  // nobody arriving at the front page is met with a sign-in card. The
+  // buttons for that are in the top bar.
+  const DATA_VIEWS = ['home', 'markets', 'movers', 'screener',
+                      'compare', 'watchlist', 'alerts', 'practice'];
+  const QUIET_WALL = ['home'];
+  function wallTarget(name) { return name === 'home' ? $('homeData') : $('view-' + name); }
+  // Built once per view and reused; the view's own children are hidden rather
+  // than emptied, so signing in restores them without a reload.
+  function showWall(name) {
+    const sec = wallTarget(name); if (!sec) return;
+    withheld = true;
+    if (QUIET_WALL.indexOf(name) !== -1) {
+      Array.prototype.forEach.call(sec.children, el => el.classList.add('wall-off'));
+      return;
+    }
+    let w = sec.querySelector(':scope > .wall');
+    if (!w) {
+      w = document.createElement('div');
+      w.className = 'wall';
+      const h = document.createElement('h2');
+      h.className = 'wall-h'; h.textContent = 'Sign in to see this';
+      const p = document.createElement('p');
+      p.className = 'wall-p';
+      p.textContent = 'This needs an account. It is free — an email address and a password.';
+      const btns = document.createElement('div');
+      btns.className = 'wall-btns';
+      const mk = (label, cls, mode) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'btn ' + cls; b.textContent = label;
+        b.addEventListener('click', () => openAuth(mode));
+        return b;
+      };
+      btns.appendChild(mk('Sign in', 'btn-primary', 'login'));
+      btns.appendChild(mk('Create account', 'btn-ghost', 'signup'));
+      w.appendChild(h); w.appendChild(p); w.appendChild(btns);
+      sec.appendChild(w);
+    }
+    Array.prototype.forEach.call(sec.children, el => {
+      if (el !== w) el.classList.add('wall-off');
+    });
+    w.classList.remove('hidden');
+  }
+  function hideWall(name) {
+    const sec = wallTarget(name); if (!sec) return;
+    const w = sec.querySelector(':scope > .wall');
+    if (w) w.classList.add('hidden');
+    Array.prototype.forEach.call(sec.children, el => el.classList.remove('wall-off'));
+  }
+  // Whatever is on screen now, put the wall on it. Used when a refused fetch
+  // is the first thing that notices there is no session.
+  function wallCurrentView() {
+    if (currentView && DATA_VIEWS.indexOf(currentView) !== -1) showWall(currentView);
+  }
 
   // Gating run() stopped the candlestick chart, but every other market-data
   // loader still ran behind the overlay — the home snapshot pulled live index
@@ -104,20 +157,23 @@
   // and hope the fifteenth remembers, this shadows fetch for the whole module:
   // no market data is requested until the terms are accepted.
   //
-  // Auth and billing stay open. The gate's own sign-in needs auth, checkAuth
-  // runs on every page, and the legal pages deliberately bypass the gate.
-  const PRE_AGREEMENT_OK = /^\/api\/(auth|billing)\b/;
+  // Auth and billing stay open: the sign-in modal needs auth, and checkAuth
+  // runs on every page including the ones that carry no market data. The
+  // chart endpoint is open too, because the server answers a visitor with the
+  // bars alone and nothing read from them.
+  const PRE_AGREEMENT_OK = /^\/api\/(auth|billing|stock)\b/;
   const rawFetch = window.fetch.bind(window);
   const fetch = (input, init) => {
     const url = typeof input === 'string' ? input : (input && input.url) || '';
-    if (url.startsWith('/api/') && !PRE_AGREEMENT_OK.test(url) && !(hasAgreed() && isSignedIn())) {
-      showGate();
-      // Tagged, so a caller can tell "the gate stopped this" from a real
+    if (url.startsWith('/api/') && !PRE_AGREEMENT_OK.test(url) && !isSignedIn()) {
+      withheld = true;
+      wallCurrentView();
+      // Tagged, so a caller can tell "the wall stopped this" from a real
       // failure. Checking the signed-in state inside the caller's catch does
       // not work: auth can land between the rejection and the catch running,
       // and the check then reads the new state and reports a failure that has
       // already retried successfully.
-      const gateErr = new Error('Sign in and accept the terms before loading market data.');
+      const gateErr = new Error('Sign in to load market data.');
       gateErr.gated = true;
       return Promise.reject(gateErr);
     }
@@ -1470,8 +1526,6 @@
   async function run(symbol) {
     symbol = (symbol || $('symbol').value || '').trim().toUpperCase();
     if (!symbol) return;
-    // No account and no agreement, no chart — not even the request for data.
-    if (!hasAgreed() || !isSignedIn()) { pendingSymbol = symbol; showGate(); return; }
     $('error').classList.add('hidden');
     $('goBtn').disabled = true; $('goBtn').textContent = 'Loading…';
     const seq = ++runSeq;
@@ -1485,10 +1539,10 @@
       // The activation moment: a chart the visitor asked for actually drew.
       // After the ok-check and the sequence guard, so a failed lookup or a
       // superseded request is never counted as one.
-      track('analyze', { symbol: d.symbol, strategy, interval });
+      track('analyze', { symbol: d.symbol, strategy, interval, locked: !!d.locked });
       // The server just extended the streak; pick the new number up so the
       // badge moves on the visit that earned it, not the next page load.
-      refreshStreak();
+      if (!d.locked) refreshStreak();
       $('modeTag').textContent = d.source === 'live' ? 'live data' : 'demo data';
       $('symName').textContent = d.symbol + (d.name && d.name !== d.symbol ? ' · ' + d.name : '');
       updateWatchBtn(d.symbol);
@@ -1496,6 +1550,28 @@
       const up = d.change >= 0;
       $('chg').textContent = (up ? '▲ ' : '▼ ') + Math.abs(d.change).toFixed(2) + ' (' + d.changePct.toFixed(2) + '%)';
       $('chg').className = 'chg ' + (up ? 'up' : 'down');
+      try {
+        const want = '/stock/' + d.symbol;
+        // Only when analyze is the view on screen. The practice page loads
+        // symbols through this same function, and rewriting the URL to
+        // /stock/XXXX there would send a refresh to the wrong page.
+        if (currentView === 'analyze' && location.pathname !== want) {
+          history.replaceState({ view: 'analyze' }, '', want);
+        }
+      } catch (e) {}
+      $('result').classList.toggle('locked', !!d.locked);
+      if (d.locked) {
+        // No session. The server sent the bars and the last price and nothing
+        // else, so this is all there is to draw: candles and volume, with the
+        // overlays that would read something off them switched off, and the
+        // sign-in card where the reading would have been.
+        withheld = true;
+        lockOverlays();
+        $('note').textContent = d.note || '';
+        $('result').classList.remove('hidden');
+        resetView(); drawChart(); startLive();
+        return;
+      }
       const rt = d.rating || {};
       const v = d.verdict || {};
       $('vAction').textContent = rt.label || v.action || d.signal.label;
@@ -1523,15 +1599,6 @@
       else $('risk').className = 'risk hidden';
       $('note').textContent = d.note || '';
       $('result').classList.remove('hidden');
-      try {
-        const want = '/stock/' + d.symbol;
-        // Only when analyze is the view on screen. The practice page loads
-        // symbols through this same function, and rewriting the URL to
-        // /stock/XXXX there would send a refresh to the wrong page.
-        if (currentView === 'analyze' && location.pathname !== want) {
-          history.replaceState({ view: 'analyze' }, '', want);
-        }
-      } catch (e) {}
       resetView(); drawChart(); tiles(d); renderTech(d.tech); renderBands(d.bands); renderLevels(d);
       setAnalysisPending();
       loadAnalysis(d);
@@ -1547,6 +1614,20 @@
       chartFailed(e.message);
     } finally { if (seq === runSeq) { $('goBtn').disabled = false; $('goBtn').textContent = 'Analyze'; } }
   }
+
+  // The averages, the projection and the levels are each a reading of the
+  // chart, so a visitor's chart draws without them. The buttons are hidden by
+  // the stylesheet; this keeps the state honest so a later full load does not
+  // start with a layer switched on that nobody asked for.
+  function lockOverlays() {
+    ['fast', 'slow', 'proj', 'levels'].forEach(k => {
+      show[k] = false;
+      const b = document.querySelector('.ov[data-k="' + k + '"]');
+      if (b) b.classList.remove('active');
+    });
+  }
+  $('chartWallSignup').addEventListener('click', () => openAuth('signup'));
+  $('chartWallLogin').addEventListener('click', () => openAuth('login'));
 
   // The summary takes several seconds (indicators, then a Claude call that is
   // waited out in full), so say so rather than showing a bare spinner-word
@@ -1736,11 +1817,11 @@
       }
     } catch (e) {
       // Before sign-in the shared fetch wrapper rejects every /api call and
-      // shows the gate instead. routeFromPath runs again once auth lands, so
-      // this first rejection is the gate working, not a failure — reporting it
+      // shows the wall instead. routeFromPath runs again once auth lands, so
+      // this first rejection is the wall working, not a failure — reporting it
       // left "Could not load the practice account" sitting on a page that had
       // in fact loaded fine a moment later.
-      if (e && e.gated) return;      // the gate is handling it; a retry follows
+      if (e && e.gated) return;      // the wall is handling it; a retry follows
       console.error('practice: loadPaper failed', e);
       paperMsg('Could not load the practice account — ' + (e && e.message ? e.message : e), true);
     }
@@ -2184,7 +2265,8 @@
       $('logoutBtn').addEventListener('click', logout);
       if ($('upgradeNav')) $('upgradeNav').addEventListener('click', () => showView('pricing'));
     } else {
-      el.innerHTML = `<button class="signin" id="signinBtn">Sign in</button>`;
+      el.innerHTML = `<button class="signin ghost" id="signupBtn">Create account</button><button class="signin" id="signinBtn">Sign in</button>`;
+      $('signupBtn').addEventListener('click', () => openAuth('signup'));
       $('signinBtn').addEventListener('click', () => openAuth('login'));
     }
   }
@@ -2192,15 +2274,18 @@
     try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; currentStreak = j.streak || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; trialDays = Number(j.trialDays) || 0; trialFirstOnly = !!j.trialFirstOnly; launch = j.launch || launch; showGoogleButtons(!!j.googleAuth); billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; currentStreak = null; }
     renderAcct();
     $('watchBtn').classList.toggle('hidden', !currentUser);
-    // The gate comes down only for a signed-in visitor who has agreed on this
-    // device; anything else leaves it up, including a stale agreement flag
-    // with no session behind it.
     renderLaunchBar();
     const dz = $('dangerZone');
     if (dz) dz.classList.toggle('hidden', !currentUser);
-    if (currentUser && hasAgreed()) { hideGate(); releasePending(); loadWatchlist(); }
-    else if (!ON_OPEN_PAGE) showGate();
-    else { watchSymbols = []; renderWatchStrip(); }
+    // The opening route rendered before this resolved, so whichever view is on
+    // screen was drawn without knowing whether there is a session. Settle it
+    // now: a signed-in visitor gets the data it already asked for, and anyone
+    // else gets the wall in its place.
+    if (currentUser) { releasePending(); loadWatchlist(); }
+    else {
+      watchSymbols = []; renderWatchStrip();
+      wallCurrentView();
+    }
     // The initial route renders before this resolves, so a direct load of
     // /pricing would otherwise show no price and "Sign in to upgrade" to
     // someone who is already signed in. Re-render once the answer arrives.
@@ -2229,8 +2314,12 @@
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'Something went wrong.');
       currentUser = j.user; closeAuth(); renderAcct();
+      setAgreed();
+      track(authMode === 'signup' ? 'sign_up' : 'login', { method: 'password' });
       $('watchBtn').classList.remove('hidden'); $('authPass').value = '';
       loadWatchlist();
+      // Whatever the wall was standing in front of is now allowed.
+      releasePending();
     } catch (err) { $('authErr').textContent = err.message; $('authErr').classList.remove('hidden'); }
     finally { $('authSubmit').disabled = false; }
   });
@@ -2238,6 +2327,9 @@
     try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
     currentUser = null; watchSymbols = []; renderAcct(); renderWatchStrip();
     $('watchBtn').classList.add('hidden');
+    // Whatever is on screen was drawn for an account. Draw it again for a
+    // visitor: the chart loses its reading, the data pages get the wall.
+    routeFromPath(true);
   }
   function absorbWatch(j) {
     if (!j) return;
@@ -2315,6 +2407,10 @@
     currentView = name;
     document.querySelectorAll('.drawer-link').forEach(l => l.classList.toggle('active', l.dataset.view === name));
     window.scrollTo(0, 0);
+    // Nothing about the data is rendered, and none of the loaders below run,
+    // so there is nothing on the page to uncover.
+    if (!isSignedIn() && DATA_VIEWS.indexOf(name) !== -1) { showWall(name); return; }
+    hideWall(name);
     if (name === 'markets') loadMarkets();
     if (name === 'movers') loadMovers();
     if (name === 'accuracy') loadAccuracy();
@@ -3194,19 +3290,18 @@
   // The buttons stay hidden until the server confirms it is configured, so a
   // deployment without Google credentials never shows a button that 404s.
   function showGoogleButtons(on) {
-    ['gateGoogle', 'gateGoogleOr', 'authGoogle'].forEach(id => {
+    ['authGoogle', 'authGoogleOr'].forEach(id => {
       const el = $(id); if (el) el.classList.toggle('hidden', !on);
     });
   }
-  function goGoogle(fromGate) {
-    // Leaving the page for Google, so the agreement has to be recorded first
-    // or the reader comes back and is asked again.
-    if (fromGate) setAgreed();
+  function goGoogle() {
+    // Leaving the page for Google, so the agreement the modal states has to be
+    // recorded first or it is lost on the way out.
+    setAgreed();
     const next = location.pathname + location.search;
     location.href = '/api/auth/google?next=' + encodeURIComponent(next);
   }
-  if ($('gateGoogle')) $('gateGoogle').addEventListener('click', () => goGoogle(true));
-  if ($('authGoogle')) $('authGoogle').addEventListener('click', () => goGoogle(false));
+  if ($('authGoogle')) $('authGoogle').addEventListener('click', () => goGoogle());
 
   // Report what happened on the way back, then tidy the URL.
   (function readGoogleResult() {
@@ -3226,44 +3321,14 @@
     try { history.replaceState({}, '', location.pathname + (qs ? '?' + qs : '')); } catch (e) {}
   })();
 
-  // ---- First-visit gate (terms agreement + sign in) ----
-  const gateAuthEl = document.querySelector('.gate-auth');
-  $('gateAgree').addEventListener('change', () => gateAuthEl.classList.toggle('disabled', !$('gateAgree').checked));
-  // The Terms and Privacy links live inside the checkbox label, where a click
-  // would otherwise tick the box as a side effect of opening the document.
-  document.querySelectorAll('.gate-check a').forEach(a =>
-    a.addEventListener('click', (e) => e.stopPropagation()));
-  function gateErr(m) { $('gateErr').textContent = m; $('gateErr').classList.remove('hidden'); }
-  async function gateGo(mode) {
-    if (!$('gateAgree').checked) return gateErr('Please tick the box to agree to the Terms of Service and Privacy Policy.');
-    setAgreed();
-    const email = $('gateEmail').value.trim(), password = $('gatePass').value;
-    if (!email || password.length < 8) return gateErr('Enter your email and a password (8+ characters).');
-    try {
-      const r = await fetch('/api/auth/' + mode, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error || 'Something went wrong.');
-      currentUser = j.user; renderAcct();
-      track(mode === 'signup' ? 'sign_up' : 'login', { method: 'password' });
-      $('watchBtn').classList.remove('hidden');
-      loadWatchlist(); hideGate(); releasePending();
-    } catch (e) { gateErr(e.message); }
-  }
-  // Everything the current view wanted was refused while the gate was up, so
-  // agreeing has to ask for it again — otherwise the page sits on the empty
-  // state it fell back to (a market snapshot showing a dash, say).
+  // Everything the current view wanted was refused while there was no session,
+  // so signing in has to ask for it again — otherwise the page sits on the
+  // empty state it fell back to (a market snapshot showing a dash, say).
   function releasePending() {
-    if (pendingSymbol) {
-      const sym = pendingSymbol; pendingSymbol = null;
-      $('symbol').value = sym; run(sym);
-      return;
-    }
+    if (!withheld) return;
+    withheld = false;
     routeFromPath(true);
   }
-  $('gateSignin').addEventListener('click', () => gateGo('login'));
-  $('gateSignup').addEventListener('click', () => gateGo('signup'));
-
-
   // Initial view: deep-link → analyze; billing return → pricing; else home.
   const params = new URLSearchParams(location.search);
   const deep = params.get('symbol'), billing = params.get('billing');

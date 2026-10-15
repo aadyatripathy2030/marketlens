@@ -33,25 +33,27 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; max-width: 100%; overflow-x: hidden; }
 
-/* First-visit gate: terms agreement + sign in */
-.gate { position: fixed; inset: 0; z-index: 200; background: var(--bg); display: grid; place-items: center; padding: 20px; overflow-y: auto; }
-.gate.hidden { display: none; }
-.gate-card { width: 100%; max-width: 460px; background: var(--card); border: none; border-radius: var(--radius); padding: 30px 28px; }
-.gate-brand { font-size: 24px; font-weight: 700; letter-spacing: -.5px; }
-.gate-tag { font-size: 13px; color: var(--muted); margin: 4px 0 16px; }
-.gate-terms { max-height: 190px; overflow-y: auto; background: var(--bg2); border-radius: var(--radius-sm); padding: 15px 17px; font-size: 12.5px; line-height: 1.6; color: var(--muted); }
-.gate-terms p { margin-bottom: 8px; } .gate-terms p:last-child { margin-bottom: 0; } .gate-terms strong { color: var(--text); }
-.gate-check { display: flex; align-items: flex-start; gap: 9px; font-size: 13.5px; margin: 15px 0; cursor: pointer; }
-.gate-check input { margin-top: 3px; width: 16px; height: 16px; flex: none; }
-.gate-auth { transition: opacity .2s; }
-.gate-auth.disabled { opacity: .4; pointer-events: none; filter: saturate(.4); }
-.gate-auth .input { width: 100%; margin-bottom: 10px; text-transform: none; }
-.gate-btns { display: flex; gap: 10px; }
-.gate-btns .btn { flex: 1; }
-/* The note under the sign-in buttons explaining why an account is needed. */
-.gate-optional { font-size: 12px; color: var(--muted); text-align: center; margin: 9px 0 0; line-height: 1.5; }
-
-.gate-note { font-size: 11px; color: var(--muted); margin-top: 16px; text-align: center; line-height: 1.5; }
+/* Sign-in wall. Stands in for a view (or a section of one) that is nothing
+   but market data when there is no session. The view's own children are hidden
+   with .wall-off rather than removed, so signing in restores them in place. */
+.wall { border: 1px dashed var(--border-strong); border-radius: var(--radius); padding: 44px 24px; text-align: center; max-width: 520px; margin: 24px auto; }
+.wall.hidden { display: none; }
+.wall-off { display: none !important; }
+.wall-h { font-size: 20px; font-weight: 700; letter-spacing: -.3px; margin: 0 0 6px; line-height: 1.3; }
+.wall-p { font-size: 13.5px; color: var(--muted); margin: 0 0 20px; line-height: 1.5; }
+.wall-btns { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+/* The chart for a visitor: candles and volume, then this card where the
+   reading would be. Everything read from the bars is hidden here, and the
+   server did not send it, so there is nothing behind the card to uncover. */
+#chartWall { display: none; text-align: center; padding: 36px 24px; }
+.result.locked #chartWall { display: block; }
+.result.locked .head .verdict, .result.locked #reason, .result.locked .ai-score-card,
+.result.locked #tiles, .result.locked #risk, .result.locked #techCard, .result.locked #bandsCard,
+.result.locked #thesisCard, .result.locked #levelsCard, .result.locked #fundCard, .result.locked #newsCard,
+.result.locked .sidebar { display: none; }
+.result.locked .ov[data-k="fast"], .result.locked .ov[data-k="slow"],
+.result.locked .ov[data-k="proj"], .result.locked .ov[data-k="levels"] { display: none; }
+.result.locked .layout { grid-template-columns: minmax(0, 1fr); }
 img, canvas { max-width: 100%; }
 body { font-family: var(--font); background: var(--bg); color: var(--text); line-height: 1.6; min-height: 100vh; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; font-variant-numeric: tabular-nums; overflow-x: hidden; }
 
@@ -249,12 +251,16 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .link-btn:hover { text-decoration: underline; }
 .acct .signin { font-weight: 600; color: var(--text); background: var(--card-hi); border: none; border-radius: var(--radius-sm); padding: 8px 16px; cursor: pointer; font-family: var(--font); font-size: 13px; white-space: nowrap; }
 .acct .signin:hover { background: var(--border-strong); }
+.acct .signin.ghost { background: none; border: 1px solid var(--border-strong); }
+.acct .signin.ghost:hover { background: var(--card-hi); }
 /* On a phone the right-hand group is 381px wide on a 375px screen, so the
    whole site scrolled sideways. The two items that are informational rather
    than functional stand down: the address is in the menu, and the demo-data
    tag only appears on a deployment with no price key. Measured at 375px, the
    header then lands exactly on the viewport instead of 189px past it. */
 @media (max-width: 620px) { .acct .email { display: none; } }
+/* One button on a phone. The sign-in modal offers the account toggle itself. */
+@media (max-width: 480px) { .acct .signin.ghost { display: none; } }
 @media (max-width: 560px) { .topbar-right #modeTag { display: none; } }
 
 .sym-row { display: flex; align-items: center; gap: 12px; }
@@ -527,8 +533,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
   .head .verdict { min-width: 88px; }
 }
 
-/* Cookie consent. A bottom bar rather than a modal: the first visit already
-   has the liability gate over the content, and two overlays at once is a wall. */
+/* Cookie consent. A bottom bar rather than a modal, so nothing stands in the
+   way of the page on arrival. */
 .consent { position: fixed; left: 16px; right: 16px; bottom: 16px; z-index: 60;
   display: flex; align-items: center; gap: 18px; max-width: 760px; margin: 0 auto;
   background: var(--card-hi, var(--card)); border: 1px solid var(--border-strong);
@@ -551,10 +557,6 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .pro-gate { font-size: 13px; line-height: 1.55; color: var(--muted); margin: 0; padding: 18px 0; }
 .pro-gate .link-btn { font-size: 13px; }
 
-/* The agreement links sit inside the checkbox label, so they must not trigger
-   the label's own toggle when clicked. */
-.gate-check a { color: var(--text); text-decoration: underline; }
-.gate-check a:hover { color: var(--accent); }
 
 /* Movers scan. Rows are observations, so they read as facts with the number
    first and the plain-English reading beside it, not as calls to action. */
@@ -621,10 +623,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
   background: #fff; color: #1f1f1f; border: 1px solid #dadce0; font-weight: 600; }
 .btn-google:hover { background: #f5f6f7; }
 .btn-google svg { flex: none; }
-.gate-or { display: flex; align-items: center; gap: 12px; margin: 14px 0 12px;
-  font-size: 11.5px; color: var(--muted); }
-.gate-or::before, .gate-or::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-.gate-or.hidden, .btn-google.hidden { display: none; }
+.btn-google.hidden { display: none; }
 
 /* Accuracy record. A plain table on purpose — the numbers are the argument. */
 .acc-ssr p, #accuracySsr p { font-size: 13.5px; line-height: 1.65; color: var(--muted); max-width: 760px; }
