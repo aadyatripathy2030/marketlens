@@ -95,19 +95,17 @@
       <div class="record-grid" id="recordGrid"></div>
       <p class="record-line">Every reading is written down before the outcome is known, then graded against what the price actually did. The record is published whether it flatters us or not. <a href="/accuracy">See the full record</a></p>
     </section>
-    <!-- The two sections below are market data and are simply not shown when
-         there is no session; the search above them stays usable by anyone. -->
-    <div id="homeData">
-    <div class="mkt-section">
-      <div class="mkt-h">Where the score sits today</div>
-      <div class="ranked-cols" id="rankedBody"></div>
-      <p class="ranked-note" id="rankedNote"></p>
-    </div>
-    <div class="mkt-section">
-      <div class="mkt-h">Market snapshot</div>
-      <div class="quote-grid" id="homeSnapshot"></div>
-    </div>
-    </div>
+    <!-- The doors into the app. The tools themselves live on their own
+         pages; the landing page only says what they are. -->
+    <section class="features">
+      <div class="mkt-h">What is here</div>
+      <div class="feature-grid">
+        <a class="feature" data-view="analyze"><div class="feature-h">Analyze</div><p>Any stock or crypto pair: thirteen indicators, stop and target levels, and a written read of the chart.</p></a>
+        <a class="feature" data-view="practice"><div class="feature-h">Practice</div><p>Trade pretend money at live prices, with a risk meter on the whole book.</p></a>
+        <a class="feature" data-view="learn"><div class="feature-h">Learn</div><p>Nineteen short lessons, each with a quiz. Free to anyone, no account needed.</p></a>
+        <a class="feature" data-view="pricing"><div class="feature-h">Pro</div><p>Unlimited written reports, chart-image reading, the screener and side-by-side compare.</p></a>
+      </div>
+    </section>
   </section>
 
   <!-- ANALYZE -->
@@ -323,6 +321,11 @@
     <div class="mkt-section">
       <div class="mkt-h">Trending stocks</div>
       <div class="quote-grid" id="trendingGrid"><div class="quote-loading">Loading…</div></div>
+    </div>
+    <div class="mkt-section">
+      <div class="mkt-h">Where the score sits today</div>
+      <div class="ranked-cols" id="rankedBody"></div>
+      <p class="ranked-note" id="rankedNote"></p>
     </div>
   </section>
 

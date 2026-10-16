@@ -110,7 +110,7 @@ function stratLabel(strategy, direction) {
   return direction === 'short' ? 'day trading (sell side)' : 'day trading (buy side)';
 }
 
-const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
+const MIME = { '.woff2': 'font/woff2', '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json; charset=utf-8' };
@@ -2591,7 +2591,7 @@ const VIEW_SEO = {
   'analyze': { view: 'analyze', title: 'Analyze a stock or crypto pair | ChartGauge',
     desc: 'Enter a ticker or crypto pair for a candlestick chart, 13 technical indicators, an indicator score, and stop-loss and take-profit levels derived from ATR and recent swing highs and lows.' },
   'markets': { view: 'markets', title: 'Market snapshot: indices and trending stocks | ChartGauge',
-    desc: 'Live quotes for the major US indices and the most active stocks, with the percentage move on the day.' },
+    desc: 'Live quotes for the major US indices and the most active stocks, with the percentage move on the day, and where the indicator score sits today across twenty large stocks.' },
   'compare': { view: 'compare', title: 'Compare stocks side by side | ChartGauge',
     desc: 'Put two or more tickers next to each other on market cap, revenue, P/E, PEG, margins, ROE, debt to equity, dividend yield and beta.' },
   'screener': { view: 'screener', title: 'Stock screener: filter by sector, market cap and price | ChartGauge',

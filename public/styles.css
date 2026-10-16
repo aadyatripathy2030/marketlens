@@ -4,11 +4,14 @@
   --bg: #121211; --bg2: #191917; --card: #1d1d1a; --card-hi: #252521;
   --text: #f0efec; --muted: #9a958c;
   --border: #2e2d28; --border-strong: #423f38;
-  /* The one chrome "accent" is bone, not a hue. It marks the active thing
-     without competing with a chart line for meaning — the old #4c9eff sat
-     almost exactly on --sma50, so the UI and a moving average read alike. */
-  --accent: #e9e4d9; --accent-soft: #2a2821;
-  --ai: #e9e4d9; --ai-2: #d6d2c8; --ai-soft: #252521;
+  /* The brand colour. Violet, because it is the one hue no data on the page
+     uses: green and red are direction, amber is caution and the fast average,
+     blue is the slow average. It marks the active thing, the buttons, the
+     links, the gauge when a reading leans neither way, and the model-written
+     block. (The chrome was bone until October 2026; this was a deliberate
+     change to give the site a colour of its own.) 6:1 on --card. */
+  --accent: #9d8cff; --accent-hi: #b3a6ff; --accent-soft: #272342;
+  --ai: #9d8cff; --ai-2: #b3a6ff; --ai-soft: #272342;
   /* Direction, reserved: green up, red down, amber caution — never decoration.
      Red/green cannot be told apart by a deuteranope and is unavoidable here,
      so direction is always carried by a sign, an arrow or position as well as
@@ -24,7 +27,9 @@
   --radius-sm: 2px;    /* inputs, buttons, small controls */
   /* Sans for everything structural, with tabular figures so columns line up. */
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  --font-head: var(--font);
+  /* Headlines get a face of their own, served from this site, so no request
+     leaves for a font and the privacy page stays true. */
+  --font-head: 'Space Grotesk', var(--font);
   /* A serif for exactly one job: the model-written read. It marks that block
      as prose — an argument — visibly not a computed figure. */
   --font-read: ui-serif, Georgia, "Iowan Old Style", "Times New Roman", serif;
@@ -72,8 +77,20 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 /* Views + hero */
 .view-h { font-size: 27px; font-weight: 680; letter-spacing: -.5px; margin-bottom: 20px; }
 .hero { padding: 30px 0 26px; border-bottom: 1px solid var(--border); margin-bottom: 26px; }
-/* Front-page chart: the analyze panel, moved in. */
-.home-chart { margin: 0 0 30px; }
+/* Front-page chart: the analyze panel, moved in, with a soft wash of the
+   brand colour behind it. */
+.home-chart { margin: 0 0 30px; position: relative; }
+.home-chart::before { content: ''; position: absolute; inset: -70px -6% -30px; pointer-events: none; z-index: 0;
+  background: radial-gradient(ellipse 55% 50% at 50% 38%, rgba(157,140,255,.17), transparent 72%); filter: blur(26px); }
+.home-chart > * { position: relative; z-index: 1; }
+/* What is here: the doors into the app, from the landing page. */
+.features { margin: 0 0 30px; }
+.feature-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.feature { display: block; background: var(--card); border-radius: var(--radius); padding: 18px 18px 16px; color: var(--text); text-decoration: none; border: 1px solid transparent; transition: border-color .15s; cursor: pointer; }
+.feature:hover { border-color: var(--accent); }
+.feature-h { font-family: var(--font-head); font-size: 17px; font-weight: 600; margin-bottom: 6px; letter-spacing: -.2px; }
+.feature p { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 0; }
+@media (max-width: 700px) { .feature-grid { grid-template-columns: repeat(2, 1fr); } }
 /* The record, in public. */
 .record { margin: 0 0 30px; }
 .record-grid { display: grid; grid-template-columns: repeat(4, 1fr); border-radius: var(--radius); overflow: hidden; margin-bottom: 12px; }
@@ -347,7 +364,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .input:focus { outline: none; border-color: var(--accent); }
 .btn { font-family: var(--font); font-weight: 600; font-size: 15px; border-radius: var(--radius-sm); padding: 12px 22px; cursor: pointer; border: 1px solid transparent; transition: background .12s, border-color .12s; }
 .btn-primary { background: var(--accent); color: var(--bg); }
-.btn-primary:hover { background: #fffdf8; }
+.btn-primary:hover { background: var(--accent-hi); }
 .btn-primary:disabled { opacity: .55; cursor: default; }
 .btn-ai { background: var(--card-hi); color: var(--text); border-color: var(--border-strong); }
 .btn-ai:hover { border-color: var(--accent); }
@@ -1106,3 +1123,15 @@ body.drawer-open .drawer { transform: translateX(0); }
 .wl-card-chg { font-size: 12.5px; margin-top: 3px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .wl-card-chg.up { color: var(--good); } .wl-card-chg.down { color: var(--bad); }
 .wl-rr.warn { color: var(--warn); }
+
+/* ---- Headline face ---- */
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url(/fonts/space-grotesk-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+.brand, .hero-h, .view-h, .learn-h, .modal-title, .auth-face-h, .wall-h, .record-val { font-family: var(--font-head); }
+.hero-h { letter-spacing: -1.4px; }

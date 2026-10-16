@@ -94,23 +94,17 @@
   // the one thing they have to do. learn / accuracy / pricing / settings carry
   // no market data and stay open.
   // analyze is not here: its chart is open and only the reading of it is
-  // withheld, which run() handles. home is here, but only its data sections
-  // are withheld, and quietly — the search box above them stays usable, and
-  // nobody arriving at the front page is met with a sign-in card. The
-  // buttons for that are in the top bar.
-  const DATA_VIEWS = ['home', 'markets', 'movers', 'screener',
+  // withheld, which run() handles. home is not here either: the landing page
+  // carries nothing that needs an account, so nobody arriving is met with a
+  // sign-in card. The buttons for that are in the top bar.
+  const DATA_VIEWS = ['markets', 'movers', 'screener',
                       'compare', 'watchlist', 'alerts', 'practice'];
-  const QUIET_WALL = ['home'];
-  function wallTarget(name) { return name === 'home' ? $('homeData') : $('view-' + name); }
+  function wallTarget(name) { return $('view-' + name); }
   // Built once per view and reused; the view's own children are hidden rather
   // than emptied, so signing in restores them without a reload.
   function showWall(name) {
     const sec = wallTarget(name); if (!sec) return;
     withheld = true;
-    if (QUIET_WALL.indexOf(name) !== -1) {
-      Array.prototype.forEach.call(sec.children, el => el.classList.add('wall-off'));
-      return;
-    }
     let w = sec.querySelector(':scope > .wall');
     if (!w) {
       w = document.createElement('div');
@@ -2620,12 +2614,11 @@
     // so there is nothing on the page to uncover.
     if (!isSignedIn() && DATA_VIEWS.indexOf(name) !== -1) { showWall(name); return; }
     hideWall(name);
-    if (name === 'markets') loadMarkets();
+    if (name === 'markets') { loadMarkets(); loadRanked(); }
     if (name === 'movers') loadMovers();
     if (name === 'accuracy') loadAccuracy();
     if (name === 'settings') renderSettings();
     if (name === 'watchlist') renderWatchView();
-    if (name === 'home') { loadHomeSnapshot(); loadRanked(); }
     if (name === 'learn') renderLearnGrid();
     if (name === 'compare') { renderCompareChips(); if (compareSymbols.length >= 2 && !$('compareResult').innerHTML) loadCompare(); }
     if (name === 'screener' && !$('screenResult').innerHTML) loadScreen();
@@ -2747,12 +2740,6 @@
       el.addEventListener('click', () => goAnalyze(el.dataset.s)));
   }
 
-  async function loadHomeSnapshot() {
-    if ($('homeSnapshot').dataset.loaded) return;
-    const idx = await getQuotes(INDICES.map(i => i[0]));
-    if (idx.length) { $('homeSnapshot').innerHTML = idx.map(quoteCard).join(''); bindQuoteCards($('homeSnapshot')); $('homeSnapshot').dataset.loaded = '1'; }
-    else $('homeSnapshot').innerHTML = '<div class="quote-loading">—</div>';
-  }
   // ---- Watchlist ----
   // A saved symbol behaves like a position you have not funded: the price it
   // was added at, how it has done since, and your own stop and target. The
