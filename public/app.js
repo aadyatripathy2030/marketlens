@@ -1608,12 +1608,23 @@
       }
       const rt = d.rating || {};
       const v = d.verdict || {};
-      $('vAction').textContent = rt.label || v.action || d.signal.label;
-      // Falling back to the older per-strategy score here would print a
-      // confident number directly beside "Not enough history".
-      $('vMeta').textContent = rt.score != null ? rt.score + '/100'
-        : rt.insufficient ? '' : (v.score != null ? 'score ' + v.score : '');
-      $('verdict').className = 'verdict ' + (rt.tone || v.tone || 'neutral');
+      const sig = d.tradeSignal;
+      if (sig && sig.action) {
+        // The headline is the measured call. The indicator score rides along
+        // as the small line beneath it, so the two are never read as rivals.
+        $('vKicker').textContent = 'Measured';
+        $('vAction').textContent = sig.action;
+        $('vMeta').textContent = rt.score != null ? `indicators ${rt.score}/100` : '';
+        $('verdict').className = 'verdict ' + (sig.tone || 'neutral');
+      } else {
+        $('vKicker').textContent = 'Indicators';
+        $('vAction').textContent = rt.label || v.action || d.signal.label;
+        // Falling back to the older per-strategy score here would print a
+        // confident number directly beside "Not enough history".
+        $('vMeta').textContent = rt.score != null ? rt.score + '/100'
+          : rt.insufficient ? '' : (v.score != null ? 'score ' + v.score : '');
+        $('verdict').className = 'verdict ' + (rt.tone || v.tone || 'neutral');
+      }
       $('reason').textContent = ratingReason(d);
       const GAUGE_C = 2 * Math.PI * 52;
       const arc = $('gaugeArc');

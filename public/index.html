@@ -139,12 +139,11 @@
             <div class="price"><span id="price"></span> <span class="chg" id="chg"></span></div>
           </div>
           <div class="verdict" id="verdict">
-            <!-- Named, because this chip and the measured Buy / Sell / Hold badge
-                 are both buy/sell words now and point opposite ways more often
-                 than not. One is what the indicators add up to, the other is what
-                 that has actually preceded on this symbol; unlabelled they just
-                 look like the page contradicting itself. -->
-            <div class="verdict-kicker">Indicators</div>
+            <!-- The headline chip carries the measured Buy / Sell / Hold, the one
+                 call on the page with evidence behind it. The indicator lean
+                 lives in the gauge card below; it only takes this chip over when
+                 a symbol has too little history to measure anything. -->
+            <div class="verdict-kicker" id="vKicker">Measured</div>
             <div class="verdict-action" id="vAction"></div>
             <div class="verdict-meta" id="vMeta"></div>
           </div>
