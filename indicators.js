@@ -567,28 +567,33 @@ function edgeSignal(e) {
     why: `The gap from this symbol's base rate is inside the margin of error ${span}.` };
 }
 
-// The one-word call at the top of a chart. The indicators make it: a score
-// that leans up is a Buy, one that leans down is a Sell, the middle is Hold.
-// The measured record can hold the call back, but only when this symbol's
-// own history disagrees by a margin that is clearly not noise -- a full
-// return point, or two standard errors if that is larger, with the win rate
-// disagreeing too. Then the call is Hold, and the sentence says why.
+// The verdict: the one Buy / Sell / Hold shown everywhere on a chart. The
+// indicators make it -- a score that leans up is a Buy, one that leans down
+// is a Sell, the middle is a Hold. The measured record can hold it back to
+// Hold, and only in one way: when edgeSignal, the same test the measured
+// sentence uses, reads the opposite direction. One rule, so the chip at the
+// top, the badge in the gauge card and the sentence beneath it can never
+// disagree with each other.
 function headlineCall(rating, e) {
   if (!rating || rating.score == null) return null;
   const lean = rating.score >= 58 ? 'Buy' : rating.score < 42 ? 'Sell' : 'Hold';
-  const tone = lean === 'Buy' ? 'bullish' : lean === 'Sell' ? 'bearish' : 'neutral';
-  if (e && e.n >= 30 && e.se != null) {
-    const veto = Math.max(1, 2 * e.se);
-    const by = Math.abs(e.edge).toFixed(1);
-    if (lean === 'Buy' && e.edge <= -veto && e.winRate < e.baseWinRate)
-      return { action: 'Hold', tone: 'neutral', vetoed: true,
-        why: `The indicators lean up, but setups like this lagged this symbol's base rate by ${by} points, so the call is held back.` };
-    if (lean === 'Sell' && e.edge >= veto && e.winRate > e.baseWinRate)
-      return { action: 'Hold', tone: 'neutral', vetoed: true,
-        why: `The indicators lean down, but setups like this beat this symbol's base rate by ${by} points, so the call is held back.` };
+  const dir = lean === 'Buy' ? 'up' : 'down';
+  const sig = edgeSignal(e);
+  const measured = sig ? sig.why.charAt(0).toLowerCase() + sig.why.slice(1) : '';
+  if (lean === 'Hold') {
+    return { action: 'Hold', tone: 'neutral', vetoed: false,
+      why: 'The indicators are mixed.' + (sig && sig.action !== 'Hold'
+        ? ` On its own history this setup ${sig.action === 'Buy' ? 'beat' : 'lagged'} the base rate, but the indicators do not point that way.` : '') };
   }
-  return { action: lean, tone, vetoed: false,
-    why: lean === 'Hold' ? 'The indicators are mixed.' : `The indicators lean ${lean === 'Buy' ? 'up' : 'down'}, and this symbol's history does not clearly disagree.` };
+  if (sig && ((lean === 'Buy' && sig.action === 'Sell') || (lean === 'Sell' && sig.action === 'Buy'))) {
+    return { action: 'Hold', tone: 'neutral', vetoed: true,
+      why: `The indicators lean ${dir}, but ${measured} The call is held back.` };
+  }
+  const tone = lean === 'Buy' ? 'bullish' : 'bearish';
+  const why = !sig ? `The indicators lean ${dir}. There is not enough history on this symbol to check that against its past.`
+    : sig.action === 'Hold' ? `The indicators lean ${dir}, and this symbol's own history does not disagree: ${measured}`
+    : `The indicators lean ${dir}, and this symbol's own history agrees: ${measured}`;
+  return { action: lean, tone, vetoed: false, why };
 }
 
 function forecastBands(closes) {

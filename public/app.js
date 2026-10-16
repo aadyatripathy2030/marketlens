@@ -245,18 +245,17 @@
       + `On any bar it was higher <b>${e.baseWinRate}%</b> of the time, so this setup ${verdict}.`;
   }
 
-  // Buy / Sell / Hold, and the measurement it came from on the same line, so
-  // the badge is never read without the number behind it. Hidden entirely when
-  // the symbol has too little history to measure -- a blank badge would be
-  // read as Hold, which is itself a claim.
-  function renderSignal(sig) {
+  // The verdict badge in the gauge card: the same call as the chip at the
+  // top, with its reason beside it. Hidden when there is no rating at all --
+  // a blank badge would be read as Hold, which is itself a claim.
+  function renderSignal(call) {
     const row = $('signalRow');
     if (!row) return;
-    if (!sig || !sig.action) { row.classList.add('hidden'); return; }
+    if (!call || !call.action) { row.classList.add('hidden'); return; }
     row.classList.remove('hidden');
-    $('signalBadge').textContent = sig.action;
-    $('signalBadge').className = 'signal-badge sig-' + (sig.tone || 'neutral');
-    $('signalWhy').textContent = sig.why || '';
+    $('signalBadge').textContent = call.action;
+    $('signalBadge').className = 'signal-badge sig-' + (call.tone || 'neutral');
+    $('signalWhy').textContent = call.why || '';
   }
 
   function renderLevels(d) {
@@ -1641,7 +1640,7 @@
       $('aiRec').className = 'ai-rec ' + (rt.tone || 'neutral');
       const conf = agreePct(rt.agreeing, rt.groupCount);
       $('aiConf').textContent = conf != null ? conf + '%' : (rt.confidence != null ? rt.confidence + '%' : '—');
-      renderSignal(d.tradeSignal);
+      renderSignal(d.call);
       renderEdge(d.edge, rt, d.tradeSignal);
       $('aiRisk').textContent = rt.risk || '—';
       $('aiRisk').className = 'risk-' + String(rt.risk || 'neutral').split(' ')[0];
@@ -1765,7 +1764,10 @@
     $('bullList').innerHTML = ''; $('bearList').innerHTML = ''; $('conclusion').textContent = '';
   }
 
-  const stale = (d) => !lastData || lastData.symbol !== d.symbol;
+  // Identity, not symbol: switching strategy re-runs the same symbol with a
+  // different rating, and a report started for the old run used to land on
+  // the new page, describing a score the page no longer showed.
+  const stale = (d) => lastData !== d;
 
   const SOURCE_LABEL = {
     ai: 'written by Claude',

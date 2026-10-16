@@ -157,14 +157,11 @@
             <div class="gauge-num"><div class="gauge-score" id="gScore">—</div><div class="gauge-of">/ 100</div></div>
           </div>
           <div class="ai-score-info">
-            <!-- The measured record leads. The score is the claim; this is the
-                 evidence, and reading the claim first frames the evidence as a
-                 footnote to it rather than the other way round. -->
-            <!-- The signal leads because it is the only thing in this card
-                 with a measurement behind it. The indicator score below is the
-                 unbacked claim, so it comes second. -->
+            <!-- The same verdict as the chip at the top, with its reason, then
+                 the measurement it was checked against, then the indicator
+                 score it came from. One word, stated once, explained twice. -->
             <div class="signal-row hidden" id="signalRow">
-              <span class="signal-kicker">Measured</span>
+              <span class="signal-kicker">Verdict</span>
               <span class="signal-badge" id="signalBadge"></span>
               <span class="signal-why" id="signalWhy"></span>
             </div>
@@ -662,7 +659,7 @@
     <p class="foot-note">ChartGauge is a charting tool for learning to read charts. Nothing on it is financial advice.</p>
   </footer>
 
-  <p class="disclaimer">For education only. <strong>Not financial advice</strong>. The Buy / Sell / Hold signal is measured, not predicted: it reports how bars like the current one performed on that symbol&rsquo;s own history against its base rate, and reads Hold whenever that gap is inside the margin of error. The separate indicator score (Strongly up, Leans up, Mixed, Leans down, Strongly down) describes how far the past-price indicators agree (and, for images, a read of one picture). It is not a recommendation, and it has been measured against future returns and did not predict them. Signals like these are wrong <em>often</em>, because no tool reliably predicts markets. This is not a recommendation to trade; decisions and their consequences are yours alone. Never trade based on this tool.</p>
+  <p class="disclaimer">For education only. <strong>Not financial advice</strong>. The Buy / Sell / Hold verdict is taken from the indicator score (Strongly up, Leans up, Mixed, Leans down, Strongly down), which describes how far the past-price indicators agree, and it is held back to Hold whenever bars like the current one went on to perform clearly worse, or better, than that symbol&rsquo;s own base rate. Neither is a recommendation. The score has been measured against future returns and did not predict them, and for images the read comes from one picture alone. Signals like these are wrong <em>often</em>, because no tool reliably predicts markets. This is not a recommendation to trade; decisions and their consequences are yours alone. Never trade based on this tool.</p>
 </main>
 
 <div class="modal-overlay hidden" id="authModal">

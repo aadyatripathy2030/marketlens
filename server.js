@@ -577,6 +577,7 @@ function reportPrompt(p) {
     + `MACD hist: ${fmt(t.macd && t.macd.hist)} | VWAP: ${fmt(t.vwap)} | Bollinger %B: ${fmt(t.bollinger && t.bollinger.pctB)}\n`
     + `ATR: ${fmt(t.atr)} | Volatility(annual %): ${fmt(t.volatility && t.volatility.annual)} | Trend: ${t.trend ? t.trend.strength + '/100 ' + t.trend.direction : 'n/a'}\n`
     + `Support ${fmt(t.supportResistance && t.supportResistance.support)} / Resistance ${fmt(t.supportResistance && t.supportResistance.resistance)}\n`
+    + (p.call && p.call.action ? `VERDICT SHOWN TO THE READER: ${p.call.action}. ${p.call.why} Your summary must be consistent with this verdict and must not call the stock a buy or a sell against it.\n` : '')
     + (p.edge ? `MEASURED BASE RATE: at scores near ${r.score}, this symbol was higher ${p.edge.horizon} bars later ${p.edge.winRate}% of the time across ${p.edge.n} past occurrences; the rate on any bar was ${p.edge.baseWinRate}%. Treat this as the ground truth about whether the setup has predicted anything for this symbol, and say plainly when it has not.\n` : '')
     + `Return the JSON now.`;
   return { system, user };
