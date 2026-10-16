@@ -508,8 +508,9 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   // Buy / Sell / Hold, derived from that measurement and nothing else. Null
   // when there is not enough history on the symbol to measure anything.
   const signal = I.edgeSignal(edge);
+  const call = I.headlineCall(rating, edge);
   json(res, 200, Object.assign(head, {
-    tradeSignal: signal,
+    tradeSignal: signal, call,
     direction: a.direction, strategyLabel: stratLabel(strategy, a.direction),
     maFast: a.maFast, maSlow: a.maSlow,
     indicators: { maFast: a.maFast.value, maSlow: a.maSlow.value, rsi: a.rsi, rsiPeriod: a.rsiPeriod, trendSlope: a.slope },

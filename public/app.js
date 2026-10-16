@@ -1608,14 +1608,15 @@
       }
       const rt = d.rating || {};
       const v = d.verdict || {};
-      const sig = d.tradeSignal;
-      if (sig && sig.action) {
-        // The headline is the measured call. The indicator score rides along
-        // as the small line beneath it, so the two are never read as rivals.
-        $('vKicker').textContent = 'Measured';
-        $('vAction').textContent = sig.action;
+      const call = d.call;
+      if (call && call.action) {
+        // The headline call: the indicators' lean as a Buy, Sell or Hold,
+        // held back only when the measured record clearly disagrees. The
+        // score rides along as the small line beneath it.
+        $('vKicker').textContent = call.vetoed ? 'Verdict, held back' : 'Verdict';
+        $('vAction').textContent = call.action;
         $('vMeta').textContent = rt.score != null ? `indicators ${rt.score}/100` : '';
-        $('verdict').className = 'verdict ' + (sig.tone || 'neutral');
+        $('verdict').className = 'verdict ' + (call.tone || 'neutral');
       } else {
         $('vKicker').textContent = 'Indicators';
         $('vAction').textContent = rt.label || v.action || d.signal.label;

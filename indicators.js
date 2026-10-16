@@ -551,10 +551,12 @@ function edgeSignal(e) {
   if (!e || e.n < 30 || e.se == null) return null;
   const span = `over the next ${e.horizon} bars, across ${e.n} past occurrences on this symbol`;
   const by = Math.abs(e.edge).toFixed(1);
-  // One standard error is a low bar deliberately -- it is a floor against
-  // noise, not a claim of significance. The win rate has to agree with the
-  // return as well, so one outlier move cannot carry the call on its own.
-  const margin = Math.max(0.1, e.se);
+  // Half a return point, or one standard error if that is larger. On a long
+  // history the standard error shrinks to almost nothing, and a gap of a few
+  // tenths of a point was being called a Sell; that is not a difference
+  // anyone could trade. The win rate has to agree with the return as well,
+  // so one outlier move cannot carry the call on its own.
+  const margin = Math.max(0.5, e.se);
   if (e.edge >= margin && e.winRate >= e.baseWinRate)
     return { action: 'Buy', tone: 'bullish',
       why: `Setups like this beat this symbol's base rate by ${by} points ${span}.` };
@@ -563,6 +565,30 @@ function edgeSignal(e) {
       why: `Setups like this lagged this symbol's base rate by ${by} points ${span}.` };
   return { action: 'Hold', tone: 'neutral',
     why: `The gap from this symbol's base rate is inside the margin of error ${span}.` };
+}
+
+// The one-word call at the top of a chart. The indicators make it: a score
+// that leans up is a Buy, one that leans down is a Sell, the middle is Hold.
+// The measured record can hold the call back, but only when this symbol's
+// own history disagrees by a margin that is clearly not noise -- a full
+// return point, or two standard errors if that is larger, with the win rate
+// disagreeing too. Then the call is Hold, and the sentence says why.
+function headlineCall(rating, e) {
+  if (!rating || rating.score == null) return null;
+  const lean = rating.score >= 58 ? 'Buy' : rating.score < 42 ? 'Sell' : 'Hold';
+  const tone = lean === 'Buy' ? 'bullish' : lean === 'Sell' ? 'bearish' : 'neutral';
+  if (e && e.n >= 30 && e.se != null) {
+    const veto = Math.max(1, 2 * e.se);
+    const by = Math.abs(e.edge).toFixed(1);
+    if (lean === 'Buy' && e.edge <= -veto && e.winRate < e.baseWinRate)
+      return { action: 'Hold', tone: 'neutral', vetoed: true,
+        why: `The indicators lean up, but setups like this lagged this symbol's base rate by ${by} points, so the call is held back.` };
+    if (lean === 'Sell' && e.edge >= veto && e.winRate > e.baseWinRate)
+      return { action: 'Hold', tone: 'neutral', vetoed: true,
+        why: `The indicators lean down, but setups like this beat this symbol's base rate by ${by} points, so the call is held back.` };
+  }
+  return { action: lean, tone, vetoed: false,
+    why: lean === 'Hold' ? 'The indicators are mixed.' : `The indicators lean ${lean === 'Buy' ? 'up' : 'down'}, and this symbol's history does not clearly disagree.` };
 }
 
 function forecastBands(closes) {
@@ -631,6 +657,6 @@ function tradeLevels(candles, direction, atrMult = 1.5) {
 module.exports = {
   sma, rsi, linearForecast, computeSignal, demoCloses, demoCandles, analyze, verdict, STRAT, RISK,
   ema, macd, bollinger, atr, vwap, supportResistance, fibonacci, volatility, trendStrength,
-  techReport, overallRating, forecastBands, tradeLevels, historicalEdge, edgeSignal,
+  techReport, overallRating, forecastBands, tradeLevels, historicalEdge, edgeSignal, headlineCall,
 };
 
