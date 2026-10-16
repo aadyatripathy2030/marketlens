@@ -224,16 +224,21 @@
   // The measured base rate, stated next to the score it is judging. If the
   // setup did not beat simply being invested, that is the interesting fact and
   // it gets said first.
-  function renderEdge(e, rt) {
+  // The verdict in this sentence follows the badge above it, from the same
+  // rule on the same numbers. It used to apply its own test to the win rate
+  // alone, so the badge could say Sell while the sentence said the setup made
+  // no difference, and the page read as contradicting itself.
+  function renderEdge(e, rt, sig) {
     const el = $('edgeLine');
     if (!el) return;
     if (!e) { el.textContent = 'Not enough history on this symbol to check whether this setup has meant anything before.'; return; }
-    const diff = e.winRate - e.baseWinRate;
-    const verdict = diff > 3
-      ? `<b>beat</b> simply being invested by ${diff.toFixed(1)} points`
-      : diff < -3
-        ? `<span class="none">did worse than</span> simply being invested, by ${Math.abs(diff).toFixed(1)} points`
-        : `<span class="none">made no difference</span> versus simply being invested`;
+    const by = Math.abs(e.edge).toFixed(1);
+    const action = sig && sig.action;
+    const verdict = action === 'Buy'
+      ? `<b>beat</b> simply being invested: its average return was ${by} points above the base rate, and it was higher more often`
+      : action === 'Sell'
+        ? `<span class="none">did worse than</span> simply being invested: its average return was ${by} points below the base rate, and it was higher less often`
+        : `<span class="none">made no difference</span> versus simply being invested: the gap from the base rate is inside the margin of error`;
     el.innerHTML = `<a class="edge-more" href="/accuracy">What is this?</a>`
       + `Measured on this symbol's own history: at scores near <b>${rt.score}</b>, it was higher `
       + `${e.horizon} bars later <b>${e.winRate}%</b> of the time across <b>${e.n}</b> past occurrences. `
@@ -1617,7 +1622,7 @@
       const conf = agreePct(rt.agreeing, rt.groupCount);
       $('aiConf').textContent = conf != null ? conf + '%' : (rt.confidence != null ? rt.confidence + '%' : '—');
       renderSignal(d.tradeSignal);
-      renderEdge(d.edge, rt);
+      renderEdge(d.edge, rt, d.tradeSignal);
       $('aiRisk').textContent = rt.risk || '—';
       $('aiRisk').className = 'risk-' + String(rt.risk || 'neutral').split(' ')[0];
       $('ovFast').textContent = d.maFast ? d.maFast.label : 'SMA 20';
