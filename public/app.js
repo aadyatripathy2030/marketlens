@@ -613,10 +613,10 @@
 
   // Strategy tabs (Day trading / Long-term). Long-term is long-only, so the
   // Long/Short toggle only shows for day trading.
-  $('strat').querySelectorAll('.strat-btn').forEach(b => b.addEventListener('click', () => {
-    $('strat').querySelectorAll('.strat-btn').forEach(x => x.classList.remove('active'));
-    b.classList.add('active');
-    strategy = b.dataset.mode;
+  function setStrategy(mode) {
+    if (!STRATEGY_INTERVAL[mode]) return;
+    strategy = mode;
+    $('strat').querySelectorAll('.strat-btn').forEach(x => x.classList.toggle('active', x.dataset.mode === mode));
     const iv = STRATEGY_INTERVAL[strategy];
     if (iv && iv !== interval) {
       interval = iv;
@@ -624,8 +624,16 @@
       syncIntervalButtons();
       $('range').querySelectorAll('.range-btn').forEach(x => x.classList.remove('active'));
     }
+  }
+  $('strat').querySelectorAll('.strat-btn').forEach(b => b.addEventListener('click', () => {
+    setStrategy(b.dataset.mode);
     if (lastData) run(lastData.symbol);
   }));
+  // Each strategy has its own address for a chart, so a link says which one
+  // it is showing: /stock/AAPL/day-trading or /stock/AAPL/long-term.
+  const MODE_SLUG = { daytrade: 'day-trading', longterm: 'long-term' };
+  const SLUG_MODE = { 'day-trading': 'daytrade', 'long-term': 'longterm' };
+  const stockPath = (sym) => '/stock/' + sym + '/' + (MODE_SLUG[strategy] || 'day-trading');
   // The markup ships one interval marked active; this is what keeps that
   // marker true after the state changes it.
   function syncIntervalButtons() {
@@ -1577,7 +1585,7 @@
       $('chg').textContent = (up ? '▲ ' : '▼ ') + Math.abs(d.change).toFixed(2) + ' (' + d.changePct.toFixed(2) + '%)';
       $('chg').className = 'chg ' + (up ? 'up' : 'down');
       try {
-        const want = '/stock/' + d.symbol;
+        const want = stockPath(d.symbol);
         // Only when analyze is the view on screen. The practice page loads
         // symbols through this same function, and rewriting the URL to
         // /stock/XXXX there would send a refresh to the wrong page.
@@ -2592,7 +2600,7 @@
   function urlForView(name) {
     if (name === 'home') return '/';
     if (name === 'legal') return location.pathname;     // already on /terms, /privacy, ...
-    if (name === 'analyze' && lastData && lastData.symbol) return '/stock/' + lastData.symbol;
+    if (name === 'analyze' && lastData && lastData.symbol) return stockPath(lastData.symbol);
     return '/' + name;
   }
   function syncUrl(name, replace) {
@@ -2648,7 +2656,11 @@
     const parts = decodeURIComponent(location.pathname).replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
     if (!parts.length) return showView('home', { fromUrl: true, replace });
     if (parts[0] === 'stock' && parts[1]) {
-      const sym = parts.slice(1).join('/').toUpperCase();
+      const segs = parts.slice(1);
+      const mode = SLUG_MODE[String(segs[segs.length - 1] || '').toLowerCase()];
+      if (mode) { segs.pop(); setStrategy(mode); }
+      const sym = segs.join('/').toUpperCase();
+      if (!sym) return showView('home', { fromUrl: true, replace });
       showView('analyze', { fromUrl: true, replace });
       $('symbol').value = sym;
       run(sym);
@@ -3234,7 +3246,7 @@
         return;
       }
       const pc = (v) => v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
-      const ORDER = ['Strong buy', 'Buy', 'Mixed', 'Sell', 'Strong sell'];
+      const ORDER = ['Strongly up', 'Leans up', 'Mixed', 'Leans down', 'Strongly down'];
       const rows = ORDER.map(l => d.labels.find(x => x.label === l)).filter(Boolean).map(x =>
         `<tr><td>${esc(x.label)}</td><td>${x.n}</td><td>${pc(x.mean)}</td>`
         + `<td>${x.mean == null || d.baseline == null ? '—' : pc(x.mean - d.baseline)}</td>`

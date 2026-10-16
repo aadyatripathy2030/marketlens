@@ -107,8 +107,13 @@ async function init() {
       // the stored names are brought along rather than left to show up as extra
       // rows on the accuracy page beside their own renamed selves. Idempotent,
       // so it is harmless on every boot after the first.
+      // Then from buy/sell to lean words, in October 2026, for the same
+      // reason in the other direction: the buy/sell words belong to the
+      // measured signal alone now.
       for (const [was, now] of [['Very bullish', 'Strong buy'], ['Bullish', 'Buy'],
-                                ['Bearish', 'Sell'], ['Very bearish', 'Strong sell']]) {
+                                ['Bearish', 'Sell'], ['Very bearish', 'Strong sell'],
+                                ['Strong buy', 'Strongly up'], ['Buy', 'Leans up'],
+                                ['Sell', 'Leans down'], ['Strong sell', 'Strongly down']]) {
         await pool.query('UPDATE predictions SET label=$2 WHERE label=$1', [was, now]);
       }
       await pool.query(`CREATE TABLE IF NOT EXISTS usage_daily (
@@ -677,7 +682,10 @@ async function accuracyStats() {
     }
   }
   const byLabel = {};
-  for (const r of rows) (byLabel[r.label] ||= []).push(Number(r.ret));
+  // Readings recorded before the labels changed wording are folded into the
+  // row they now belong to, so the record stays one record.
+  const LEGACY_LABEL = { 'Strong buy': 'Strongly up', 'Buy': 'Leans up', 'Sell': 'Leans down', 'Strong sell': 'Strongly down' };
+  for (const r of rows) (byLabel[LEGACY_LABEL[r.label] || r.label] ||= []).push(Number(r.ret));
   const mean = (a) => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
   const all = rows.map(r => Number(r.ret));
   return {

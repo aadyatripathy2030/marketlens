@@ -2649,11 +2649,15 @@ function seoFor(urlPath, req) {
     if (s) return { ...s, canonical: `${origin}/learn/${parts[1]}` };
   }
   if (parts[0] === 'stock' && parts[1]) {
+    // The last segment may name the strategy (/stock/AAPL/long-term); the
+    // canonical page is the symbol alone, so the two are one page to a crawler.
+    const segs = parts.slice(1);
+    const mode = /^(day-trading|long-term)$/i.test(segs[segs.length - 1] || '') ? segs.pop().toLowerCase() : '';
     // BTC/USD arrives as two segments once the path is decoded; rejoin it.
-    const sym = parts.slice(1).join('/').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
+    const sym = segs.join('/').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
     if (sym) return {
       view: 'analyze', symbol: sym,
-      title: `${sym} chart, indicators and stop-loss levels | ${SITE_NAME}`,
+      title: `${sym} ${mode === 'long-term' ? 'long-term' : mode === 'day-trading' ? 'day-trading' : ''} chart, indicators and stop-loss levels | ${SITE_NAME}`.replace(/\s+/g, ' '),
       desc: `${sym} candlestick chart with SMA, RSI, MACD, Bollinger bands, ATR and VWAP, an indicator score, and ATR-based stop-loss and take-profit levels. Educational, not financial advice.`,
       canonical: `${origin}/stock/${sym}`,
     };
@@ -2869,7 +2873,7 @@ function accuracyHtml(st, horizon) {
       + `which is exactly the sort of thing this page exists to show.</p>` : '')
     + `</div>`;
 }
-const ORDERED_LABELS = ['Strong buy', 'Buy', 'Mixed', 'Sell', 'Strong sell'];
+const ORDERED_LABELS = ['Strongly up', 'Leans up', 'Mixed', 'Leans down', 'Strongly down'];
 
 function serveStatic(req, res) {
   let urlPath = decodeURIComponent(req.url.split('?')[0]);

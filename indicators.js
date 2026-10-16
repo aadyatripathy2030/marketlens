@@ -54,8 +54,8 @@ function computeSignal(closes) {
   let label = 'Neutral', reason = 'Not enough clear signal.';
   if (s20 != null && s50 != null && r != null) {
     const up = s20 > s50;
-    if (up && r < 70) { label = 'Buy'; reason = 'Short-term average is above the long-term average (uptrend), and momentum is not overbought.'; }
-    else if (!up && r > 30) { label = 'Sell'; reason = 'Short-term average is below the long-term average (downtrend), and momentum is not oversold.'; }
+    if (up && r < 70) { label = 'Leans up'; reason = 'Short-term average is above the long-term average (uptrend), and momentum is not overbought.'; }
+    else if (!up && r > 30) { label = 'Leans down'; reason = 'Short-term average is below the long-term average (downtrend), and momentum is not oversold.'; }
     else if (r >= 70) { label = 'Neutral'; reason = 'Uptrend, but RSI is overbought (>70) — pullback risk.'; }
     else if (r <= 30) { label = 'Neutral'; reason = 'Downtrend, but RSI is oversold (<30) — possible bounce.'; }
   }
@@ -467,7 +467,11 @@ function overallRating(rep) {
   // the indicators agree, and still has no measured relationship with forward
   // returns, which is why the separate Buy / Sell / Hold badge is driven by
   // historicalEdge() and not by this.
-  const label = score >= 72 ? 'Strong buy' : score >= 58 ? 'Buy' : score >= 42 ? 'Mixed' : score >= 28 ? 'Sell' : 'Strong sell';
+  // Lean words, not buy and sell words. This score describes which way the
+  // indicators point; the measured Buy / Sell / Hold beside it is the only
+  // thing on the page allowed to use those words, and when the two disagreed
+  // in the same vocabulary the page read as contradicting itself.
+  const label = score >= 72 ? 'Strongly up' : score >= 58 ? 'Leans up' : score >= 42 ? 'Mixed' : score >= 28 ? 'Leans down' : 'Strongly down';
   const tone = score >= 58 ? 'bullish' : score <= 41 ? 'bearish' : 'neutral';
 
   // Agreement is now a countable fact — how many of the independent groups
