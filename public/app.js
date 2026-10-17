@@ -87,6 +87,9 @@
   // for it again. Without it, a signed-in visitor's first chart would be
   // fetched twice: once by the opening route and again when checkAuth landed.
   let withheld = false;
+  // Whether /api/auth/me has answered yet. A page drawn before that can only
+  // guess at the visitor, and a guess of "nobody" must not be final.
+  let authResolved = false;
 
   // The views that are nothing but market data. Each one is replaced whole by
   // the wall when there is no session, so a visitor never sees a disabled
@@ -2384,6 +2387,7 @@
   }
   async function checkAuth() {
     try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; currentStreak = j.streak || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; trialDays = Number(j.trialDays) || 0; trialFirstOnly = !!j.trialFirstOnly; launch = j.launch || launch; showGoogleButtons(!!j.googleAuth); billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; currentStreak = null; }
+    authResolved = true;
     renderAcct();
     $('watchBtn').classList.toggle('hidden', !currentUser);
     renderLaunchBar();
@@ -3155,6 +3159,9 @@
   // proves it worked.
   let adminPlanNote = '';
   async function loadAdmin() {
+    // Opened by URL before the session is known: draw the skeleton and mark
+    // the page as owed a redraw, which checkAuth gives it once it has an answer.
+    if (!authResolved) { withheld = true; $('adminBody').innerHTML = skelLines(6); return; }
     if (!currentUser || !currentUser.admin) { $('adminBody').innerHTML = `<div class="view-empty">Admin access only.</div>`; return; }
     // The heading lives here, not in the document, so a visitor's page never
     // carries the word.
