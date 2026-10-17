@@ -18,6 +18,7 @@
 <meta name="color-scheme" content="dark" />
 <!--SEO-->
 <!--GA-->
+<link rel="preload" href="/fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -285,7 +286,7 @@
       <aside class="sidebar">
         <div class="card ai-card">
           <div class="ai-head">Written summary <span class="ai-badge" id="aiTag"></span></div>
-          <p class="ai-body" id="aiBody">Loading…</p>
+          <p class="ai-body" id="aiBody"><span class="skel skel-line"></span><span class="skel skel-line short"></span><span class="skel skel-line"></span></p>
         </div>
         <p class="note" id="note"></p>
 
@@ -311,11 +312,11 @@
     <h1 class="view-h">Markets</h1>
     <div class="mkt-section">
       <div class="mkt-h">Major indices</div>
-      <div class="quote-grid" id="indicesGrid"><div class="quote-loading">Loading…</div></div>
+      <div class="quote-grid" id="indicesGrid"><div class="skel skel-card"></div><div class="skel skel-card"></div><div class="skel skel-card"></div><div class="skel skel-card"></div></div>
     </div>
     <div class="mkt-section">
       <div class="mkt-h">Trending stocks</div>
-      <div class="quote-grid" id="trendingGrid"><div class="quote-loading">Loading…</div></div>
+      <div class="quote-grid" id="trendingGrid"><div class="skel skel-card"></div><div class="skel skel-card"></div><div class="skel skel-card"></div><div class="skel skel-card"></div></div>
     </div>
     <div class="mkt-section">
       <div class="mkt-h">Where the score sits today</div>
@@ -444,10 +445,9 @@
   </section>
 
   <!-- ADMIN -->
-  <section class="view hidden" id="view-admin">
-    <h1 class="view-h">Admin dashboard</h1>
-    <div id="adminBody"></div>
-  </section>
+  <!-- Empty in the document on purpose; the heading and the dashboard are
+       written in by the script only for an admin. -->
+  <section class="view hidden" id="view-admin"><div id="adminBody"></div></section>
 
   <!-- SETTINGS -->
   <section class="view hidden" id="view-practice">

@@ -1532,6 +1532,9 @@
   let runSeq = 0;           // guards against a slow request landing after a newer one
   // Numbers that arrive count up, briefly, so a fresh reading is seen to
   // arrive rather than found. Skipped when the visitor asked for less motion.
+  // Loading states are the shape of what is coming, not a word.
+  const skelCards = (n) => Array.from({ length: n }, () => '<div class="skel skel-card"></div>').join('');
+  const skelLines = (n) => Array.from({ length: n }, (_, i) => `<div class="skel skel-line${i % 2 ? ' short' : ''}"></div>`).join('');
   const lessMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   function countUp(id, target, fmt, ms) {
     const el = $(id); if (!el) return;
@@ -1558,7 +1561,7 @@
     symbol = (symbol || $('symbol').value || '').trim().toUpperCase();
     if (!symbol) return;
     $('error').classList.add('hidden');
-    $('goBtn').disabled = true; $('goBtn').textContent = 'Loading…';
+    $('goBtn').disabled = true; $('goBtn').textContent = 'Analyzing…';
     $('chartPanel').classList.add('loading');
     const seq = ++runSeq;
     try {
@@ -2747,7 +2750,7 @@
     const body = $('rankedBody'), note = $('rankedNote');
     if (!body) return;
     if (body.dataset.loaded) return;
-    body.innerHTML = `<p class="compare-note">Loading ratings\u2026</p>`;
+    body.innerHTML = `<div class="ranked-col">${skelCards(3)}</div><div class="ranked-col">${skelCards(3)}</div>`;
     let d;
     try { d = await (await fetch('/api/ranked')).json(); }
     catch { body.innerHTML = ''; note.textContent = ''; return; }
@@ -2789,7 +2792,7 @@
       el.innerHTML = `<div class="view-empty">No stocks saved yet.<br>Analyze a stock and tap <b>☆ Watch</b> to add it here.</div>`;
       return;
     }
-    el.innerHTML = `<div class="quote-grid" id="wvGrid"><div class="quote-loading">Loading…</div></div>`;
+    el.innerHTML = `<div class="quote-grid" id="wvGrid">${skelCards(4)}</div>`;
     const q = await getQuotes(watchSymbols);
     const byS = {};
     q.forEach(x => { byS[String(x.symbol).toUpperCase()] = x; });
@@ -2951,7 +2954,7 @@
   }
   async function loadCompare() {
     if (compareSymbols.length < 2) { $('compareResult').innerHTML = `<p class="compare-note">Add at least two tickers to compare.</p>`; return; }
-    $('compareResult').innerHTML = `<p class="compare-note">Loading…</p>`;
+    $('compareResult').innerHTML = skelLines(5);
     let data;
     try { data = await (await fetch('/api/compare?symbols=' + encodeURIComponent(compareSymbols.join(',')))).json(); } catch { $('compareResult').innerHTML = `<p class="compare-note">Couldn’t load comparison.</p>`; return; }
     if (isProGate(data)) { $('compareResult').innerHTML = proGateHtml(data); return; }
@@ -3004,7 +3007,7 @@
   }
   async function loadAlerts() {
     if (!currentUser) { $('alertList').innerHTML = `<div class="view-empty">Sign in to create price alerts that watch your stocks for you.<br><button class="btn btn-primary" id="alSignin">Sign in</button></div>`; $('alSignin').addEventListener('click', () => openAuth('login')); return; }
-    $('alertList').innerHTML = `<p class="compare-note">Loading…</p>`;
+    $('alertList').innerHTML = skelLines(3);
     let d; try { d = await (await fetch('/api/alerts')).json(); } catch { $('alertList').innerHTML = `<p class="compare-note">Couldn’t load alerts.</p>`; return; }
     const alerts = d.alerts || [];
     updateAlertBadge(alerts.filter(a => a.triggered).length);
@@ -3153,7 +3156,10 @@
   let adminPlanNote = '';
   async function loadAdmin() {
     if (!currentUser || !currentUser.admin) { $('adminBody').innerHTML = `<div class="view-empty">Admin access only.</div>`; return; }
-    $('adminBody').innerHTML = `<p class="compare-note">Loading…</p>`;
+    // The heading lives here, not in the document, so a visitor's page never
+    // carries the word.
+    if (!$('view-admin').querySelector('h1')) $('view-admin').insertAdjacentHTML('afterbegin', '<h1 class="view-h">Admin dashboard</h1>');
+    $('adminBody').innerHTML = skelLines(6);
     let d; try { d = await (await fetch('/api/admin')).json(); } catch { $('adminBody').innerHTML = `<p class="compare-note">Couldn’t load.</p>`; return; }
     if (d.error) { $('adminBody').innerHTML = `<div class="view-empty">${esc(d.error)}</div>`; return; }
     const c = d.counts || {};
