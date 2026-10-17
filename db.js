@@ -123,6 +123,8 @@ async function init() {
     } catch (e) {
       lastErr = e.message;
       console.error('DB init failed — falling back to in-memory:', e.message);
+      // Closed, so a retry can open a fresh one without leaking the old.
+      if (pool) { pool.end().catch(() => {}); pool = null; }
       mode = 'memory';
     }
   }

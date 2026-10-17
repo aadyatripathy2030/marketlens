@@ -1828,6 +1828,9 @@ async function handleAdmin(req, res) {
     usage,
     errors: errorLog.slice(-25).reverse(),
     store: db.storeMode(),
+    // Why the store is memory when a database was configured: the one line
+    // that used to live only in the hosting logs.
+    dbConfigured: db.hasUrl(), dbError: db.lastError() || null,
     services: { prices: !!STOCK_API_KEY, ai: !!ANTHROPIC_API_KEY, fundamentals: !!FMP_API_KEY, news: !!FINNHUB_API_KEY, analytics: !!GA_ID },
     credits: { usedLastMinute: creditsUsed(), perMinute: CREDITS_PER_MIN, reservedForUsers: USER_RESERVE,
       dailyQuotaOut: dailyQuotaOut(), dailyQuotaMsg,
@@ -3080,6 +3083,20 @@ db.init().then((storeMode) => {
     // Started after listen so a slow first pass never delays accepting traffic.
     startRankedLoop();
     startSessionPurge();
+    // A database that was unreachable at boot (expired, restarting, a bad
+    // moment) is tried again every minute, so the site reconnects on its own
+    // once it is back instead of running on memory until the next deploy.
+    if (db.hasUrl() && storeMode !== 'postgres') {
+      const t = setInterval(async () => {
+        if (db.storeMode() === 'postgres') return clearInterval(t);
+        const m = await db.init().catch(() => 'memory');
+        if (m === 'postgres') {
+          console.log('[db] reconnected to Postgres. Anything created while it was unreachable lived in memory and is not carried over.');
+          clearInterval(t);
+        }
+      }, 60000);
+      if (t.unref) t.unref();
+    }
   });
 }).catch((e) => {
   // The in-memory fallback lives inside db.init, so reaching here means

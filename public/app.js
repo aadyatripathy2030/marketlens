@@ -3177,6 +3177,10 @@
       <div class="admin-stat"><div class="n">${(d.usage && d.usage.total) || 0}</div><div class="l">API calls (since restart)</div></div>
     </div>`;
     html += `<div class="admin-sec"><div class="mkt-h">Services</div>` + Object.entries(d.services || {}).map(([k, v]) => `<span class="svc-pill ${v ? 'svc-on' : 'svc-off'}">${esc(k)}: ${v ? 'on' : 'off'}</span>`).join('') + `<span class="svc-pill ${d.store === 'postgres' ? 'svc-on' : 'svc-off'}">store: ${esc(d.store || '')}</span></div>`;
+    if (d.dbConfigured && d.store !== 'postgres') {
+      html += `<div class="auth-err"><b>The database is unreachable.</b> ${esc(d.dbError || 'No error message was recorded.')}<br>`
+        + `Accounts, watchlists and the record are being kept in memory and are lost on every restart. Open the database in the Render dashboard and check its status; the site reconnects on its own once it is back.</div>`;
+    }
     const usageEntries = Object.entries(d.usage || {}).filter(([k]) => k !== 'total').sort((a, b) => b[1] - a[1]).slice(0, 12);
     if (usageEntries.length) html += `<div class="admin-sec"><div class="mkt-h">Top endpoints</div><div class="compare-scroll"><table class="admin-table"><thead><tr><th>Endpoint</th><th>Calls</th></tr></thead><tbody>` + usageEntries.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join('') + `</tbody></table></div></div>`;
     html += `<div class="admin-sec"><div class="mkt-h">Plan</div>
