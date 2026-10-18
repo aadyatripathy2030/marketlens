@@ -1594,7 +1594,7 @@ async function servePayoutPage(req, res) {
   <p class="po-p">${esc(u.email)} has Pro, free, and a referral link of its own. Every account that signs up through the link counts as yours.</p>
   <div class="po-link"><div class="po-label">Your link</div>
     <div class="po-link-row"><code id="poLink">${esc(link)}</code><button type="button" class="btn btn-ghost" id="poCopy">Copy</button></div>
-    <div class="po-sub">${n} ${n === 1 ? 'account has' : 'accounts have'} signed up through it so far.</div></div>
+    ${n ? `<div class="po-sub">${n} ${n === 1 ? 'account has' : 'accounts have'} signed up through it so far.</div>` : ''}</div>
   ${cur ? `<div class="po-have">On file: ${esc(have)}, saved ${esc(new Date(cur.updated).toISOString().slice(0, 10))}. Saving below replaces it.</div>` : ''}
   ${on ? '' : `<div class="auth-err">The form cannot be saved just now. Your Pro access and your link are live; we will email you when this is ready.</div>`}
   <form id="poForm" class="po-form" data-token="${esc(who.viaToken ? token : '')}" novalidate>
