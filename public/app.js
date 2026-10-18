@@ -1884,6 +1884,7 @@
 
   // ---- Accounts + watchlist ----
   let currentUser = null, currentStreak = null, watchSymbols = [], authMode = 'login', billingOn = false, billingPlans = {};
+  let affiliateInfo = null;   // from /api/auth/me, set only for affiliates
   // Days of trial this visitor would get on a first subscription; 0 for
   // anyone who has subscribed before, so the page never offers one twice.
   let trialDays = 0;
@@ -2385,10 +2386,34 @@
       $('signinBtn').addEventListener('click', () => openAuth('login'));
     }
   }
+  // The Settings card for affiliates: their link, the count, and the way to
+  // the payout form. Empty and hidden for everyone else.
+  function renderAffiliate() {
+    const card = $('affCard');
+    if (!card) return;
+    const a = currentUser ? affiliateInfo : null;
+    card.classList.toggle('hidden', !a);
+    if (!a) { card.innerHTML = ''; return; }
+    const link = location.origin + '/?ref=' + a.code;
+    const pay = a.payout
+      ? (a.payout.method === 'paypal' ? `Payments go to PayPal, ${a.payout.last4}.` : `Payments go to the bank account ending ${a.payout.last4}.`)
+      : 'No payout details yet.';
+    card.innerHTML = `<div class="aff-kicker">Affiliate</div><h2 class="aff-h">Your referral link</h2>
+      <p class="aff-p">Every account created through this link counts as yours. Pro is on the house for as long as you are an affiliate.</p>
+      <div class="aff-link-row"><code>${esc(link)}</code><button type="button" class="btn btn-ghost" id="affCopy">Copy</button></div>
+      <div class="aff-row"><span>${a.referrals} ${a.referrals === 1 ? 'account has' : 'accounts have'} signed up through it.</span><span>${esc(pay)}</span>
+      <button type="button" class="btn btn-ghost" id="affPayout">${a.payout ? 'Change payout details' : 'Add payout details'}</button></div>`;
+    $('affCopy').onclick = async () => {
+      try { await navigator.clipboard.writeText(link); $('affCopy').textContent = 'Copied'; setTimeout(() => { $('affCopy').textContent = 'Copy'; }, 1800); } catch {}
+    };
+    // A full page of its own, outside the app's router.
+    $('affPayout').onclick = () => { location.href = '/affiliate/payout'; };
+  }
   async function checkAuth() {
-    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; currentStreak = j.streak || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; trialDays = Number(j.trialDays) || 0; trialFirstOnly = !!j.trialFirstOnly; launch = j.launch || launch; showGoogleButtons(!!j.googleAuth); billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; currentStreak = null; }
+    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; affiliateInfo = j.affiliate || null; currentStreak = j.streak || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; trialDays = Number(j.trialDays) || 0; trialFirstOnly = !!j.trialFirstOnly; launch = j.launch || launch; showGoogleButtons(!!j.googleAuth); billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; currentStreak = null; }
     authResolved = true;
     renderAcct();
+    renderAffiliate();
     $('watchBtn').classList.toggle('hidden', !currentUser);
     renderLaunchBar();
     const dz = $('dangerZone');
@@ -2557,7 +2582,7 @@
   });
   async function logout() {
     try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
-    currentUser = null; watchSymbols = []; renderAcct(); renderWatchStrip();
+    currentUser = null; affiliateInfo = null; watchSymbols = []; renderAcct(); renderAffiliate(); renderWatchStrip();
     $('watchBtn').classList.add('hidden');
     // Whatever is on screen was drawn for an account. Draw it again for a
     // visitor: the chart loses its reading, the data pages get the wall.
@@ -3189,11 +3214,28 @@
         <button id="planPro" class="btn btn-primary">Make Pro</button>
         <button id="planFree" class="btn btn-ghost">Make free</button>
       </div>
-      <p class="compare-note">The account has to have signed up already. This writes the plan on the account; it does not start or cancel anything in Stripe.</p>
+      <div class="admin-plan">
+        <button id="affAdd" class="btn btn-primary">Make affiliate</button>
+        <button id="affRemove" class="btn btn-ghost">Remove affiliate</button>
+      </div>
+      <p class="compare-note">The account has to have signed up already. Make Pro writes the plan on the account; it does not start or cancel anything in Stripe. Make affiliate gives the account Pro for free and a referral link, and emails them the link to the payout form. Pressing it again sends the email again.</p>
       <div id="planMsg" class="admin-plan-msg">${esc(adminPlanNote)}</div></div>`;
+    if (!d.payoutsOn) {
+      html += `<div class="auth-err"><b>Affiliates cannot save payout details yet.</b> Set PAYOUT_KEY in the Render environment to any long random string (the output of <code>openssl rand -hex 32</code> will do) and redeploy. Making affiliates still works meanwhile: they get Pro and their link, and the form tells them to come back.</div>`;
+    }
+    const affs = d.affiliates || [];
+    html += `<div class="admin-sec"><div class="mkt-h">Affiliates (${affs.length})</div>` + (affs.length
+      ? `<div class="compare-scroll"><table class="admin-table"><thead><tr><th>Email</th><th>Link</th><th>Referrals</th><th>Payout</th><th></th></tr></thead><tbody>` + affs.map(a => {
+        const link = location.origin + '/?ref=' + a.code;
+        const pay = a.payout ? (a.payout.method === 'paypal' ? 'PayPal, ' + a.payout.last4 : 'bank, ending ' + a.payout.last4) : 'not entered yet';
+        return `<tr><td>${esc(a.email)}</td><td><span class="admin-aff-code">${esc(link)}</span></td><td>${a.referrals}</td><td>${esc(pay)}</td>`
+          + `<td>${a.payout ? `<button class="btn btn-ghost btn-sm aff-show" data-email="${esc(a.email)}">Show details</button>` : ''}</td></tr>`;
+      }).join('') + `</tbody></table></div>`
+      : `<p class="compare-note">No affiliates yet. Enter an email above and press Make affiliate.</p>`) + `</div>`;
     html += `<div class="admin-sec"><div class="mkt-h">Users (${(d.users || []).length})</div><div class="compare-scroll"><table class="admin-table"><thead><tr><th>Email</th><th>Plan</th><th>Joined</th></tr></thead><tbody>` + (d.users || []).map(u => {
-      const plan = u.comp ? 'pro (comp)' : u.plan !== 'pro' ? 'free' : u.paying ? 'pro (paying)' : 'pro (granted)';
-      return `<tr><td>${esc(u.email)}${u.admin ? ' <span class="svc-pill svc-on">admin</span>' : ''}</td><td>${esc(plan)}</td><td>${esc(ymd(u.created))}</td></tr>`;
+      const plan = u.comp ? 'pro (comp)' : u.plan !== 'pro' ? 'free' : u.paying ? 'pro (paying)' : u.affiliate_code ? 'pro (affiliate)' : 'pro (granted)';
+      const pills = (u.admin ? ' <span class="svc-pill svc-on">admin</span>' : '') + (u.affiliate_code ? ' <span class="svc-pill svc-on">affiliate</span>' : '');
+      return `<tr><td>${esc(u.email)}${pills}</td><td>${esc(plan)}</td><td>${esc(ymd(u.created))}${u.referred_by ? ` <span class="admin-aff-code">via ${esc(u.referred_by)}</span>` : ''}</td></tr>`;
     }).join('') + `</tbody></table></div></div>`;
     html += `<div class="admin-sec"><div class="mkt-h">Recent errors (${(d.errors || []).length})</div>` + ((d.errors || []).length ? d.errors.map(e => `<div class="err-line">${esc(hms(e.t))}: ${esc(e.msg)}</div>`).join('') : `<p class="compare-note">No errors logged.</p>`) + `</div>`;
     $('adminBody').innerHTML = html;
@@ -3223,6 +3265,54 @@
     $('planPro').onclick = () => setPlan('pro');
     $('planFree').onclick = () => setPlan('free');
     $('planEmail').onkeydown = (e) => { if (e.key === 'Enter') setPlan('pro'); };
+
+    const setAff = async (action) => {
+      const email = ($('planEmail').value || '').trim();
+      const msg = $('planMsg'), btns = [$('planPro'), $('planFree'), $('affAdd'), $('affRemove')];
+      if (!email) { msg.textContent = 'Enter an email address.'; return; }
+      btns.forEach(b => b.disabled = true);
+      msg.textContent = action === 'remove' ? 'Removing…' : 'Setting up and emailing…';
+      let r;
+      try {
+        r = await (await fetch('/api/admin/affiliate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, action }),
+        })).json();
+      } catch { r = { error: 'Couldn’t reach the server.' }; }
+      if (r.error) { msg.textContent = r.error; btns.forEach(b => b.disabled = false); return; }
+      let note;
+      if (action === 'remove') {
+        note = r.removed
+          ? `${r.email} is no longer an affiliate${r.stillPro ? ' and keeps Pro (paid for, or listed in PRO_EMAILS)' : ' and is back on the free plan'}.`
+          : `${r.email} was not an affiliate.`;
+      } else {
+        note = `${r.email} is an affiliate${r.wasAlready ? ' (already was, so the code is unchanged)' : ', with Pro'}. Link: ${r.link}`;
+        if (r.emailed) note += ' The welcome email with the payout form link has been sent.';
+        else if (r.payoutUrl) note += ` The email could not be sent${r.mailError ? ' (' + r.mailError + ')' : ''}. Pass them this form link yourself; it works for 7 days: ${r.payoutUrl}`;
+        if (!r.payoutsOn) note += ' PAYOUT_KEY is not set, so the form cannot be saved until it is.';
+      }
+      adminPlanNote = note;
+      await loadAdmin();
+    };
+    $('affAdd').onclick = () => setAff('add');
+    $('affRemove').onclick = () => setAff('remove');
+    // Payout details are fetched only when asked for, one affiliate at a time.
+    $('adminBody').querySelectorAll('.aff-show').forEach(b => b.onclick = async () => {
+      const tr = b.closest('tr');
+      const next = tr.nextElementSibling;
+      if (next && next.classList.contains('aff-details')) { next.remove(); b.textContent = 'Show details'; return; }
+      b.disabled = true;
+      let r;
+      try { r = await (await fetch('/api/admin/payout?email=' + encodeURIComponent(b.dataset.email))).json(); }
+      catch { r = { error: 'Couldn’t reach the server.' }; }
+      b.disabled = false;
+      const p = r.details || {};
+      const text = r.error ? r.error : p.method === 'paypal'
+        ? `Name: ${p.holder}\nPayPal: ${p.paypal}`
+        : `Name: ${p.holder}\nBank: ${p.bankName}\nRouting: ${p.routing}\nAccount: ${p.account} (${p.type})`;
+      tr.insertAdjacentHTML('afterend', `<tr class="aff-details"><td colspan="5"><div class="admin-payout">${esc(text)}</div></td></tr>`);
+      b.textContent = 'Hide';
+    });
   }
 
   // ---- Movers ----

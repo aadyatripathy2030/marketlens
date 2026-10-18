@@ -35,6 +35,31 @@ const MAIL_FROM = (process.env.MAIL_FROM || 'ChartGauge <noreply@chartgauge.com>
 const MAIL_TRANSPORT = (process.env.MAIL_TRANSPORT || (RESEND_API_KEY ? 'resend' : 'off')).trim().toLowerCase();
 const mailEnabled = () => MAIL_TRANSPORT === 'resend' || MAIL_TRANSPORT === 'log';
 if (!mailEnabled()) console.log('email: off (set RESEND_API_KEY to require a confirmed address; until then accounts are created confirmed)');
+// Affiliate programme. PAYOUT_KEY encrypts the payout details an affiliate
+// enters (any long random string, e.g. `openssl rand -hex 32`); it lives only
+// in the environment, so a copy of the database holds nothing readable.
+// Without it the form is shown but cannot be saved, and the admin page says
+// so. AFFILIATE_SHARE is the percentage quoted in the welcome email; left
+// unset, the email promises a share without naming a figure.
+const PAYOUT_KEY = (process.env.PAYOUT_KEY || '').trim();
+const payoutsOn = () => PAYOUT_KEY.length >= 16;
+if (!payoutsOn()) console.log('affiliates: PAYOUT_KEY is not set, so payout details cannot be saved yet');
+const AFFILIATE_SHARE = String(process.env.AFFILIATE_SHARE || '').replace(/[^\d.]/g, '');
+const CONTACT_EMAIL = (process.env.CONTACT_EMAIL || 'chartgauge@gmail.com').trim();
+// AES-256-GCM, key derived from PAYOUT_KEY; iv and tag travel with the text.
+const payoutCipherKey = () => crypto.createHash('sha256').update(PAYOUT_KEY).digest();
+function sealJson(obj) {
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv('aes-256-gcm', payoutCipherKey(), iv);
+  const ct = Buffer.concat([c.update(JSON.stringify(obj), 'utf8'), c.final()]);
+  return Buffer.concat([iv, c.getAuthTag(), ct]).toString('base64');
+}
+function openJson(s) {
+  const b = Buffer.from(String(s), 'base64');
+  const d = crypto.createDecipheriv('aes-256-gcm', payoutCipherKey(), b.subarray(0, 12));
+  d.setAuthTag(b.subarray(12, 28));
+  return JSON.parse(Buffer.concat([d.update(b.subarray(28)), d.final()]).toString('utf8'));
+}
 // Google Analytics 4 measurement id. No default on purpose: a hard-coded one
 // meant that if the env var were ever missing the site would quietly report to
 // a property nobody here can open. Unset means analytics simply does not load,
@@ -87,6 +112,7 @@ const KNOWN_API = new Set([
   '/api/stock', '/api/quotes', '/api/fundamentals', '/api/analyze', '/api/analyze-stream',
   '/api/analyze-image', '/api/compare', '/api/screen', '/api/watchlist', '/api/alerts',
   '/api/movers', '/api/ranked', '/api/accuracy', '/api/admin', '/api/admin/plan', '/api/stream',
+  '/api/admin/affiliate', '/api/admin/payout', '/api/affiliate/payout',
   '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
   '/api/auth/delete', '/api/auth/google', '/api/auth/google/callback',
   '/api/auth/verify', '/api/auth/resend',
@@ -1395,8 +1421,15 @@ function emailHtml(o) {
   const code = o.code
     ? `<div style="margin:22px 0 4px;padding:18px 0;border:1px solid #423f38;border-radius:4px;background:#121211;text-align:center;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:34px;letter-spacing:10px;color:#f0efec;">${esc(o.code)}</div>`
     : '';
+  // A labelled value worth keeping, such as a link of the reader's own.
+  const box = o.box
+    ? `<div style="margin:22px 0 4px;padding:14px 16px;border:1px solid #423f38;border-radius:4px;background:#121211;">`
+      + `<div style="font-family:${MAIL_FONT};font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:#9a958c;margin-bottom:6px;">${esc(o.box.label)}</div>`
+      + `<a href="${esc(o.box.url || o.box.value)}" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:15px;color:#b3a6ff;text-decoration:none;word-break:break-all;">${esc(o.box.value)}</a></div>`
+    : '';
+  const intro2 = o.intro2 ? `<p style="margin:12px 0 0;font-family:${MAIL_FONT};font-size:15px;line-height:1.6;color:#d6d2c8;">${esc(o.intro2)}</p>` : '';
   const button = o.button
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 14px;"><tr><td style="background:#e9e4d9;border-radius:3px;">`
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 14px;"><tr><td style="background:#9d8cff;border-radius:3px;">`
       + `<a href="${esc(o.button.url)}" style="display:inline-block;padding:13px 26px;font-family:${MAIL_FONT};font-size:15px;font-weight:700;color:#121211;text-decoration:none;">${esc(o.button.label)}</a></td></tr></table>`
       + `<p style="margin:0;font-family:${MAIL_FONT};font-size:12px;line-height:1.6;color:#9a958c;word-break:break-all;">Or paste this link into your browser:<br><a href="${esc(o.button.url)}" style="color:#9a958c;">${esc(o.button.url)}</a></p>`
     : '';
@@ -1410,7 +1443,7 @@ function emailHtml(o) {
     + `<tr><td style="background:#1d1d1a;border:1px solid #2e2d28;border-radius:4px;padding:28px 26px;">`
     + `<h1 style="margin:0 0 10px;font-family:${MAIL_FONT};font-size:22px;font-weight:700;color:#f0efec;">${esc(o.title)}</h1>`
     + `<p style="margin:0;font-family:${MAIL_FONT};font-size:15px;line-height:1.6;color:#d6d2c8;">${esc(o.intro)}</p>`
-    + code + button
+    + intro2 + code + box + button
     + `<p style="margin:18px 0 0;font-family:${MAIL_FONT};font-size:13px;line-height:1.6;color:#9a958c;">${esc(o.outro)}</p>`
     + `</td></tr>`
     + `<tr><td style="padding:16px 4px 0;font-family:${MAIL_FONT};font-size:12px;line-height:1.5;color:#7a756b;">ChartGauge is a charting tool for learning to read charts. Nothing on it is financial advice.<br><a href="https://chartgauge.com" style="color:#9a958c;">chartgauge.com</a></td></tr>`
@@ -1443,6 +1476,153 @@ async function sendVerification(req, user) {
   return true;
 }
 const VERIFY_MSG = (email) => `Check ${email} for a link to confirm your address. The link works once and expires in 24 hours.`;
+
+// ---- Affiliates ----
+// Being made an affiliate gives an account three things: Pro, a referral link
+// (the site address with ?ref=CODE), and an email with a link to the form
+// where they say how they want to be paid.
+const PAYOUT_TTL = 7 * 86400000;
+const affiliateLink = (req, code) => siteOrigin(req) + '/?ref=' + code;
+const shareWords = () => AFFILIATE_SHARE ? `${AFFILIATE_SHARE}% of what those accounts pay` : 'a share of what those accounts pay';
+async function sendAffiliateEmail(req, user, code) {
+  const raw = await db.createVerifyToken(user.id, 'payout', PAYOUT_TTL);
+  const payoutUrl = siteOrigin(req) + '/affiliate/payout?token=' + raw;
+  const link = affiliateLink(req, code);
+  const intro = `Your account now has Pro, on us, and a referral link of your own. Every account created through it is counted as yours, and you earn ${shareWords()}.`;
+  const intro2 = 'Tell us where to send the money. The button below opens a short form; it takes about a minute.';
+  const outro = `The form link works for 7 days. After that, sign in and open Settings to add or change your details at any time. Questions: ${CONTACT_EMAIL}.`;
+  await sendMail(user.email, 'You are a ChartGauge affiliate',
+    `${intro}\n\nYour link:\n${link}\n\n${intro2}\n${payoutUrl}\n\n${outro}`,
+    emailHtml({ title: 'Welcome aboard', intro, intro2, box: { label: 'Your referral link', value: link, url: link },
+      button: { label: 'Add payout details', url: payoutUrl }, outro }));
+  return payoutUrl;
+}
+// The ?ref= on a visit lands in a cookie, and the sign-up that follows reads
+// it. Thirty days, so a visit and a sign-up a week apart still connect.
+const REF_RE = /^[A-Z2-9]{4,16}$/;
+function refFromQuery(req) {
+  const q = new URLSearchParams(req.url.split('?')[1] || '');
+  const r = String(q.get('ref') || '').toUpperCase().trim();
+  return REF_RE.test(r) ? r : '';
+}
+async function attributeReferral(req, user) {
+  try {
+    const code = String(parseCookies(req).ref || '').toUpperCase();
+    if (!REF_RE.test(code)) return;
+    const aff = await db.getUserByAffiliateCode(code);
+    if (!aff || aff.id === user.id) return;
+    await db.setReferrer(user.id, code);
+  } catch (e) { logError(e); }
+}
+// Who the payout page is for: the holder of a link from the affiliate email,
+// or a signed-in affiliate (Settings sends them here to make changes).
+async function payoutSubject(req, token) {
+  if (token) {
+    const uid = await db.peekToken(token, 'payout');
+    if (uid) { const u = await db.getUserById(uid); if (u && u.affiliate_code) return { user: u, viaToken: true }; }
+  }
+  const me = await currentUser(req).catch(() => null);
+  if (me) { const u = await db.getUserById(me.id); if (u && u.affiliate_code) return { user: u, viaToken: false }; }
+  return null;
+}
+// ABA routing numbers carry a check digit; this catches a typo before a
+// transfer bounces.
+function validRouting(r) {
+  if (!/^\d{9}$/.test(r)) return false;
+  const d = r.split('').map(Number);
+  return (3 * (d[0] + d[3] + d[6]) + 7 * (d[1] + d[4] + d[7]) + (d[2] + d[5] + d[8])) % 10 === 0;
+}
+async function handleAffiliatePayout(req, res) {
+  if (throttled(res, [['payout:ip:' + clientIp(req), 15, 15 * 60000]])) return;
+  const b = await readBody(req).catch(() => ({}));
+  const token = String((b && b.token) || '');
+  const who = await payoutSubject(req, token);
+  if (!who) return json(res, 403, { error: 'This link has expired. Sign in and open Settings to reach the form.' });
+  if (!payoutsOn()) return json(res, 503, { error: 'Details cannot be saved just now. Your Pro access and your link are live; we will email you when the form is ready.' });
+  const holder = String(b.holder || '').trim().replace(/\s+/g, ' ');
+  if (holder.length < 2 || holder.length > 80) return json(res, 400, { error: 'Enter the name on the account.' });
+  const method = b.method === 'paypal' ? 'paypal' : 'bank';
+  let rec, last4;
+  if (method === 'paypal') {
+    const pp = String(b.paypal || '').toLowerCase().trim();
+    if (!validEmail(pp)) return json(res, 400, { error: 'Enter the email address on your PayPal account.' });
+    rec = { method, holder, paypal: pp };
+    last4 = pp;
+  } else {
+    const bankName = String(b.bankName || '').trim().slice(0, 80);
+    const routing = String(b.routing || '').replace(/\D/g, '');
+    const account = String(b.account || '').replace(/\D/g, '');
+    const type = b.accountType === 'savings' ? 'savings' : 'checking';
+    if (bankName.length < 2) return json(res, 400, { error: 'Enter the name of your bank.' });
+    if (!validRouting(routing)) return json(res, 400, { error: 'That routing number does not check out. It is the 9-digit number on your checks or in your bank app.' });
+    if (account.length < 4 || account.length > 17) return json(res, 400, { error: 'Enter the account number, digits only.' });
+    rec = { method, holder, bankName, routing, account, type };
+    last4 = account.slice(-4);
+  }
+  await db.savePayout(who.user.id, { method, holder, last4, enc: sealJson(rec) });
+  // The emailed link is spent once it has done its job.
+  if (who.viaToken) await db.consumeVerifyToken(token, 'payout').catch(() => {});
+  return json(res, 200, { ok: true, method, last4 });
+}
+// The form, as its own document rather than a view in the app: it is opened
+// from an email by someone who may not be signed in, and it needs none of the
+// app's scripts or its sign-in wall.
+async function servePayoutPage(req, res) {
+  const q = new URLSearchParams(req.url.split('?')[1] || '');
+  const token = String(q.get('token') || '');
+  const who = await payoutSubject(req, token).catch(() => null);
+  const head = `<!doctype html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Payout details | ${SITE_NAME}</title><meta name="robots" content="noindex" /><link rel="stylesheet" href="/styles.css" /></head><body class="po-body"><div class="po-wrap">
+<a class="po-brand" href="/"><span class="po-bars"><i></i><i></i></span>ChartGauge</a>`;
+  const foot = `<p class="po-foot">Questions: <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a></p></div><script src="/payout.js"></script></body></html>`;
+  res.setHeader('Cache-Control', 'no-store');
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  if (!who) {
+    return res.end(head + `<div class="po-card"><div class="po-kicker">Affiliate</div><h1 class="po-h">This link has expired</h1>
+<p class="po-p">Payout links work for 7 days. Sign in to ChartGauge and open Settings: the same form is there, under Affiliate.</p>
+<a class="btn btn-primary" href="/settings">Go to Settings</a></div>` + foot);
+  }
+  const u = who.user;
+  const link = affiliateLink(req, u.affiliate_code);
+  const n = await db.countReferrals(u.affiliate_code).catch(() => 0);
+  const cur = await db.payoutSummary(u.id).catch(() => null);
+  const have = cur ? (cur.method === 'paypal' ? `PayPal, ${cur.last4}` : `bank account ending ${cur.last4}`) : '';
+  const on = payoutsOn();
+  res.end(head + `<div class="po-card">
+  <div class="po-kicker">Affiliate</div>
+  <h1 class="po-h">${cur ? 'Update where you are paid' : 'Where should we pay you?'}</h1>
+  <p class="po-p">${esc(u.email)} has Pro, free, and a referral link of its own. Every account that signs up through the link counts as yours.</p>
+  <div class="po-link"><div class="po-label">Your link</div>
+    <div class="po-link-row"><code id="poLink">${esc(link)}</code><button type="button" class="btn btn-ghost" id="poCopy">Copy</button></div>
+    <div class="po-sub">${n} ${n === 1 ? 'account has' : 'accounts have'} signed up through it so far.</div></div>
+  ${cur ? `<div class="po-have">On file: ${esc(have)}, saved ${esc(new Date(cur.updated).toISOString().slice(0, 10))}. Saving below replaces it.</div>` : ''}
+  ${on ? '' : `<div class="auth-err">The form cannot be saved just now. Your Pro access and your link are live; we will email you when this is ready.</div>`}
+  <form id="poForm" class="po-form" data-token="${esc(who.viaToken ? token : '')}" novalidate>
+    <label class="po-field"><span>Name on the account</span><input class="input" name="holder" autocomplete="name" maxlength="80" required></label>
+    <div class="po-field"><span>Pay me by</span>
+      <div class="po-methods">
+        <label class="po-method"><input type="radio" name="method" value="bank" checked><span>Bank transfer (US)</span></label>
+        <label class="po-method"><input type="radio" name="method" value="paypal"><span>PayPal</span></label>
+      </div></div>
+    <div id="poBank">
+      <label class="po-field"><span>Bank name</span><input class="input" name="bankName" autocomplete="off" maxlength="80"></label>
+      <div class="po-two">
+        <label class="po-field"><span>Routing number</span><input class="input" name="routing" inputmode="numeric" autocomplete="off" maxlength="9" placeholder="9 digits"></label>
+        <label class="po-field"><span>Account type</span><select class="input" name="accountType"><option value="checking">Checking</option><option value="savings">Savings</option></select></label>
+      </div>
+      <label class="po-field"><span>Account number</span><input class="input" name="account" inputmode="numeric" autocomplete="off" maxlength="17"></label>
+      <label class="po-field"><span>Account number, again</span><input class="input" name="account2" inputmode="numeric" autocomplete="off" maxlength="17"></label>
+    </div>
+    <div id="poPaypal" class="hidden">
+      <label class="po-field"><span>PayPal email</span><input class="input" name="paypal" type="email" autocomplete="email" maxlength="120"></label>
+    </div>
+    <div class="auth-err hidden" id="poErr"></div>
+    <button type="submit" class="btn btn-primary po-submit" id="poSave"${on ? '' : ' disabled'}>Save payout details</button>
+    <p class="po-fine">Stored encrypted, read only when a payment is sent, and deleted with your account. Money only ever goes into this account; nothing is taken from it.</p>
+  </form>
+  <div class="po-done hidden" id="poDone"><h2 class="po-h">Saved</h2><p class="po-p" id="poDoneP"></p><a class="btn btn-ghost" href="/">Back to ChartGauge</a></div>
+</div>` + foot);
+}
 const slim = (u) => ({ id: u.id, email: u.email, plan: u.plan });
 const sessionUser = (u) => ({ id: u.id, email: u.email, plan: isPro(u) ? 'pro' : u.plan });
 
@@ -1510,7 +1690,7 @@ async function handleSignup(req, res) {
   if (throttled(res, [['signup:ip:' + clientIp(req), 5, 60 * 60000]])) return;
   if (!validEmail(email)) return json(res, 400, { error: 'Enter a valid email.' });
   if (String(b.password || '').length < 8) return json(res, 400, { error: 'Password must be at least 8 characters.' });
-  let user;
+  let user, fresh = true;
   try {
     user = await db.createUser(email, b.password, !mailEnabled());
   } catch (e) {
@@ -1522,8 +1702,9 @@ async function handleSignup(req, res) {
       return json(res, 409, { error: 'That email already has an account. Try logging in.' });
     }
     await db.setPassword(existing.id, b.password);
-    user = existing;
+    user = existing; fresh = false;
   }
+  if (fresh) await attributeReferral(req, user);
   if (mailHealthy()) {
     // No session until the link is opened: the account exists but cannot be
     // used, so typing an address that is not yours gets you nothing.
@@ -1684,7 +1865,7 @@ async function handleGoogleCallback(req, res) {
     if (!user) {
       const existing = await db.getUserByEmail(email);
       if (existing) { await db.linkGoogleId(existing.id, claims.sub); user = existing; }
-      else user = await db.createGoogleUser(email, claims.sub);
+      else { user = await db.createGoogleUser(email, claims.sub); await attributeReferral(req, user); }
     }
     const sep = st.next.includes('?') ? '&' : '?';
     if (mailHealthy()) {
@@ -1776,6 +1957,9 @@ async function handleMe(req, res) {
   if (u) { try { const full = await db.getUserById(u.id); everSubscribed = !!(full && full.stripe_customer); } catch (e) { logError(e); } }
   return json(res, 200, {
     user: u ? { ...u, plan: isPro(u) ? 'pro' : u.plan, admin: isAdmin(u) } : null,
+    // Set for an affiliate: their code, how many accounts came through it,
+    // and whether payout details are on file. Settings shows the card.
+    affiliate: u ? await db.affiliateInfo(u.id).catch(() => null) : null,
     store: db.storeMode(),
     billing: await billingInfo(),
     // lastFree is the final free day itself, which is the date to show; `until`
@@ -1825,6 +2009,8 @@ async function handleAdmin(req, res) {
   return json(res, 200, {
     counts: await db.counts(),
     users,
+    affiliates: await db.listAffiliates().catch(() => []),
+    payoutsOn: payoutsOn(), affiliateShare: AFFILIATE_SHARE || null,
     usage,
     errors: errorLog.slice(-25).reverse(),
     store: db.storeMode(),
@@ -1884,6 +2070,60 @@ async function handleAdminPlan(req, res) {
     stillBilled: (plan === 'free' && after && after.stripe_sub) ? after.stripe_sub : null,
     wasAlready: wasPlan === plan,
   });
+}
+
+// Make or remove an affiliate, by email, from the admin panel. Making one
+// writes a referral code on the account, grants Pro the same way the plan
+// panel does, and emails the welcome with the link to the payout form.
+// Pressing it again for an existing affiliate only sends the email again.
+async function handleAdminAffiliate(req, res) {
+  const me = await currentUser(req);
+  if (!isAdmin(me)) return json(res, 403, { error: 'Admin access only.' });
+  const b = await readBody(req);
+  const email = String(b.email || '').toLowerCase().trim();
+  const action = b.action === 'remove' ? 'remove' : 'add';
+  if (!validEmail(email)) return json(res, 400, { error: 'That is not an email address.' });
+  const user = await db.getUserByEmail(email);
+  if (!user) return json(res, 404, { error: `No account for ${email}. They have to sign up first.` });
+  if (action === 'remove') {
+    if (!user.affiliate_code) return json(res, 200, { email, removed: false });
+    await db.dropAffiliate(user.id);
+    // Pro came with the role, so it goes with it, unless Stripe is paying for it.
+    if (user.plan === 'pro' && !user.stripe_sub) await db.setFree(user.id);
+    const after = await db.getUserByEmail(email);
+    return json(res, 200, { email, removed: true, stillPro: isPro(after) });
+  }
+  const wasAlready = !!user.affiliate_code;
+  const code = await db.makeAffiliate(user.id);
+  if (!wasAlready) await db.setPro(user.id, user.stripe_customer || null, user.stripe_sub || null);
+  let emailed = false, payoutUrl = null, mailError = null;
+  if (mailEnabled()) {
+    try { await sendAffiliateEmail(req, user, code); emailed = true; }
+    catch (e) { logError(e); mailError = String((e && e.message) || e); }
+  }
+  if (!emailed) {
+    // No way to reach the inbox: hand the admin the same link to pass on.
+    const raw = await db.createVerifyToken(user.id, 'payout', PAYOUT_TTL);
+    payoutUrl = siteOrigin(req) + '/affiliate/payout?token=' + raw;
+  }
+  return json(res, 200, { email, code, link: affiliateLink(req, code), wasAlready, emailed, mailError, payoutUrl, payoutsOn: payoutsOn() });
+}
+// The stored payout details for one affiliate, for the admin who is about to
+// send a payment. This is the only place they are read back.
+async function handleAdminPayout(req, res) {
+  const me = await currentUser(req);
+  if (!isAdmin(me)) return json(res, 403, { error: 'Admin access only.' });
+  const q = new URLSearchParams(req.url.split('?')[1] || '');
+  const email = String(q.get('email') || '').toLowerCase().trim();
+  const user = await db.getUserByEmail(email);
+  if (!user) return json(res, 404, { error: `No account for ${email}.` });
+  const p = await db.getPayout(user.id);
+  if (!p) return json(res, 404, { error: `${email} has not entered payout details yet.` });
+  if (!payoutsOn()) return json(res, 503, { error: 'PAYOUT_KEY is not set, so the stored details cannot be read.' });
+  let details;
+  try { details = openJson(p.enc); }
+  catch (e) { return json(res, 500, { error: 'The stored details could not be decrypted. PAYOUT_KEY has changed since they were saved; ask them to enter the details again.' }); }
+  return json(res, 200, { email, updated: Number(p.updated), details });
 }
 
 async function handleWatchlist(req, res) {
@@ -2844,6 +3084,9 @@ function serveDocument(req, res, urlPath) {
     return finish(out);
 
     function finish(body) {
+      // A visit through an affiliate's link: remember whose, for the sign-up.
+      const ref = refFromQuery(req);
+      if (ref) res.setHeader('Set-Cookie', cookieStr(req, 'ref', ref, 30 * 86400));
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
       res.end(body);
     }
@@ -2957,7 +3200,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (url === '/robots.txt') {
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-      return res.end(`User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\n\nSitemap: ${siteOrigin(req)}/sitemap.xml\n`);
+      return res.end(`User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\nDisallow: /affiliate/\n\nSitemap: ${siteOrigin(req)}/sitemap.xml\n`);
     }
     if (url === '/sitemap.xml') {
       const origin = siteOrigin(req);
@@ -2986,6 +3229,10 @@ const server = http.createServer(async (req, res) => {
     }
     if (url === '/api/admin' && req.method === 'GET') return await handleAdmin(req, res);
     if (url === '/api/admin/plan' && req.method === 'POST') return await handleAdminPlan(req, res);
+    if (url === '/api/admin/affiliate' && req.method === 'POST') return await handleAdminAffiliate(req, res);
+    if (url === '/api/admin/payout' && req.method === 'GET') return await handleAdminPayout(req, res);
+    if (url === '/api/affiliate/payout' && req.method === 'POST') return await handleAffiliatePayout(req, res);
+    if (url === '/affiliate/payout' && req.method === 'GET') return await servePayoutPage(req, res);
     if (url === '/api/stock' && req.method === 'GET') {
       const q = new URLSearchParams(req.url.split('?')[1] || '');
       return await handleStock(req, res, q.get('symbol'), q.get('strategy'), q.get('direction'), q.get('interval'));

@@ -109,12 +109,13 @@ const buildPrivacy = () => h('Privacy Policy', [
       '<strong>Plan status</strong>: whether the account is free or Pro',
       '<strong>Email confirmation and sign-in codes</strong>: whether the address has been confirmed, a short-lived token while a confirmation link is outstanding, and a short-lived code while a sign-in is in progress',
       '<strong>Google account identifier</strong>: only if you sign in with Google: the opaque user id Google issues for you, stored so the same Google account signs into the same ChartGauge account next time. It is not your Google password, and it gives no access to anything else in your Google account.',
+      '<strong>Affiliate details</strong>: only if you are invited into the affiliate programme and accept: a referral code, a count of the accounts created through your link, and the payout details you choose to enter (the name on the account and either a US bank account or a PayPal address). The account and routing numbers are stored encrypted with a key that is not kept in the database, are read only to send you a payment, and are deleted with your account. Money is only ever paid into the account you name; nothing is ever taken from it.',
     ]),
     `Everything beyond the bare chart requires an account, so using those features means the above exists. The lessons and these policy pages can be read without an account, and reading them creates none of it. Your display preferences (simple or advanced mode, candle colours, the number of take-profit levels) are kept in your own browser and are never sent to the server.`),
 
   s('What is never stored',
     ul([
-      '<strong>Card or bank details.</strong> Payments go directly to Stripe, which handles them entirely. ' + SITE + ' receives only your subscription status.',
+      '<strong>Card details.</strong> Payments go directly to Stripe, which handles them entirely. ' + SITE + ' receives only your subscription status. The one exception to "no bank details" is the affiliate payout form above, which exists so that affiliates can be paid, and which only an invited affiliate ever sees.',
       '<strong>Brokerage or trading account credentials.</strong> There is no integration with any broker.',
       '<strong>Your name, address, date of birth, or any government identifier.</strong> None of it is asked for.',
     ])),

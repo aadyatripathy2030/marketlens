@@ -12,7 +12,7 @@ let mode = 'memory';
 let lastErr = null;
 const mem = { users: new Map(), byEmail: new Map(), sessions: new Map(), watch: new Map(),
   alerts: new Map(), usage: new Map(), preds: new Map(), etokens: new Map(), codes: new Map(),
-  paper: new Map(), pos: new Map(), fills: new Map() };
+  paper: new Map(), pos: new Map(), fills: new Map(), payouts: new Map() };
 
 // Render's INTERNAL Postgres host has no dot (e.g. dpg-xxxx-a) and speaks plain
 // TCP; hosted/external hosts (Neon, Render external) are dotted and need SSL.
@@ -42,6 +42,24 @@ async function init() {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT TRUE');
       await pool.query(`CREATE TABLE IF NOT EXISTS email_tokens (
         hash TEXT PRIMARY KEY, uid TEXT NOT NULL, expires BIGINT NOT NULL)`);
+      // What the token is for: 'verify' (confirm the address) or 'payout' (the
+      // link in the affiliate email). Checked on use, so one kind is never
+      // accepted as the other.
+      await pool.query("ALTER TABLE email_tokens ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'verify'");
+      // Affiliate programme. affiliate_code is what goes in the member's
+      // referral link (?ref=CODE); referred_by on another account is the code
+      // it signed up through. Neither is a secret.
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_code TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_since BIGINT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by TEXT');
+      await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS users_affiliate_code_idx ON users (affiliate_code) WHERE affiliate_code IS NOT NULL');
+      // How each affiliate asked to be paid. The form fields are stored only as
+      // `enc`, which the server encrypts with a key held outside this database;
+      // method, holder and last4 are the summary the admin table shows.
+      await pool.query(`CREATE TABLE IF NOT EXISTS payouts (
+        uid TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        method TEXT NOT NULL, holder TEXT NOT NULL, last4 TEXT NOT NULL,
+        enc TEXT NOT NULL, updated BIGINT NOT NULL)`);
       // A sign-in that is waiting for its emailed code. One row per attempt;
       // gone once the code is entered, used up, or expired.
       await pool.query(`CREATE TABLE IF NOT EXISTS login_codes (
@@ -332,33 +350,51 @@ const VERIFY_TTL = 24 * 60 * 60 * 1000;
 const tokenHash = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
 // The raw token goes in the link; only its hash is stored, so a copy of the
 // database does not contain working links.
-async function createVerifyToken(uid) {
+// kind defaults to the confirmation link; 'payout' is the link in the
+// affiliate email, which lives longer and is checked rather than spent when
+// the page is opened.
+async function createVerifyToken(uid, kind, ttl) {
+  kind = kind || 'verify';
   const raw = crypto.randomBytes(32).toString('hex');
-  const rec = { hash: tokenHash(raw), uid, expires: Date.now() + VERIFY_TTL };
-  if (mode === 'postgres') await pool.query('INSERT INTO email_tokens (hash, uid, expires) VALUES ($1,$2,$3)', [rec.hash, uid, rec.expires]);
+  const rec = { hash: tokenHash(raw), uid, kind, expires: Date.now() + (ttl || VERIFY_TTL) };
+  if (mode === 'postgres') await pool.query('INSERT INTO email_tokens (hash, uid, expires, kind) VALUES ($1,$2,$3,$4)', [rec.hash, uid, rec.expires, kind]);
   else mem.etokens.set(rec.hash, rec);
   return raw;
 }
 // Single use: the row goes whether or not it was still valid.
-async function consumeVerifyToken(raw) {
+async function consumeVerifyToken(raw, kind) {
   if (!raw) return null;
+  kind = kind || 'verify';
   const h = tokenHash(raw);
   let rec;
   if (mode === 'postgres') {
-    const r = await pool.query('DELETE FROM email_tokens WHERE hash=$1 RETURNING uid, expires', [h]);
+    const r = await pool.query('DELETE FROM email_tokens WHERE hash=$1 AND kind=$2 RETURNING uid, expires', [h, kind]);
     rec = r.rows[0];
-  } else { rec = mem.etokens.get(h); mem.etokens.delete(h); }
+  } else { rec = mem.etokens.get(h); if (rec && (rec.kind || 'verify') !== kind) rec = null; else mem.etokens.delete(h); }
+  if (!rec || Number(rec.expires) < Date.now()) return null;
+  return rec.uid;
+}
+// Looks without spending, so the page a link opens can be refreshed.
+async function peekToken(raw, kind) {
+  if (!raw) return null;
+  kind = kind || 'verify';
+  const h = tokenHash(raw);
+  let rec;
+  if (mode === 'postgres') {
+    const r = await pool.query('SELECT uid, expires FROM email_tokens WHERE hash=$1 AND kind=$2', [h, kind]);
+    rec = r.rows[0];
+  } else { rec = mem.etokens.get(h); if (rec && (rec.kind || 'verify') !== kind) rec = null; }
   if (!rec || Number(rec.expires) < Date.now()) return null;
   return rec.uid;
 }
 async function markVerified(uid) {
   if (mode === 'postgres') {
     await pool.query('UPDATE users SET email_verified=TRUE WHERE id=$1', [uid]);
-    await pool.query('DELETE FROM email_tokens WHERE uid=$1', [uid]);
+    await pool.query("DELETE FROM email_tokens WHERE uid=$1 AND kind='verify'", [uid]);
     return;
   }
   const u = mem.users.get(uid); if (u) u.email_verified = true;
-  for (const [h, t] of mem.etokens) if (t.uid === uid) mem.etokens.delete(h);
+  for (const [h, t] of mem.etokens) if (t.uid === uid && (t.kind || 'verify') === 'verify') mem.etokens.delete(h);
 }
 // For a sign-up over an address that is registered but never confirmed: the
 // new password replaces the old, so whoever can open the inbox ends up with
@@ -538,11 +574,100 @@ async function markTriggered(uid, id, ts) {
   else { const m = mem.alerts.get(uid); if (m && m.has(id)) m.get(id).triggered = ts; }
 }
 
+// ---- affiliates ----
+// Codes are short and upper-case so they survive being read out loud or typed
+// from a screenshot; the alphabet leaves out 0/O and 1/I for the same reason.
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function newAffiliateCode() {
+  const b = crypto.randomBytes(8);
+  let s = '';
+  for (let i = 0; i < 8; i++) s += CODE_ALPHABET[b[i] % CODE_ALPHABET.length];
+  return s;
+}
+async function getUserByAffiliateCode(code) {
+  code = String(code || '').toUpperCase().trim();
+  if (!code) return null;
+  if (mode === 'postgres') { const r = await pool.query('SELECT * FROM users WHERE affiliate_code=$1', [code]); return r.rows[0] || null; }
+  for (const u of mem.users.values()) if (u.affiliate_code === code) return u;
+  return null;
+}
+// Idempotent: an account that already has a code keeps it, so pressing the
+// button twice does not break a link that is already out in the world.
+async function makeAffiliate(uid) {
+  const u = await getUserById(uid);
+  if (!u) return null;
+  if (u.affiliate_code) return u.affiliate_code;
+  for (let i = 0; i < 5; i++) {
+    const code = newAffiliateCode();
+    if (await getUserByAffiliateCode(code)) continue;
+    if (mode === 'postgres') await pool.query('UPDATE users SET affiliate_code=$2, affiliate_since=$3 WHERE id=$1', [uid, code, Date.now()]);
+    else { u.affiliate_code = code; u.affiliate_since = Date.now(); }
+    return code;
+  }
+  throw new Error('could not allot an affiliate code');
+}
+async function dropAffiliate(uid) {
+  if (mode === 'postgres') { await pool.query('UPDATE users SET affiliate_code=NULL, affiliate_since=NULL WHERE id=$1', [uid]); return; }
+  const u = mem.users.get(uid); if (u) { u.affiliate_code = null; u.affiliate_since = null; }
+}
+// Written once, at sign-up, and only when the account has no referrer yet.
+async function setReferrer(uid, code) {
+  if (mode === 'postgres') { await pool.query('UPDATE users SET referred_by=$2 WHERE id=$1 AND referred_by IS NULL', [uid, code]); return; }
+  const u = mem.users.get(uid); if (u && !u.referred_by) u.referred_by = code;
+}
+async function countReferrals(code) {
+  if (!code) return 0;
+  if (mode === 'postgres') { const r = await pool.query('SELECT count(*) FROM users WHERE referred_by=$1', [code]); return +r.rows[0].count; }
+  let n = 0; for (const u of mem.users.values()) if (u.referred_by === code) n++;
+  return n;
+}
+// The summary row the admin table shows and the settings card reads. Never
+// includes enc.
+async function payoutSummary(uid) {
+  let p;
+  if (mode === 'postgres') { const r = await pool.query('SELECT method, holder, last4, updated FROM payouts WHERE uid=$1', [uid]); p = r.rows[0]; }
+  else p = mem.payouts.get(uid);
+  return p ? { method: p.method, holder: p.holder, last4: p.last4, updated: Number(p.updated) } : null;
+}
+async function getPayout(uid) {
+  if (mode === 'postgres') { const r = await pool.query('SELECT * FROM payouts WHERE uid=$1', [uid]); return r.rows[0] || null; }
+  return mem.payouts.get(uid) || null;
+}
+async function savePayout(uid, p) {
+  const rec = { uid, method: p.method, holder: p.holder, last4: p.last4, enc: p.enc, updated: Date.now() };
+  if (mode === 'postgres') {
+    await pool.query(`INSERT INTO payouts (uid, method, holder, last4, enc, updated) VALUES ($1,$2,$3,$4,$5,$6)
+      ON CONFLICT (uid) DO UPDATE SET method=EXCLUDED.method, holder=EXCLUDED.holder, last4=EXCLUDED.last4, enc=EXCLUDED.enc, updated=EXCLUDED.updated`,
+      [uid, rec.method, rec.holder, rec.last4, rec.enc, rec.updated]);
+    return;
+  }
+  mem.payouts.set(uid, rec);
+}
+async function affiliateInfo(uid) {
+  const u = await getUserById(uid);
+  if (!u || !u.affiliate_code) return null;
+  return { code: u.affiliate_code, since: Number(u.affiliate_since) || null,
+    referrals: await countReferrals(u.affiliate_code), payout: await payoutSummary(uid) };
+}
+async function listAffiliates() {
+  let rows;
+  if (mode === 'postgres') {
+    const r = await pool.query('SELECT id, email, affiliate_code, affiliate_since FROM users WHERE affiliate_code IS NOT NULL ORDER BY affiliate_since DESC NULLS LAST');
+    rows = r.rows;
+  } else rows = [...mem.users.values()].filter(u => u.affiliate_code).sort((a, b) => (b.affiliate_since || 0) - (a.affiliate_since || 0));
+  const out = [];
+  for (const u of rows) {
+    out.push({ id: u.id, email: u.email, code: u.affiliate_code, since: Number(u.affiliate_since) || null,
+      referrals: await countReferrals(u.affiliate_code), payout: await payoutSummary(u.id) });
+  }
+  return out;
+}
+
 // ---- admin ----
 async function listUsers(limit) {
   limit = limit || 200;
-  if (mode === 'postgres') { const r = await pool.query('SELECT id, email, plan, created, stripe_sub FROM users ORDER BY created DESC LIMIT $1', [limit]); return r.rows.map(u => ({ ...u, created: Number(u.created) })); }
-  return [...mem.users.values()].map(u => ({ id: u.id, email: u.email, plan: u.plan, created: u.created, stripe_sub: u.stripe_sub })).sort((a, b) => b.created - a.created).slice(0, limit);
+  if (mode === 'postgres') { const r = await pool.query('SELECT id, email, plan, created, stripe_sub, affiliate_code, referred_by FROM users ORDER BY created DESC LIMIT $1', [limit]); return r.rows.map(u => ({ ...u, created: Number(u.created) })); }
+  return [...mem.users.values()].map(u => ({ id: u.id, email: u.email, plan: u.plan, created: u.created, stripe_sub: u.stripe_sub, affiliate_code: u.affiliate_code || null, referred_by: u.referred_by || null })).sort((a, b) => b.created - a.created).slice(0, limit);
 }
 async function counts() {
   if (mode === 'postgres') {
@@ -571,12 +696,14 @@ async function deleteUser(uid) {
     await pool.query('DELETE FROM usage_daily WHERE k=$1', ['u:' + uid]);
     await pool.query('DELETE FROM email_tokens WHERE uid=$1', [uid]);
     await pool.query('DELETE FROM login_codes WHERE uid=$1', [uid]);
+    await pool.query('DELETE FROM payouts WHERE uid=$1', [uid]);
     await pool.query('DELETE FROM users WHERE id=$1', [uid]);
     return;
   }
   const u = mem.users.get(uid);
   if (u) mem.byEmail.delete(u.email);
   mem.users.delete(uid);
+  mem.payouts.delete(uid);
   for (const [h, t] of mem.etokens) if (t.uid === uid) mem.etokens.delete(h);
   for (const [id, c] of mem.codes) if (c.uid === uid) mem.codes.delete(id);
   mem.watch.delete(uid);
@@ -708,7 +835,9 @@ module.exports = {
   init, storeMode, hasUrl, lastError, verifyPw,
   createUser, getUserByEmail, getUserById,
   createSession, getSessionUser, deleteSession, purgeExpiredSessions,
-  createVerifyToken, consumeVerifyToken, markVerified, setPassword,
+  createVerifyToken, consumeVerifyToken, peekToken, markVerified, setPassword,
+  makeAffiliate, dropAffiliate, getUserByAffiliateCode, setReferrer, countReferrals,
+  affiliateInfo, listAffiliates, getPayout, savePayout, payoutSummary,
   createLoginCode, getLoginCode, checkLoginCode, deleteLoginCode,
   getStreak, saveStreak,
   getRisk, saveRisk, RISK_DEFAULTS,

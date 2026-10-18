@@ -70,6 +70,10 @@ services:
         sync: false
       - key: CONTACT_EMAIL        # shown on /contact; defaults to chartgauge@gmail.com
         sync: false
+      - key: PAYOUT_KEY           # encrypts affiliates' payout details; any long random string (openssl rand -hex 32). Never change it once set.
+        sync: false
+      - key: AFFILIATE_SHARE      # optional; the percentage quoted in the affiliate welcome email, e.g. 30
+        sync: false
       - key: FREE_UNTIL           # everything is free until this instant, then the normal split
         value: "2026-10-18T00:00:00Z"
 
