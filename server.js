@@ -75,6 +75,11 @@ const GA_ID = (process.env.GA_MEASUREMENT_ID || '').trim();
 const GSC_VERIFY = (process.env.GOOGLE_SITE_VERIFICATION || '').trim();
 const STRIPE_SECRET_KEY = (process.env.STRIPE_SECRET_KEY || '').replace(/\s/g, '');       // sk_...
 const STRIPE_WEBHOOK_SECRET = (process.env.STRIPE_WEBHOOK_SECRET || '').replace(/\s/g, ''); // whsec_...
+// Stripe Connect, for paying affiliates: 'auto' switches on by itself once
+// Connect is enabled on the Stripe account (checked at boot and hourly);
+// 'on' and 'off' force it either way.
+const STRIPE_CONNECT = (process.env.STRIPE_CONNECT || 'auto').trim().toLowerCase();
+let connectOn = STRIPE_CONNECT === 'on';
 // Pro price IDs per billing period (weekly / monthly / yearly). STRIPE_PRICE_ID stays as a monthly fallback.
 const STRIPE_PRICES = {
   weekly: (process.env.STRIPE_PRICE_WEEKLY || '').replace(/\s/g, ''),
@@ -119,6 +124,7 @@ const KNOWN_API = new Set([
   '/api/movers', '/api/ranked', '/api/accuracy', '/api/admin', '/api/admin/plan', '/api/stream',
   '/api/admin/affiliate', '/api/admin/payout', '/api/affiliate/payout',
   '/api/admin/affiliate/pay', '/api/admin/affiliate/sync', '/api/admin/affiliate/ledger',
+  '/api/admin/affiliate/transfer', '/api/affiliate/connect',
   '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
   '/api/auth/delete', '/api/auth/google', '/api/auth/google/callback',
   '/api/auth/verify', '/api/auth/resend',
@@ -1595,13 +1601,30 @@ async function servePayoutPage(req, res) {
   const cur = await db.payoutSummary(u.id).catch(() => null);
   const have = cur ? (cur.method === 'paypal' ? `PayPal, ${cur.last4}` : `bank account ending ${cur.last4}`) : '';
   const on = payoutsOn();
+  // Stripe first, when Connect is on: it keeps the bank details and sends the
+  // money itself. Coming back from Stripe's page re-reads the status at once.
+  const c = (connectOn && u.stripe_account) ? await connectRefresh(u, q.get('connect') === 'return') : null;
+  const ready = !!(c && c.status === 'ready');
+  const stripeBlock = !connectOn ? '' : `<div class="po-stripe${ready ? ' ready' : ''}">
+    <div class="po-label">${ready ? 'Set up' : 'Recommended'}</div>
+    <h2 class="po-h2">Get paid through Stripe</h2>
+    <p class="po-p">${ready
+      ? `Done. Stripe has your bank details${c.last4 ? ' (account ending ' + esc(c.last4) + ')' : ''} and sends each payment straight to it. We never see the account number.`
+      : c ? 'You started on Stripe, but it still needs a little more from you before it can pay you.'
+      : 'Stripe takes your details on its own secure page and sends the money straight to your bank. About two minutes, and we never see your account number.'}</p>
+    <button type="button" class="btn ${ready ? 'btn-ghost' : 'btn-primary'}" id="poConnect">${ready ? 'Manage on Stripe' : c ? 'Continue on Stripe' : 'Set up with Stripe'}</button>
+    <div class="auth-err hidden" id="poConnectErr"></div>
+  </div>`;
+  const title = ready ? 'You are set up to be paid' : cur ? 'Update where you are paid' : 'Where should we pay you?';
   res.end(head + `<div class="po-card">
   <div class="po-kicker">Affiliate</div>
-  <h1 class="po-h">${cur ? 'Update where you are paid' : 'Where should we pay you?'}</h1>
+  <h1 class="po-h">${title}</h1>
   <p class="po-p">${esc(u.email)} has Pro, free, and a referral link of its own. Every account that signs up through the link counts as yours.</p>
   <div class="po-link"><div class="po-label">Your link</div>
     <div class="po-link-row"><code id="poLink">${esc(link)}</code><button type="button" class="btn btn-ghost" id="poCopy">Copy</button></div>
     ${n ? `<div class="po-sub">${n} ${n === 1 ? 'account has' : 'accounts have'} signed up through it so far.${tot && tot.earned ? ` Earned ${esc(money(tot.earned))}, ${esc(money(tot.owed))} owed to you.` : ''}</div>` : ''}</div>
+  ${stripeBlock}
+  ${connectOn ? `<details class="po-manual"${!ready && !c && cur ? ' open' : ''}><summary>${ready ? 'Bank or PayPal details given directly (not needed now)' : 'Prefer to give bank or PayPal details directly?'}</summary>` : ''}
   ${cur ? `<div class="po-have">On file: ${esc(have)}, saved ${esc(new Date(cur.updated).toISOString().slice(0, 10))}. Saving below replaces it.</div>` : ''}
   ${on ? '' : `<div class="auth-err">The form cannot be saved just now. Your Pro access and your link are live; we will email you when this is ready.</div>`}
   <form id="poForm" class="po-form" data-token="${esc(who.viaToken ? token : '')}" novalidate>
@@ -1627,6 +1650,7 @@ async function servePayoutPage(req, res) {
     <button type="submit" class="btn btn-primary po-submit" id="poSave"${on ? '' : ' disabled'}>Save payout details</button>
     <p class="po-fine">Stored encrypted, read only when a payment is sent, and deleted with your account. Money only ever goes into this account; nothing is taken from it.</p>
   </form>
+  ${connectOn ? '</details>' : ''}
   <div class="po-done hidden" id="poDone"><h2 class="po-h">Saved</h2><p class="po-p" id="poDoneP"></p><a class="btn btn-ghost" href="/">Back to ChartGauge</a></div>
 </div>` + foot);
 }
@@ -2016,8 +2040,9 @@ async function handleAdmin(req, res) {
   return json(res, 200, {
     counts: await db.counts(),
     users,
-    affiliates: await db.listAffiliates().catch(() => []),
+    affiliates: await listAffiliatesFresh().catch(() => []),
     payoutsOn: payoutsOn(), affiliateShare: AFFILIATE_SHARE || null, affiliateMonths: AFFILIATE_MONTHS, affiliateMin: AFFILIATE_MIN_PAYOUT,
+    connectOn, stripeOn: !!STRIPE_SECRET_KEY,
     affiliateSync: { ...affSync, stripe: !!STRIPE_SECRET_KEY },
     usage,
     errors: errorLog.slice(-25).reverse(),
@@ -2241,6 +2266,119 @@ async function handleAdminAffiliateLedger(req, res) {
   const user = await db.getUserByEmail(email);
   if (!user) return json(res, 404, { error: `No account for ${email}.` });
   return json(res, 200, { email, totals: await db.ledgerTotals(user.id), rows: await db.ledgerRows(user.id, 50) });
+}
+
+// ---- Stripe Connect ----
+// An affiliate who sets up payouts on Stripe's hosted page gets an Express
+// account under this one. Stripe collects and keeps their bank details, and a
+// payment is a transfer from this account's Stripe balance to theirs.
+async function detectConnect() {
+  if (!STRIPE_SECRET_KEY || STRIPE_CONNECT !== 'auto') return connectOn;
+  try { await stripeGet('accounts?limit=1'); connectOn = true; }
+  catch (e) { connectOn = false; console.log('stripe connect: off (' + e.message + ')'); }
+  return connectOn;
+}
+// Stripe's view of a connected account: ready once it will accept transfers.
+// A ready account is re-checked daily; anything else, every time it is asked.
+async function connectRefresh(user, force) {
+  if (!user || !user.stripe_account) return null;
+  const fresh = user.connect_status === 'ready' && Date.now() - Number(user.connect_checked || 0) < 86400000;
+  if (fresh && !force) return { status: user.connect_status, last4: user.connect_last4 || null };
+  try {
+    const a = await stripeGet('accounts/' + encodeURIComponent(user.stripe_account));
+    const status = a.payouts_enabled ? 'ready' : (a.details_submitted ? 'review' : 'pending');
+    const ext = a.external_accounts && a.external_accounts.data && a.external_accounts.data[0];
+    const last4 = (ext && ext.last4) || null;
+    await db.setConnectStatus(user.id, status, last4);
+    return { status, last4 };
+  } catch (e) { logError(e); return { status: user.connect_status || 'pending', last4: user.connect_last4 || null }; }
+}
+// The admin table, with every unsettled Connect status looked up again, so
+// "not finished" turns into "ready" without anyone pressing anything.
+async function listAffiliatesFresh() {
+  const rows = await db.listAffiliates();
+  for (const a of rows) {
+    if (!a.connect || !STRIPE_SECRET_KEY) continue;
+    if (a.connect.status === 'ready' && Date.now() - a.connectChecked < 86400000) continue;
+    const c = await connectRefresh(await db.getUserById(a.id), true);
+    if (c) a.connect = c;
+  }
+  return rows;
+}
+// Starts or resumes Stripe's onboarding for the affiliate, or opens their
+// Stripe dashboard once it is complete. Same callers as the payout form.
+async function handleAffiliateConnect(req, res) {
+  if (throttled(res, [['connect:ip:' + clientIp(req), 10, 15 * 60000]])) return;
+  const b = await readBody(req).catch(() => ({}));
+  const token = String((b && b.token) || '');
+  const who = await payoutSubject(req, token);
+  if (!who) return json(res, 403, { error: 'This link has expired. Sign in and open Settings to reach the form.' });
+  if (!connectOn) return json(res, 503, { error: 'Stripe payouts are not switched on yet. Enter your details below instead.' });
+  const u = who.user;
+  try {
+    if (u.stripe_account) {
+      const c = await connectRefresh(u, true);
+      if (c && c.status === 'ready') {
+        const l = await stripePost(`accounts/${encodeURIComponent(u.stripe_account)}/login_links`, {});
+        return json(res, 200, { url: l.url, manage: true });
+      }
+    } else {
+      const a = await stripePost('accounts', { type: 'express', email: u.email, business_type: 'individual',
+        'capabilities[transfers][requested]': 'true', 'metadata[uid]': u.id, 'metadata[role]': 'affiliate' });
+      await db.setConnectAccount(u.id, a.id);
+      u.stripe_account = a.id;
+    }
+    const back = siteOrigin(req) + '/affiliate/payout?' + (who.viaToken ? 'token=' + encodeURIComponent(token) + '&' : '');
+    const link = await stripePost('account_links', { account: u.stripe_account, type: 'account_onboarding',
+      refresh_url: back + 'connect=refresh', return_url: back + 'connect=return' });
+    return json(res, 200, { url: link.url });
+  } catch (e) {
+    logError(e);
+    return json(res, 502, { error: 'Stripe could not start the setup (' + e.message + '). Try again in a minute, or enter your details below.' });
+  }
+}
+// Sends what is owed to the affiliate's connected account. The idempotency
+// key holds for a day on (affiliate, amount), so a double press or a retry
+// after a timeout cannot pay twice, and the ledger row is keyed by the
+// transfer id for the same reason.
+async function transferToAffiliate(user, by) {
+  const t = await db.ledgerTotals(user.id);
+  if (!(t.owed > 0)) return { email: user.email, error: 'Nothing is owed.' };
+  if (!user.stripe_account) return { email: user.email, error: `${user.email} has not set up Stripe payouts.` };
+  const c = await connectRefresh(user, true);
+  if (!c || c.status !== 'ready') return { email: user.email, error: `${user.email} has not finished setting up Stripe payouts.` };
+  try {
+    const key = `aff-${user.id}-${t.owed}-${new Date().toISOString().slice(0, 10)}`;
+    const tr = await stripePost('transfers', { amount: String(t.owed), currency: 'usd', destination: user.stripe_account,
+      description: 'ChartGauge affiliate commission', 'metadata[uid]': user.id }, { 'Idempotency-Key': key });
+    await db.addLedger({ aff_uid: user.id, kind: 'payout', amount: -t.owed, stripe_ref: tr.id, note: `Stripe transfer ${tr.id}${by ? ' by ' + by : ''}` });
+    return { email: user.email, paid: t.owed, transfer: tr.id, totals: await db.ledgerTotals(user.id) };
+  } catch (e) {
+    logError(e);
+    let msg = String(e.message || 'Stripe error').replace(/\.$/, '');
+    if (/insufficient/i.test(msg)) msg += '. Transfers come out of your Stripe balance, not your bank. Wait for recent payments to settle, or add funds to the balance in the Stripe dashboard, then try again.';
+    return { email: user.email, error: `Transfer failed: ${msg}` };
+  }
+}
+async function handleAdminAffiliateTransfer(req, res) {
+  const me = await currentUser(req);
+  if (!isAdmin(me)) return json(res, 403, { error: 'Admin access only.' });
+  if (!connectOn) return json(res, 400, { error: 'Stripe Connect is not enabled on your Stripe account yet.' });
+  const b = await readBody(req);
+  if (b.all) {
+    // Everyone at or over the minimum who has finished Stripe's setup.
+    const results = [];
+    for (const a of await db.listAffiliates()) {
+      if (!a.connect || a.totals.owed < AFFILIATE_MIN_PAYOUT * 100) continue;
+      results.push(await transferToAffiliate(await db.getUserById(a.id), me.email));
+    }
+    return json(res, 200, { results });
+  }
+  const email = String(b.email || '').toLowerCase().trim();
+  const user = await db.getUserByEmail(email);
+  if (!user || !user.affiliate_code) return json(res, 404, { error: `${email} is not an affiliate.` });
+  const r = await transferToAffiliate(user, me.email);
+  return json(res, r.error ? 400 : 200, r);
 }
 
 async function handleWatchlist(req, res) {
@@ -2812,18 +2950,29 @@ async function handleScreen(req, res, qs) {
 // Read side of the Stripe API, so the Plans page can show real amounts
 // instead of "billed via Stripe". Cached: prices change rarely and this runs
 // on every session check.
-function stripeGet(apiPath) {
+// The host is configurable only so a test can stand in for Stripe; a local
+// stand-in is spoken to over plain http, Stripe itself always over https.
+const STRIPE_API_HOST = (process.env.STRIPE_API_HOST || 'api.stripe.com').trim();
+function stripeReq(method, apiPath, body, extraHeaders) {
+  const [hostname, port] = STRIPE_API_HOST.split(':');
+  const local = /^(localhost|127\.0\.0\.1)$/.test(hostname);
+  const headers = { 'Authorization': 'Bearer ' + STRIPE_SECRET_KEY, ...(extraHeaders || {}) };
+  if (body != null) { headers['Content-Type'] = 'application/x-www-form-urlencoded'; headers['Content-Length'] = Buffer.byteLength(body); }
   return new Promise((resolve, reject) => {
-    const r = https.request({ method: 'GET', hostname: 'api.stripe.com', path: '/v1/' + apiPath,
-      headers: { 'Authorization': 'Bearer ' + STRIPE_SECRET_KEY } }, resp => {
+    const r = (local ? http : https).request({ method, hostname, port: port ? Number(port) : undefined, path: '/v1/' + apiPath, headers }, resp => {
       let d = ''; resp.on('data', c => d += c);
       resp.on('end', () => { try { const j = JSON.parse(d); if (resp.statusCode >= 400) reject(new Error(j.error ? j.error.message : 'Stripe error')); else resolve(j); } catch (e) { reject(new Error('bad Stripe response')); } });
     });
     r.on('error', reject);
-    r.setTimeout(8000, () => r.destroy(new Error('stripe timeout')));
+    r.setTimeout(method === 'GET' ? 8000 : 20000, () => r.destroy(new Error('stripe timeout')));
+    if (body != null) r.write(body);
     r.end();
   });
 }
+function stripeGet(apiPath) { return stripeReq('GET', apiPath); }
+const formEncode = (form) => Object.entries(form).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
+// extraHeaders carries an Idempotency-Key where a repeat must not act twice.
+function stripePost(apiPath, form, extraHeaders) { return stripeReq('POST', apiPath, formEncode(form || {}), extraHeaders); }
 
 // {weekly,monthly,yearly} -> amount, currency and interval, or just a boolean
 // when the price cannot be read (no key, or Stripe unreachable).
@@ -2844,17 +2993,6 @@ async function billingInfo() {
   return out;
 }
 
-function stripePost(apiPath, form) {
-  const body = Object.entries(form).map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
-  return new Promise((resolve, reject) => {
-    const r = https.request({ method: 'POST', hostname: 'api.stripe.com', path: '/v1/' + apiPath,
-      headers: { 'Authorization': 'Bearer ' + STRIPE_SECRET_KEY, 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) } }, resp => {
-      let d = ''; resp.on('data', c => d += c);
-      resp.on('end', () => { try { const j = JSON.parse(d); if (resp.statusCode >= 400) reject(new Error(j.error ? j.error.message : 'Stripe error')); else resolve(j); } catch (e) { reject(new Error('bad Stripe response')); } });
-    });
-    r.on('error', reject); r.write(body); r.end();
-  });
-}
 function readRawBody(req, cap) { cap = cap || 1e6; return new Promise(resolve => { let d = ''; req.on('data', c => { d += c; if (d.length > cap) req.destroy(); }); req.on('end', () => resolve(d)); req.on('error', () => resolve('')); }); }
 // Stripe's tolerance for how old a signed payload may be. Without it a valid
 // webhook captured once can be replayed forever.
@@ -3355,6 +3493,8 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/admin/affiliate/pay' && req.method === 'POST') return await handleAdminAffiliatePay(req, res);
     if (url === '/api/admin/affiliate/sync' && req.method === 'POST') return await handleAdminAffiliateSync(req, res);
     if (url === '/api/admin/affiliate/ledger' && req.method === 'GET') return await handleAdminAffiliateLedger(req, res);
+    if (url === '/api/admin/affiliate/transfer' && req.method === 'POST') return await handleAdminAffiliateTransfer(req, res);
+    if (url === '/api/affiliate/connect' && req.method === 'POST') return await handleAffiliateConnect(req, res);
     if (url === '/api/affiliate/payout' && req.method === 'POST') return await handleAffiliatePayout(req, res);
     if (url === '/affiliate/payout' && req.method === 'GET') return await servePayoutPage(req, res);
     if (url === '/api/stock' && req.method === 'GET') {
@@ -3456,7 +3596,12 @@ db.init().then((storeMode) => {
     startSessionPurge();
     // Affiliate commissions are reconciled against Stripe a minute after boot
     // and then daily, so a missed webhook never leaves an affiliate short.
+    // Connect is probed at boot and hourly until it answers, so enabling it
+    // in the Stripe dashboard needs no deploy here.
     if (STRIPE_SECRET_KEY) {
+      detectConnect().catch(logError);
+      const probe = setInterval(() => { if (!connectOn) detectConnect().catch(logError); }, 3600000);
+      if (probe.unref) probe.unref();
       const first = setTimeout(() => syncAffiliateLedger().catch(logError), 60000);
       const daily = setInterval(() => syncAffiliateLedger().catch(logError), 24 * 3600000);
       if (first.unref) first.unref();

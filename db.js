@@ -74,6 +74,14 @@ async function init() {
       await pool.query('CREATE INDEX IF NOT EXISTS affiliate_ledger_aff_idx ON affiliate_ledger (aff_uid, ts DESC)');
       // When a referred account first paid: the commission window runs from it.
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS first_paid BIGINT');
+      // Stripe Connect, for affiliates who set up payouts on Stripe's page:
+      // their connected account id, whether Stripe will accept transfers to
+      // it yet (pending | review | ready), the last four of the bank Stripe
+      // holds for it, and when that was last checked.
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_account TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS connect_status TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS connect_last4 TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS connect_checked BIGINT');
       // A sign-in that is waiting for its emailed code. One row per attempt;
       // gone once the code is entered, used up, or expired.
       await pool.query(`CREATE TABLE IF NOT EXISTS login_codes (
@@ -657,6 +665,17 @@ async function savePayout(uid, p) {
   }
   mem.payouts.set(uid, rec);
 }
+// ---- Stripe Connect ----
+async function setConnectAccount(uid, acct) {
+  if (mode === 'postgres') { await pool.query("UPDATE users SET stripe_account=$2, connect_status='pending', connect_checked=$3 WHERE id=$1", [uid, acct, Date.now()]); return; }
+  const u = mem.users.get(uid); if (u) { u.stripe_account = acct; u.connect_status = 'pending'; u.connect_checked = Date.now(); }
+}
+async function setConnectStatus(uid, status, last4) {
+  if (mode === 'postgres') { await pool.query('UPDATE users SET connect_status=$2, connect_last4=$3, connect_checked=$4 WHERE id=$1', [uid, status, last4 || null, Date.now()]); return; }
+  const u = mem.users.get(uid); if (u) { u.connect_status = status; u.connect_last4 = last4 || null; u.connect_checked = Date.now(); }
+}
+const connectOf = (u) => u && u.stripe_account ? { status: u.connect_status || 'pending', last4: u.connect_last4 || null } : null;
+
 // ---- affiliate ledger ----
 async function findByStripeCustomer(cust) {
   if (!cust) return null;
@@ -714,18 +733,19 @@ async function affiliateInfo(uid) {
   const u = await getUserById(uid);
   if (!u || !u.affiliate_code) return null;
   return { code: u.affiliate_code, since: Number(u.affiliate_since) || null,
-    referrals: await countReferrals(u.affiliate_code), payout: await payoutSummary(uid), totals: await ledgerTotals(uid) };
+    referrals: await countReferrals(u.affiliate_code), payout: await payoutSummary(uid), connect: connectOf(u), totals: await ledgerTotals(uid) };
 }
 async function listAffiliates() {
   let rows;
   if (mode === 'postgres') {
-    const r = await pool.query('SELECT id, email, affiliate_code, affiliate_since FROM users WHERE affiliate_code IS NOT NULL ORDER BY affiliate_since DESC NULLS LAST');
+    const r = await pool.query('SELECT id, email, affiliate_code, affiliate_since, stripe_account, connect_status, connect_last4, connect_checked FROM users WHERE affiliate_code IS NOT NULL ORDER BY affiliate_since DESC NULLS LAST');
     rows = r.rows;
   } else rows = [...mem.users.values()].filter(u => u.affiliate_code).sort((a, b) => (b.affiliate_since || 0) - (a.affiliate_since || 0));
   const out = [];
   for (const u of rows) {
     out.push({ id: u.id, email: u.email, code: u.affiliate_code, since: Number(u.affiliate_since) || null,
-      referrals: await countReferrals(u.affiliate_code), payout: await payoutSummary(u.id), totals: await ledgerTotals(u.id) });
+      referrals: await countReferrals(u.affiliate_code), payout: await payoutSummary(u.id), connect: connectOf(u),
+      connectChecked: Number(u.connect_checked) || 0, totals: await ledgerTotals(u.id) });
   }
   return out;
 }
@@ -908,6 +928,7 @@ module.exports = {
   makeAffiliate, dropAffiliate, getUserByAffiliateCode, setReferrer, countReferrals,
   affiliateInfo, listAffiliates, getPayout, savePayout, payoutSummary,
   findByStripeCustomer, setFirstPaid, addLedger, ledgerByRef, ledgerGroupSum, ledgerTotals, ledgerRows,
+  setConnectAccount, setConnectStatus,
   createLoginCode, getLoginCode, checkLoginCode, deleteLoginCode,
   getStreak, saveStreak,
   getRisk, saveRisk, RISK_DEFAULTS,

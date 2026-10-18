@@ -2395,7 +2395,10 @@
     card.classList.toggle('hidden', !a);
     if (!a) { card.innerHTML = ''; return; }
     const link = location.origin + '/?ref=' + a.code;
-    const pay = a.payout
+    const pay = a.connect && a.connect.status === 'ready'
+      ? `Payments go through Stripe${a.connect.last4 ? ' to the bank account ending ' + a.connect.last4 : ''}.`
+      : a.connect ? 'Your Stripe setup is not finished yet.'
+      : a.payout
       ? (a.payout.method === 'paypal' ? `Payments go to PayPal, ${a.payout.last4}.` : `Payments go to the bank account ending ${a.payout.last4}.`)
       : 'No payout details yet.';
     const usd = (c) => '$' + (Math.abs(c || 0) / 100).toFixed(2);
@@ -2408,7 +2411,7 @@
       <div class="aff-link-row"><code>${esc(link)}</code><button type="button" class="btn btn-ghost" id="affCopy">Copy</button></div>
       ${money}
       <div class="aff-row">${a.referrals ? `<span>${a.referrals} ${a.referrals === 1 ? 'account has' : 'accounts have'} signed up through it.</span>` : ''}<span>${esc(pay)}</span>
-      <button type="button" class="btn btn-ghost" id="affPayout">${a.payout ? 'Change payout details' : 'Add payout details'}</button></div>`;
+      <button type="button" class="btn btn-ghost" id="affPayout">${a.connect || a.payout ? 'Manage payouts' : 'Set up payouts'}</button></div>`;
     $('affCopy').onclick = async () => {
       try { await navigator.clipboard.writeText(link); $('affCopy').textContent = 'Copied'; setTimeout(() => { $('affCopy').textContent = 'Copy'; }, 1800); } catch {}
     };
@@ -3240,18 +3243,28 @@
       : sy.running ? 'Syncing with Stripe…'
       : sy.at ? `Last synced with Stripe ${esc(hms(sy.at))}${sy.error ? ', with an error: ' + esc(sy.error) : ''}.`
       : 'Not synced with Stripe since this restart.';
-    html += `<div class="aff-sync"><span>Commission is ${esc(d.affiliateShare || '0')}% of referred payments for ${d.affiliateMonths} months, paid monthly from ${usd((d.affiliateMin || 0) * 100)}. ${syncLine}</span>`
-      + (sy.stripe ? `<button id="affSync" class="btn btn-ghost btn-sm"${sy.running ? ' disabled' : ''}>Sync with Stripe</button>` : '') + `</div>`;
+    const minC = (d.affiliateMin || 0) * 100;
+    const anyDue = affs.some(a => a.connect && a.connect.status === 'ready' && a.totals && a.totals.owed >= minC && a.totals.owed > 0);
+    const connectLine = !d.stripeOn ? '' : d.connectOn
+      ? ' Affiliates who set up on Stripe are paid with the Pay via Stripe button; the rest by hand.'
+      : ' Stripe Connect is not enabled on your Stripe account yet, so every payment is made by hand and recorded with Mark paid.';
+    html += `<div class="aff-sync"><span>Commission is ${esc(d.affiliateShare || '0')}% of referred payments for ${d.affiliateMonths} months, paid monthly from ${usd(minC)}. ${syncLine}${connectLine}</span><span>`
+      + (anyDue ? `<button id="affPayAll" class="btn btn-primary btn-sm">Pay everyone due via Stripe</button> ` : '')
+      + (sy.stripe ? `<button id="affSync" class="btn btn-ghost btn-sm"${sy.running ? ' disabled' : ''}>Sync with Stripe</button>` : '') + `</span></div>`;
     html += (affs.length
       ? `<div class="compare-scroll"><table class="admin-table"><thead><tr><th>Email</th><th>Link</th><th>Referrals</th><th>Earned</th><th>Paid</th><th>Owed</th><th>Payout to</th><th></th></tr></thead><tbody>` + affs.map(a => {
         const link = location.origin + '/?ref=' + a.code;
         const t = a.totals || { earned: 0, paid: 0, owed: 0 };
-        const pay = a.payout ? (a.payout.method === 'paypal' ? 'PayPal, ' + a.payout.last4 : 'bank, ending ' + a.payout.last4) : 'not entered yet';
-        const due = t.owed >= (d.affiliateMin || 0) * 100 && t.owed > 0;
+        const viaStripe = !!(a.connect && a.connect.status === 'ready');
+        const pay = viaStripe ? 'Stripe' + (a.connect.last4 ? ', bank ending ' + a.connect.last4 : '')
+          : a.connect ? 'Stripe (not finished)'
+          : a.payout ? (a.payout.method === 'paypal' ? 'PayPal, ' + a.payout.last4 : 'bank, ending ' + a.payout.last4) : 'not entered yet';
+        const due = t.owed >= minC && t.owed > 0;
         return `<tr><td>${esc(a.email)}</td><td><span class="admin-aff-code">${esc(link)}</span></td><td>${a.referrals}</td>`
           + `<td>${usd(t.earned)}</td><td>${usd(t.paid)}</td><td${due ? ' class="aff-due"' : ''}>${usd(t.owed)}</td><td>${esc(pay)}</td>`
           + `<td><button class="btn btn-ghost btn-sm aff-show" data-email="${esc(a.email)}">Details</button>`
-          + (t.owed > 0 ? ` <button class="btn btn-primary btn-sm aff-pay" data-email="${esc(a.email)}" data-owed="${t.owed}">Mark paid</button>` : '') + `</td></tr>`;
+          + (t.owed > 0 && viaStripe && d.connectOn ? ` <button class="btn btn-primary btn-sm aff-transfer" data-email="${esc(a.email)}" data-owed="${t.owed}">Pay via Stripe</button>` : '')
+          + (t.owed > 0 ? ` <button class="btn ${viaStripe && d.connectOn ? 'btn-ghost' : 'btn-primary'} btn-sm aff-pay" data-email="${esc(a.email)}" data-owed="${t.owed}">Mark paid</button>` : '') + `</td></tr>`;
       }).join('') + `</tbody></table></div>`
       : '') + `</div>`;
     html += `<div class="admin-sec"><div class="mkt-h">Users (${(d.users || []).length})</div><div class="compare-scroll"><table class="admin-table"><thead><tr><th>Email</th><th>Plan</th><th>Joined</th></tr></thead><tbody>` + (d.users || []).map(u => {
@@ -3351,6 +3364,29 @@
       adminAffNote = r.error ? r.error : `Recorded ${usd(r.paid)} paid to ${r.email}. Balance is now ${usd(r.totals.owed)}.`;
       await loadAdmin();
     });
+    // Sends the money through Stripe and records it in one go.
+    const transfer = async (body, label) => {
+      let r;
+      try { r = await (await fetch('/api/admin/affiliate/transfer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json(); }
+      catch { r = { error: 'Couldn’t reach the server.' }; }
+      if (r.results) {
+        const ok = r.results.filter(x => !x.error), bad = r.results.filter(x => x.error);
+        adminAffNote = (ok.length ? `Sent ${ok.map(x => usd(x.paid) + ' to ' + x.email).join(', ')}.` : 'Nobody was due a Stripe payment.')
+          + (bad.length ? ' ' + bad.map(x => x.error).join(' ') : '');
+      } else adminAffNote = r.error ? r.error : `Sent ${usd(r.paid)} to ${r.email} through Stripe (${r.transfer}). Balance is now ${usd(r.totals.owed)}.`;
+      await loadAdmin();
+    };
+    $('adminBody').querySelectorAll('.aff-transfer').forEach(b => b.onclick = () => {
+      if (!confirm(`Send ${usd(Number(b.dataset.owed))} to ${b.dataset.email} through Stripe now?\n\nThe money leaves your Stripe balance and is recorded as paid.`)) return;
+      b.disabled = true;
+      transfer({ email: b.dataset.email });
+    });
+    const payAll = $('affPayAll');
+    if (payAll) payAll.onclick = () => {
+      if (!confirm(`Send every balance of ${usd(minC)} or more to its affiliate through Stripe now?`)) return;
+      payAll.disabled = true; payAll.textContent = 'Sending…';
+      transfer({ all: true });
+    };
     const syncBtn = $('affSync');
     if (syncBtn) syncBtn.onclick = async () => {
       syncBtn.disabled = true; syncBtn.textContent = 'Syncing…';

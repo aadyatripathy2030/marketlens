@@ -125,7 +125,7 @@ const buildPrivacy = () => h('Privacy Policy', [
       '<strong>Twelve Data</strong>: the ticker or pair you look up, to fetch prices.',
       '<strong>Financial Modeling Prep</strong> and <strong>Finnhub</strong>: the ticker you look up, to fetch fundamentals and news.',
       '<strong>Anthropic</strong>: when a written summary is generated: the ticker and the computed indicator values. If you upload a chart screenshot for reading, the image is sent too. Do not upload images containing personal or account information.',
-      '<strong>Stripe</strong>: your email address and subscription details, if you subscribe.',
+      '<strong>Stripe</strong>: your email address and subscription details, if you subscribe. If you are an affiliate and choose to be paid through Stripe, your email address is used to open a payout account with Stripe, and the bank details you then enter go to Stripe directly and are never seen by ' + SITE + '.',
       '<strong>Google Analytics</strong>: page views and general usage, to see which parts of the site get used. Only after you accept the cookie banner; if you decline, nothing is sent to Google.',
       '<strong>Google (sign-in)</strong>: only if you choose "Continue with Google". You sign in on Google\u2019s own page; ' + SITE + ' never sees your Google password. ' + SITE + ' asks Google for two things: your email address and your account identifier. Nothing else is requested, and nothing is written back to your Google account.',
       '<strong>Render</strong>: the hosting provider, which processes requests and stores the database.',

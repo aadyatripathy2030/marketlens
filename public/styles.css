@@ -270,6 +270,16 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .po-link-row code { font-size: 14px; color: var(--accent-hi); word-break: break-all; flex: 1 1 200px; }
 .po-sub { font-size: 12px; color: var(--muted); margin-top: 8px; }
 .po-have { font-size: 13px; color: var(--text); background: var(--accent-soft); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 20px; line-height: 1.5; }
+.po-stripe { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 20px; }
+.po-stripe.ready { border-color: var(--good); background: var(--good-soft); }
+.po-stripe .po-label { color: var(--accent-hi); }
+.po-stripe.ready .po-label { color: var(--good); }
+.po-stripe .po-p { margin-bottom: 14px; color: var(--text); }
+.po-stripe .auth-err { margin-top: 12px; }
+.po-h2 { font-family: var(--font-head); font-size: 18px; font-weight: 700; letter-spacing: -.2px; margin: 0 0 8px; }
+.po-manual > summary { cursor: pointer; font-size: 13px; color: var(--muted); padding: 4px 0; margin-bottom: 16px; list-style: none; }
+.po-manual > summary::before { content: '\25B8'; display: inline-block; width: 14px; }
+.po-manual[open] > summary::before { content: '\25BE'; }
 .po-form .input, .po-form select.input { text-transform: none; width: 100%; font-size: 16px; }
 .po-field { display: block; margin-bottom: 16px; }
 .po-field > span { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 6px; }

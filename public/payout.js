@@ -10,6 +10,22 @@
     catch (e) { copy.textContent = 'Select and copy'; }
     setTimeout(() => { copy.textContent = 'Copy'; }, 1800);
   });
+  // Stripe's hosted setup. The server answers with the page to go to: the
+  // onboarding flow, or the affiliate's Stripe dashboard once it is done.
+  const cb = $('poConnect');
+  if (cb) cb.addEventListener('click', async () => {
+    const was = cb.textContent;
+    cb.disabled = true; cb.textContent = 'Opening Stripe…';
+    const ce = $('poConnectErr');
+    ce.classList.add('hidden');
+    let r;
+    try {
+      r = await (await fetch('/api/affiliate/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: (form && form.dataset.token) || '' }) })).json();
+    } catch (e) { r = { error: 'Could not reach the server. Try again in a moment.' }; }
+    if (r.url) { location.href = r.url; return; }
+    ce.textContent = r.error || 'Something went wrong.'; ce.classList.remove('hidden');
+    cb.disabled = false; cb.textContent = was;
+  });
   if (!form) return;
 
   const err = $('poErr');
