@@ -248,6 +248,10 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .aff-link-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 .aff-link-row code { font-size: 13px; color: var(--accent-hi); background: var(--bg); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 8px 12px; word-break: break-all; flex: 1 1 240px; }
 .aff-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+.aff-money { display: flex; gap: 24px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+.aff-money b { font-family: var(--font-num); font-size: 18px; font-weight: 500; color: var(--text); font-variant-numeric: tabular-nums; margin-right: 4px; }
+.aff-sync { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: space-between; font-size: 13px; color: var(--muted); line-height: 1.5; margin: 0 0 12px; }
+.aff-due { color: var(--good); font-weight: 700; }
 
 /* The payout page: its own document, built from the same tokens. */
 .po-body { background: var(--bg); color: var(--text); font-family: var(--font); -webkit-font-smoothing: antialiased; }

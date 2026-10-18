@@ -12,7 +12,7 @@ let mode = 'memory';
 let lastErr = null;
 const mem = { users: new Map(), byEmail: new Map(), sessions: new Map(), watch: new Map(),
   alerts: new Map(), usage: new Map(), preds: new Map(), etokens: new Map(), codes: new Map(),
-  paper: new Map(), pos: new Map(), fills: new Map(), payouts: new Map() };
+  paper: new Map(), pos: new Map(), fills: new Map(), payouts: new Map(), ledger: [] };
 
 // Render's INTERNAL Postgres host has no dot (e.g. dpg-xxxx-a) and speaks plain
 // TCP; hosted/external hosts (Neon, Render external) are dotted and need SSL.
@@ -60,6 +60,20 @@ async function init() {
         uid TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         method TEXT NOT NULL, holder TEXT NOT NULL, last4 TEXT NOT NULL,
         enc TEXT NOT NULL, updated BIGINT NOT NULL)`);
+      // What each affiliate has earned and been paid, one row per event, in
+      // cents. kind is commission (a referred account paid), refund (some of
+      // that went back) or payout (the operator sent money; negative). The
+      // balance is the plain sum. stripe_ref is the Stripe object the row came
+      // from and is unique, so a webhook and the daily sync can both report
+      // the same invoice without counting it twice. group_ref ties a refund to
+      // the invoice whose commission it reverses.
+      await pool.query(`CREATE TABLE IF NOT EXISTS affiliate_ledger (
+        id TEXT PRIMARY KEY, aff_uid TEXT NOT NULL, ref_uid TEXT, kind TEXT NOT NULL,
+        amount INTEGER NOT NULL, currency TEXT NOT NULL DEFAULT 'usd',
+        stripe_ref TEXT UNIQUE, group_ref TEXT, note TEXT, ts BIGINT NOT NULL)`);
+      await pool.query('CREATE INDEX IF NOT EXISTS affiliate_ledger_aff_idx ON affiliate_ledger (aff_uid, ts DESC)');
+      // When a referred account first paid: the commission window runs from it.
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS first_paid BIGINT');
       // A sign-in that is waiting for its emailed code. One row per attempt;
       // gone once the code is entered, used up, or expired.
       await pool.query(`CREATE TABLE IF NOT EXISTS login_codes (
@@ -643,11 +657,64 @@ async function savePayout(uid, p) {
   }
   mem.payouts.set(uid, rec);
 }
+// ---- affiliate ledger ----
+async function findByStripeCustomer(cust) {
+  if (!cust) return null;
+  if (mode === 'postgres') { const r = await pool.query('SELECT * FROM users WHERE stripe_customer=$1', [cust]); return r.rows[0] || null; }
+  return [...mem.users.values()].find(u => u.stripe_customer === cust) || null;
+}
+// Written once; a later, earlier-dated payment (the sync walking back through
+// history) moves it back, so the window always starts at the true first one.
+async function setFirstPaid(uid, ts) {
+  if (mode === 'postgres') { await pool.query('UPDATE users SET first_paid=$2 WHERE id=$1 AND (first_paid IS NULL OR first_paid > $2)', [uid, ts]); return; }
+  const u = mem.users.get(uid); if (u && (!u.first_paid || u.first_paid > ts)) u.first_paid = ts;
+}
+// True when the row was new; false when stripe_ref had already been recorded.
+async function addLedger(r) {
+  const row = { id: crypto.randomUUID(), aff_uid: r.aff_uid, ref_uid: r.ref_uid || null, kind: r.kind, amount: Math.round(r.amount),
+    currency: r.currency || 'usd', stripe_ref: r.stripe_ref || null, group_ref: r.group_ref || null, note: r.note || null, ts: r.ts || Date.now() };
+  if (mode === 'postgres') {
+    const q = await pool.query(`INSERT INTO affiliate_ledger (id, aff_uid, ref_uid, kind, amount, currency, stripe_ref, group_ref, note, ts)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (stripe_ref) DO NOTHING RETURNING id`,
+      [row.id, row.aff_uid, row.ref_uid, row.kind, row.amount, row.currency, row.stripe_ref, row.group_ref, row.note, row.ts]);
+    return q.rowCount > 0;
+  }
+  if (row.stripe_ref && mem.ledger.some(x => x.stripe_ref === row.stripe_ref)) return false;
+  mem.ledger.push(row);
+  return true;
+}
+async function ledgerByRef(ref) {
+  if (!ref) return null;
+  if (mode === 'postgres') { const r = await pool.query('SELECT * FROM affiliate_ledger WHERE stripe_ref=$1', [ref]); return r.rows[0] || null; }
+  return mem.ledger.find(x => x.stripe_ref === ref) || null;
+}
+// Sum of one kind of row under a group, e.g. how much of an invoice's
+// commission has already been reversed.
+async function ledgerGroupSum(group, kind) {
+  if (mode === 'postgres') { const r = await pool.query('SELECT coalesce(sum(amount),0) AS s FROM affiliate_ledger WHERE group_ref=$1 AND kind=$2', [group, kind]); return Number(r.rows[0].s); }
+  return mem.ledger.filter(x => x.group_ref === group && x.kind === kind).reduce((s, x) => s + x.amount, 0);
+}
+// earned = commissions less refunds; paid = what has been sent; owed = balance.
+async function ledgerTotals(uid) {
+  let rows;
+  if (mode === 'postgres') { const r = await pool.query('SELECT kind, sum(amount) AS s FROM affiliate_ledger WHERE aff_uid=$1 GROUP BY kind', [uid]); rows = r.rows.map(x => [x.kind, Number(x.s)]); }
+  else { const m = {}; for (const x of mem.ledger) if (x.aff_uid === uid) m[x.kind] = (m[x.kind] || 0) + x.amount; rows = Object.entries(m); }
+  const by = Object.fromEntries(rows);
+  const earned = (by.commission || 0) + (by.refund || 0);
+  const paid = -(by.payout || 0);
+  return { earned, paid, owed: earned - paid };
+}
+async function ledgerRows(uid, limit) {
+  limit = limit || 50;
+  if (mode === 'postgres') { const r = await pool.query('SELECT kind, amount, currency, note, ts FROM affiliate_ledger WHERE aff_uid=$1 ORDER BY ts DESC LIMIT $2', [uid, limit]); return r.rows.map(x => ({ ...x, ts: Number(x.ts) })); }
+  return mem.ledger.filter(x => x.aff_uid === uid).sort((a, b) => b.ts - a.ts).slice(0, limit).map(({ kind, amount, currency, note, ts }) => ({ kind, amount, currency, note, ts }));
+}
+
 async function affiliateInfo(uid) {
   const u = await getUserById(uid);
   if (!u || !u.affiliate_code) return null;
   return { code: u.affiliate_code, since: Number(u.affiliate_since) || null,
-    referrals: await countReferrals(u.affiliate_code), payout: await payoutSummary(uid) };
+    referrals: await countReferrals(u.affiliate_code), payout: await payoutSummary(uid), totals: await ledgerTotals(uid) };
 }
 async function listAffiliates() {
   let rows;
@@ -658,7 +725,7 @@ async function listAffiliates() {
   const out = [];
   for (const u of rows) {
     out.push({ id: u.id, email: u.email, code: u.affiliate_code, since: Number(u.affiliate_since) || null,
-      referrals: await countReferrals(u.affiliate_code), payout: await payoutSummary(u.id) });
+      referrals: await countReferrals(u.affiliate_code), payout: await payoutSummary(u.id), totals: await ledgerTotals(u.id) });
   }
   return out;
 }
@@ -697,6 +764,7 @@ async function deleteUser(uid) {
     await pool.query('DELETE FROM email_tokens WHERE uid=$1', [uid]);
     await pool.query('DELETE FROM login_codes WHERE uid=$1', [uid]);
     await pool.query('DELETE FROM payouts WHERE uid=$1', [uid]);
+    await pool.query('DELETE FROM affiliate_ledger WHERE aff_uid=$1', [uid]);
     await pool.query('DELETE FROM users WHERE id=$1', [uid]);
     return;
   }
@@ -704,6 +772,7 @@ async function deleteUser(uid) {
   if (u) mem.byEmail.delete(u.email);
   mem.users.delete(uid);
   mem.payouts.delete(uid);
+  mem.ledger = mem.ledger.filter(x => x.aff_uid !== uid);
   for (const [h, t] of mem.etokens) if (t.uid === uid) mem.etokens.delete(h);
   for (const [id, c] of mem.codes) if (c.uid === uid) mem.codes.delete(id);
   mem.watch.delete(uid);
@@ -838,6 +907,7 @@ module.exports = {
   createVerifyToken, consumeVerifyToken, peekToken, markVerified, setPassword,
   makeAffiliate, dropAffiliate, getUserByAffiliateCode, setReferrer, countReferrals,
   affiliateInfo, listAffiliates, getPayout, savePayout, payoutSummary,
+  findByStripeCustomer, setFirstPaid, addLedger, ledgerByRef, ledgerGroupSum, ledgerTotals, ledgerRows,
   createLoginCode, getLoginCode, checkLoginCode, deleteLoginCode,
   getStreak, saveStreak,
   getRisk, saveRisk, RISK_DEFAULTS,

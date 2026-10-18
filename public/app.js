@@ -2398,9 +2398,15 @@
     const pay = a.payout
       ? (a.payout.method === 'paypal' ? `Payments go to PayPal, ${a.payout.last4}.` : `Payments go to the bank account ending ${a.payout.last4}.`)
       : 'No payout details yet.';
+    const usd = (c) => '$' + (Math.abs(c || 0) / 100).toFixed(2);
+    const t = a.totals || { earned: 0, paid: 0, owed: 0 };
+    const money = t.earned
+      ? `<div class="aff-money"><span><b>${usd(t.earned)}</b> earned</span><span><b>${usd(t.paid)}</b> paid</span><span><b>${usd(t.owed)}</b> owed to you</span></div>`
+      : '';
     card.innerHTML = `<div class="aff-kicker">Affiliate</div><h2 class="aff-h">Your referral link</h2>
-      <p class="aff-p">Every account created through this link counts as yours. Pro is on the house for as long as you are an affiliate.</p>
+      <p class="aff-p">Every account created through this link counts as yours. Pro is on the house for as long as you are an affiliate. <a href="/affiliate-terms">The terms</a> say what you earn and when it is paid.</p>
       <div class="aff-link-row"><code>${esc(link)}</code><button type="button" class="btn btn-ghost" id="affCopy">Copy</button></div>
+      ${money}
       <div class="aff-row">${a.referrals ? `<span>${a.referrals} ${a.referrals === 1 ? 'account has' : 'accounts have'} signed up through it.</span>` : ''}<span>${esc(pay)}</span>
       <button type="button" class="btn btn-ghost" id="affPayout">${a.payout ? 'Change payout details' : 'Add payout details'}</button></div>`;
     $('affCopy').onclick = async () => {
@@ -2639,7 +2645,7 @@
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
   let currentView = 'home';
   const VIEWS = ['home', 'analyze', 'compare', 'screener', 'markets', 'movers', 'accuracy', 'watchlist', 'alerts', 'practice', 'learn', 'settings', 'pricing', 'admin', 'legal'];
-  const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact'];
+  const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact', 'affiliate-terms'];
   // Each view has a real URL now, so navigation updates the address bar and
   // the back button works. pushUrl is skipped when we are *reacting* to a URL
   // (initial load, popstate) to avoid pushing a duplicate entry.
@@ -3228,12 +3234,24 @@
     if (!d.payoutsOn) {
       html += `<div class="auth-err"><b>Affiliates cannot save payout details yet.</b> Set PAYOUT_KEY in the Render environment to any long random string (the output of <code>openssl rand -hex 32</code> will do) and redeploy. Making affiliates still works meanwhile: they get Pro and their link, and the form tells them to come back.</div>`;
     }
+    const usd = (c) => '$' + (Math.abs(c || 0) / 100).toFixed(2);
+    const sy = d.affiliateSync || {};
+    const syncLine = !sy.stripe ? 'Stripe is not configured, so commissions cannot be read.'
+      : sy.running ? 'Syncing with Stripe…'
+      : sy.at ? `Last synced with Stripe ${esc(hms(sy.at))}${sy.error ? ', with an error: ' + esc(sy.error) : ''}.`
+      : 'Not synced with Stripe since this restart.';
+    html += `<div class="aff-sync"><span>Commission is ${esc(d.affiliateShare || '0')}% of referred payments for ${d.affiliateMonths} months, paid monthly from ${usd((d.affiliateMin || 0) * 100)}. ${syncLine}</span>`
+      + (sy.stripe ? `<button id="affSync" class="btn btn-ghost btn-sm"${sy.running ? ' disabled' : ''}>Sync with Stripe</button>` : '') + `</div>`;
     html += (affs.length
-      ? `<div class="compare-scroll"><table class="admin-table"><thead><tr><th>Email</th><th>Link</th><th>Referrals</th><th>Payout</th><th></th></tr></thead><tbody>` + affs.map(a => {
+      ? `<div class="compare-scroll"><table class="admin-table"><thead><tr><th>Email</th><th>Link</th><th>Referrals</th><th>Earned</th><th>Paid</th><th>Owed</th><th>Payout to</th><th></th></tr></thead><tbody>` + affs.map(a => {
         const link = location.origin + '/?ref=' + a.code;
+        const t = a.totals || { earned: 0, paid: 0, owed: 0 };
         const pay = a.payout ? (a.payout.method === 'paypal' ? 'PayPal, ' + a.payout.last4 : 'bank, ending ' + a.payout.last4) : 'not entered yet';
-        return `<tr><td>${esc(a.email)}</td><td><span class="admin-aff-code">${esc(link)}</span></td><td>${a.referrals}</td><td>${esc(pay)}</td>`
-          + `<td>${a.payout ? `<button class="btn btn-ghost btn-sm aff-show" data-email="${esc(a.email)}">Show details</button>` : ''}</td></tr>`;
+        const due = t.owed >= (d.affiliateMin || 0) * 100 && t.owed > 0;
+        return `<tr><td>${esc(a.email)}</td><td><span class="admin-aff-code">${esc(link)}</span></td><td>${a.referrals}</td>`
+          + `<td>${usd(t.earned)}</td><td>${usd(t.paid)}</td><td${due ? ' class="aff-due"' : ''}>${usd(t.owed)}</td><td>${esc(pay)}</td>`
+          + `<td><button class="btn btn-ghost btn-sm aff-show" data-email="${esc(a.email)}">Details</button>`
+          + (t.owed > 0 ? ` <button class="btn btn-primary btn-sm aff-pay" data-email="${esc(a.email)}" data-owed="${t.owed}">Mark paid</button>` : '') + `</td></tr>`;
       }).join('') + `</tbody></table></div>`
       : '') + `</div>`;
     html += `<div class="admin-sec"><div class="mkt-h">Users (${(d.users || []).length})</div><div class="compare-scroll"><table class="admin-table"><thead><tr><th>Email</th><th>Plan</th><th>Joined</th></tr></thead><tbody>` + (d.users || []).map(u => {
@@ -3301,23 +3319,48 @@
     $('affAdd').onclick = () => setAff('add');
     $('affRemove').onclick = () => setAff('remove');
     $('affEmail').onkeydown = (e) => { if (e.key === 'Enter') setAff('add'); };
-    // Payout details are fetched only when asked for, one affiliate at a time.
+    // Payout details and the ledger are fetched only when asked for, one
+    // affiliate at a time.
     $('adminBody').querySelectorAll('.aff-show').forEach(b => b.onclick = async () => {
       const tr = b.closest('tr');
       const next = tr.nextElementSibling;
-      if (next && next.classList.contains('aff-details')) { next.remove(); b.textContent = 'Show details'; return; }
+      if (next && next.classList.contains('aff-details')) { next.remove(); b.textContent = 'Details'; return; }
       b.disabled = true;
-      let r;
-      try { r = await (await fetch('/api/admin/payout?email=' + encodeURIComponent(b.dataset.email))).json(); }
-      catch { r = { error: 'Couldn’t reach the server.' }; }
+      const em = encodeURIComponent(b.dataset.email);
+      let r, l;
+      try { [r, l] = await Promise.all([(await fetch('/api/admin/payout?email=' + em)).json(), (await fetch('/api/admin/affiliate/ledger?email=' + em)).json()]); }
+      catch { r = { error: 'Couldn’t reach the server.' }; l = {}; }
       b.disabled = false;
       const p = r.details || {};
       const text = r.error ? r.error : p.method === 'paypal'
         ? `Name: ${p.holder}\nPayPal: ${p.paypal}`
         : `Name: ${p.holder}\nBank: ${p.bankName}\nRouting: ${p.routing}\nAccount: ${p.account} (${p.type})`;
-      tr.insertAdjacentHTML('afterend', `<tr class="aff-details"><td colspan="5"><div class="admin-payout">${esc(text)}</div></td></tr>`);
+      const rows = (l && l.rows || []).map(x => `${ymd(x.ts)}  ${x.kind === 'payout' ? 'paid out' : x.kind}  ${x.amount < 0 ? '−' : '+'}${usd(x.amount)}${x.note ? '  ' + x.note : ''}`).join('\n');
+      tr.insertAdjacentHTML('afterend', `<tr class="aff-details"><td colspan="8"><div class="admin-payout">${esc(text)}</div>`
+        + `<div class="admin-payout">${rows ? esc(rows) : 'No commission yet.'}</div></td></tr>`);
       b.textContent = 'Hide';
     });
+    // Records a payment the admin has already made by hand.
+    $('adminBody').querySelectorAll('.aff-pay').forEach(b => b.onclick = async () => {
+      const owed = Number(b.dataset.owed);
+      if (!confirm(`Record that you have paid ${b.dataset.email} ${usd(owed)}?\n\nSend the money first, from your bank or PayPal, then confirm. This only writes it down.`)) return;
+      b.disabled = true;
+      let r;
+      try { r = await (await fetch('/api/admin/affiliate/pay', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: b.dataset.email }) })).json(); }
+      catch { r = { error: 'Couldn’t reach the server.' }; }
+      adminAffNote = r.error ? r.error : `Recorded ${usd(r.paid)} paid to ${r.email}. Balance is now ${usd(r.totals.owed)}.`;
+      await loadAdmin();
+    });
+    const syncBtn = $('affSync');
+    if (syncBtn) syncBtn.onclick = async () => {
+      syncBtn.disabled = true; syncBtn.textContent = 'Syncing…';
+      let r;
+      try { r = await (await fetch('/api/admin/affiliate/sync', { method: 'POST' })).json(); }
+      catch { r = { error: 'Couldn’t reach the server.' }; }
+      const t = r.result || {};
+      adminAffNote = r.error ? r.error : `Synced with Stripe: ${t.invoice_credited || 0} new commission${t.invoice_credited === 1 ? '' : 's'}, ${t.refund_debited || 0} refund${t.refund_debited === 1 ? '' : 's'} applied.`;
+      await loadAdmin();
+    };
   }
 
   // ---- Movers ----

@@ -44,7 +44,12 @@ if (!mailEnabled()) console.log('email: off (set RESEND_API_KEY to require a con
 const PAYOUT_KEY = (process.env.PAYOUT_KEY || '').trim();
 const payoutsOn = () => PAYOUT_KEY.length >= 16;
 if (!payoutsOn()) console.log('affiliates: PAYOUT_KEY is not set, so payout details cannot be saved yet');
-const AFFILIATE_SHARE = String(process.env.AFFILIATE_SHARE || '').replace(/[^\d.]/g, '');
+const AFFILIATE_SHARE = String(process.env.AFFILIATE_SHARE || '25').replace(/[^\d.]/g, '');
+const AFF_SHARE = Number(AFFILIATE_SHARE) || 0;                       // percent of each payment
+const AFFILIATE_MONTHS = Number(process.env.AFFILIATE_MONTHS || 12);   // commission window from the account's first payment
+const AFFILIATE_MIN_PAYOUT = Number(process.env.AFFILIATE_MIN_PAYOUT || 25); // dollars; balances under this roll over
+const AFF_WINDOW_MS = AFFILIATE_MONTHS * 30.4375 * 86400000;
+const money = (cents, cur) => (!cur || cur === 'usd' ? '$' : cur.toUpperCase() + ' ') + (Math.abs(cents) / 100).toFixed(2);
 const CONTACT_EMAIL = (process.env.CONTACT_EMAIL || 'chartgauge@gmail.com').trim();
 // AES-256-GCM, key derived from PAYOUT_KEY; iv and tag travel with the text.
 const payoutCipherKey = () => crypto.createHash('sha256').update(PAYOUT_KEY).digest();
@@ -113,6 +118,7 @@ const KNOWN_API = new Set([
   '/api/analyze-image', '/api/compare', '/api/screen', '/api/watchlist', '/api/alerts',
   '/api/movers', '/api/ranked', '/api/accuracy', '/api/admin', '/api/admin/plan', '/api/stream',
   '/api/admin/affiliate', '/api/admin/payout', '/api/affiliate/payout',
+  '/api/admin/affiliate/pay', '/api/admin/affiliate/sync', '/api/admin/affiliate/ledger',
   '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
   '/api/auth/delete', '/api/auth/google', '/api/auth/google/callback',
   '/api/auth/verify', '/api/auth/resend',
@@ -1483,14 +1489,14 @@ const VERIFY_MSG = (email) => `Check ${email} for a link to confirm your address
 // where they say how they want to be paid.
 const PAYOUT_TTL = 7 * 86400000;
 const affiliateLink = (req, code) => siteOrigin(req) + '/?ref=' + code;
-const shareWords = () => AFFILIATE_SHARE ? `${AFFILIATE_SHARE}% of what those accounts pay` : 'a share of what those accounts pay';
+const shareWords = () => AFF_SHARE ? `${AFFILIATE_SHARE}% of what those accounts pay for ${AFFILIATE_MONTHS} months` : 'a share of what those accounts pay';
 async function sendAffiliateEmail(req, user, code) {
   const raw = await db.createVerifyToken(user.id, 'payout', PAYOUT_TTL);
   const payoutUrl = siteOrigin(req) + '/affiliate/payout?token=' + raw;
   const link = affiliateLink(req, code);
   const intro = `Your account now has Pro, on us, and a referral link of your own. Every account created through it is counted as yours, and you earn ${shareWords()}.`;
   const intro2 = 'Tell us where to send the money. The button below opens a short form; it takes about a minute.';
-  const outro = `The form link works for 7 days. After that, sign in and open Settings to add or change your details at any time. Questions: ${CONTACT_EMAIL}.`;
+  const outro = `The form link works for 7 days. After that, sign in and open Settings to add or change your details at any time. Payments go out monthly once your balance reaches ${money(AFFILIATE_MIN_PAYOUT * 100)}. The full terms are at ${siteOrigin(req)}/affiliate-terms. Questions: ${CONTACT_EMAIL}.`;
   await sendMail(user.email, 'You are a ChartGauge affiliate',
     `${intro}\n\nYour link:\n${link}\n\n${intro2}\n${payoutUrl}\n\n${outro}`,
     emailHtml({ title: 'Welcome aboard', intro, intro2, box: { label: 'Your referral link', value: link, url: link },
@@ -1585,6 +1591,7 @@ async function servePayoutPage(req, res) {
   const u = who.user;
   const link = affiliateLink(req, u.affiliate_code);
   const n = await db.countReferrals(u.affiliate_code).catch(() => 0);
+  const tot = await db.ledgerTotals(u.id).catch(() => null);
   const cur = await db.payoutSummary(u.id).catch(() => null);
   const have = cur ? (cur.method === 'paypal' ? `PayPal, ${cur.last4}` : `bank account ending ${cur.last4}`) : '';
   const on = payoutsOn();
@@ -1594,7 +1601,7 @@ async function servePayoutPage(req, res) {
   <p class="po-p">${esc(u.email)} has Pro, free, and a referral link of its own. Every account that signs up through the link counts as yours.</p>
   <div class="po-link"><div class="po-label">Your link</div>
     <div class="po-link-row"><code id="poLink">${esc(link)}</code><button type="button" class="btn btn-ghost" id="poCopy">Copy</button></div>
-    ${n ? `<div class="po-sub">${n} ${n === 1 ? 'account has' : 'accounts have'} signed up through it so far.</div>` : ''}</div>
+    ${n ? `<div class="po-sub">${n} ${n === 1 ? 'account has' : 'accounts have'} signed up through it so far.${tot && tot.earned ? ` Earned ${esc(money(tot.earned))}, ${esc(money(tot.owed))} owed to you.` : ''}</div>` : ''}</div>
   ${cur ? `<div class="po-have">On file: ${esc(have)}, saved ${esc(new Date(cur.updated).toISOString().slice(0, 10))}. Saving below replaces it.</div>` : ''}
   ${on ? '' : `<div class="auth-err">The form cannot be saved just now. Your Pro access and your link are live; we will email you when this is ready.</div>`}
   <form id="poForm" class="po-form" data-token="${esc(who.viaToken ? token : '')}" novalidate>
@@ -2010,7 +2017,8 @@ async function handleAdmin(req, res) {
     counts: await db.counts(),
     users,
     affiliates: await db.listAffiliates().catch(() => []),
-    payoutsOn: payoutsOn(), affiliateShare: AFFILIATE_SHARE || null,
+    payoutsOn: payoutsOn(), affiliateShare: AFFILIATE_SHARE || null, affiliateMonths: AFFILIATE_MONTHS, affiliateMin: AFFILIATE_MIN_PAYOUT,
+    affiliateSync: { ...affSync, stripe: !!STRIPE_SECRET_KEY },
     usage,
     errors: errorLog.slice(-25).reverse(),
     store: db.storeMode(),
@@ -2124,6 +2132,115 @@ async function handleAdminPayout(req, res) {
   try { details = openJson(p.enc); }
   catch (e) { return json(res, 500, { error: 'The stored details could not be decrypted. PAYOUT_KEY has changed since they were saved; ask them to enter the details again.' }); }
   return json(res, 200, { email, updated: Number(p.updated), details });
+}
+
+// ---- Affiliate ledger ----
+// A referred account's payment, as Stripe reports it (webhook or the daily
+// sync), becomes a commission row for the affiliate: AFF_SHARE percent of
+// the amount actually paid, for AFFILIATE_MONTHS from that account's first
+// payment. The invoice id is the row's key, so the same invoice seen twice is
+// counted once. Returns a word saying what happened, for the sync's tally.
+async function creditInvoice(inv) {
+  if (!inv || inv.status !== 'paid' || !(inv.amount_paid > 0)) return 'skipped';
+  const user = (inv.subscription && await db.findByStripeSub(inv.subscription))
+    || (inv.customer && await db.findByStripeCustomer(inv.customer));
+  if (!user) return 'no_account';
+  const paidAt = ((inv.status_transitions && inv.status_transitions.paid_at) || inv.created) * 1000;
+  await db.setFirstPaid(user.id, paidAt);
+  const firstPaid = Math.min(Number(user.first_paid) || paidAt, paidAt);
+  if (!user.referred_by) return 'unreferred';
+  const aff = await db.getUserByAffiliateCode(user.referred_by);
+  if (!aff || !aff.affiliate_code) return 'no_affiliate';
+  if (paidAt > firstPaid + AFF_WINDOW_MS) return 'outside_window';
+  if (!AFF_SHARE) return 'no_share';
+  const ok = await db.addLedger({ aff_uid: aff.id, ref_uid: user.id, kind: 'commission',
+    amount: Math.round(inv.amount_paid * AFF_SHARE / 100), currency: inv.currency || 'usd',
+    stripe_ref: inv.id, group_ref: inv.id, note: `${AFF_SHARE}% of ${money(inv.amount_paid, inv.currency)} paid by a referred account`, ts: paidAt });
+  return ok ? 'credited' : 'already_recorded';
+}
+// A refund takes back the same share of what went back. Worked from the
+// charge's running refunded total, so partial refunds in any order come out
+// right, and keyed by that total so a repeat report changes nothing.
+async function debitRefund(charge) {
+  if (!charge || !charge.invoice || !(charge.amount_refunded > 0)) return 'skipped';
+  const base = await db.ledgerByRef(charge.invoice);
+  if (!base || base.kind !== 'commission') return 'no_commission';
+  const target = -Math.round(charge.amount_refunded * AFF_SHARE / 100);
+  const already = await db.ledgerGroupSum(charge.invoice, 'refund');
+  const delta = target - already;
+  if (!delta) return 'already_recorded';
+  const ok = await db.addLedger({ aff_uid: base.aff_uid, ref_uid: base.ref_uid, kind: 'refund', amount: delta,
+    currency: charge.currency || 'usd', stripe_ref: `${charge.id}:refunded:${charge.amount_refunded}`, group_ref: charge.invoice,
+    note: `${AFF_SHARE}% of ${money(charge.amount_refunded, charge.currency)} refunded to that account` });
+  return ok ? 'debited' : 'already_recorded';
+}
+// Walks Stripe's paid invoices and refunded charges for the last year and a
+// bit, so the ledger is right even if a webhook was missed or the webhook
+// endpoint was never told about these events. Runs daily and on demand.
+let affSync = { at: 0, running: false, result: null, error: null };
+async function stripeList(apiPath, params) {
+  const out = [];
+  let after = null;
+  for (let page = 0; page < 30; page++) {
+    const q = Object.entries({ ...params, limit: 100, ...(after ? { starting_after: after } : {}) })
+      .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
+    const r = await stripeGet(apiPath + '?' + q);
+    out.push(...(r.data || []));
+    if (!r.has_more || !r.data.length) break;
+    after = r.data[r.data.length - 1].id;
+  }
+  return out;
+}
+async function syncAffiliateLedger() {
+  if (!STRIPE_SECRET_KEY || affSync.running) return affSync;
+  affSync = { ...affSync, running: true };
+  const tally = {};
+  const bump = (k) => { tally[k] = (tally[k] || 0) + 1; };
+  try {
+    const since = Math.floor((Date.now() - (AFF_WINDOW_MS + 45 * 86400000)) / 1000);
+    const invoices = await stripeList('invoices', { status: 'paid', 'created[gte]': since });
+    invoices.sort((a, b) => a.created - b.created);
+    for (const inv of invoices) bump('invoice_' + await creditInvoice(inv));
+    const charges = await stripeList('charges', { 'created[gte]': since });
+    for (const ch of charges) if (ch.amount_refunded > 0) bump('refund_' + await debitRefund(ch));
+    affSync = { at: Date.now(), running: false, result: tally, error: null };
+  } catch (e) {
+    logError(e);
+    affSync = { at: Date.now(), running: false, result: tally, error: String((e && e.message) || e) };
+  }
+  return affSync;
+}
+async function handleAdminAffiliateSync(req, res) {
+  const me = await currentUser(req);
+  if (!isAdmin(me)) return json(res, 403, { error: 'Admin access only.' });
+  if (!STRIPE_SECRET_KEY) return json(res, 400, { error: 'STRIPE_SECRET_KEY is not set, so there is nothing to sync from.' });
+  const r = await syncAffiliateLedger();
+  return json(res, 200, r);
+}
+// Records that money was sent. It does not move any: the admin pays from
+// their own bank or PayPal first, then presses the button.
+async function handleAdminAffiliatePay(req, res) {
+  const me = await currentUser(req);
+  if (!isAdmin(me)) return json(res, 403, { error: 'Admin access only.' });
+  const b = await readBody(req);
+  const email = String(b.email || '').toLowerCase().trim();
+  const user = await db.getUserByEmail(email);
+  if (!user || !user.affiliate_code) return json(res, 404, { error: `${email} is not an affiliate.` });
+  const t = await db.ledgerTotals(user.id);
+  const cents = b.amount == null ? t.owed : Math.round(Number(b.amount) * 100);
+  if (!(cents > 0)) return json(res, 400, { error: 'Nothing is owed.' });
+  if (cents > t.owed) return json(res, 400, { error: `Only ${money(t.owed)} is owed.` });
+  await db.addLedger({ aff_uid: user.id, kind: 'payout', amount: -cents, note: String(b.note || '').slice(0, 120) || `paid by ${me.email}` });
+  return json(res, 200, { email, paid: cents, totals: await db.ledgerTotals(user.id) });
+}
+async function handleAdminAffiliateLedger(req, res) {
+  const me = await currentUser(req);
+  if (!isAdmin(me)) return json(res, 403, { error: 'Admin access only.' });
+  const q = new URLSearchParams(req.url.split('?')[1] || '');
+  const email = String(q.get('email') || '').toLowerCase().trim();
+  const user = await db.getUserByEmail(email);
+  if (!user) return json(res, 404, { error: `No account for ${email}.` });
+  return json(res, 200, { email, totals: await db.ledgerTotals(user.id), rows: await db.ledgerRows(user.id, 50) });
 }
 
 async function handleWatchlist(req, res) {
@@ -2816,6 +2933,10 @@ async function handleWebhook(req, res) {
       (event.type === 'customer.subscription.updated' && ['canceled', 'unpaid', 'incomplete_expired'].includes(event.data.object.status))) {
       const u = await db.findByStripeSub(event.data.object.id);
       if (u) await db.setFree(u.id);
+    } else if (event.type === 'invoice.paid' || event.type === 'invoice.payment_succeeded') {
+      await creditInvoice(event.data.object);
+    } else if (event.type === 'charge.refunded') {
+      await debitRefund(event.data.object);
     }
   } catch (e) { logError(e); }
   res.writeHead(200); res.end('ok');
@@ -3011,7 +3132,7 @@ const GA_SNIPPET = (GA_ID ? `<meta name="ga-id" content="${esc(GA_ID)}">` : '')
 // 'admin' is routable so the operator can open /admin directly, but it is
 // absent from VIEW_SEO, so it never reaches the sitemap, and robots.txt
 // disallows it. The page itself is guarded server-side regardless.
-const APP_PATH = /^\/(analyze|markets|movers|accuracy|compare|screener|alerts|watchlist|practice|learn|settings|pricing|terms|privacy|refunds|contact|admin)(\/|$)|^\/stock\//;
+const APP_PATH = /^\/(analyze|markets|movers|accuracy|compare|screener|alerts|watchlist|practice|learn|settings|pricing|terms|privacy|refunds|contact|affiliate-terms|admin)(\/|$)|^\/stock\//;
 
 // A mistyped URL used to return the two words "Not found" as plain text on a
 // blank white page, with no styling, no way back and no branding. Cheap to do
@@ -3231,6 +3352,9 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/admin/plan' && req.method === 'POST') return await handleAdminPlan(req, res);
     if (url === '/api/admin/affiliate' && req.method === 'POST') return await handleAdminAffiliate(req, res);
     if (url === '/api/admin/payout' && req.method === 'GET') return await handleAdminPayout(req, res);
+    if (url === '/api/admin/affiliate/pay' && req.method === 'POST') return await handleAdminAffiliatePay(req, res);
+    if (url === '/api/admin/affiliate/sync' && req.method === 'POST') return await handleAdminAffiliateSync(req, res);
+    if (url === '/api/admin/affiliate/ledger' && req.method === 'GET') return await handleAdminAffiliateLedger(req, res);
     if (url === '/api/affiliate/payout' && req.method === 'POST') return await handleAffiliatePayout(req, res);
     if (url === '/affiliate/payout' && req.method === 'GET') return await servePayoutPage(req, res);
     if (url === '/api/stock' && req.method === 'GET') {
@@ -3330,6 +3454,14 @@ db.init().then((storeMode) => {
     // Started after listen so a slow first pass never delays accepting traffic.
     startRankedLoop();
     startSessionPurge();
+    // Affiliate commissions are reconciled against Stripe a minute after boot
+    // and then daily, so a missed webhook never leaves an affiliate short.
+    if (STRIPE_SECRET_KEY) {
+      const first = setTimeout(() => syncAffiliateLedger().catch(logError), 60000);
+      const daily = setInterval(() => syncAffiliateLedger().catch(logError), 24 * 3600000);
+      if (first.unref) first.unref();
+      if (daily.unref) daily.unref();
+    }
     // A database that was unreachable at boot (expired, restarting, a bad
     // moment) is tried again every minute, so the site reconnects on its own
     // once it is back instead of running on memory until the next deploy.

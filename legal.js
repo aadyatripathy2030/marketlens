@@ -14,7 +14,7 @@ const esc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
-const UPDATED = 'September 2026';
+const UPDATED = 'October 2026';
 
 // Kept in step with FREE_UNTIL in server.js — the terms have to describe the
 // access people actually have, not the split that starts later.
@@ -195,6 +195,46 @@ const buildContact = () => h('Contact', [
     `No question about what to buy, sell, or hold can be answered, and no view on any specific security will be given. ${SITE} is a charting tool, not an adviser. See the <a href="/terms">Terms of Service</a>.`),
 ].join(''));
 
+// ------------------------------------------------------ affiliate terms
+// Read from the same variables the ledger uses, so the page states the rate
+// that is actually being credited.
+const AFF_SHARE = String(process.env.AFFILIATE_SHARE || '25').replace(/[^\d.]/g, '') || '25';
+const AFF_MONTHS = Number(process.env.AFFILIATE_MONTHS || 12);
+const AFF_MIN = Number(process.env.AFFILIATE_MIN_PAYOUT || 25);
+const buildAffiliateTerms = () => h('Affiliate Terms', [
+  s('Who this is for',
+    `The ${SITE} affiliate programme is by invitation. An account becomes an affiliate when ${SITE} marks it as one, at which point it receives a referral link of its own and the terms below apply. Accepting the link, sharing it, or entering payout details counts as agreeing to them.`),
+
+  s('What you get',
+    ul([
+      `<strong>Pro, free</strong>, for as long as the account remains an affiliate.`,
+      `<strong>${esc(AFF_SHARE)}% of every payment</strong> that Stripe collects from an account created through your link, for <strong>${AFF_MONTHS} months</strong> from that account's first payment. After that the account is still counted as yours, but no further commission accrues on it.`,
+    ]),
+    `Commission is calculated on the amount actually paid, after any discount or promotion code, and before Stripe's processing fee. A free trial earns nothing until the first real charge. If a payment is refunded or charged back, the same share of the refund is deducted.`),
+
+  s('How you are paid',
+    `Balances are paid once a month, by bank transfer or PayPal to the details you enter on the payout form, once the balance reaches <strong>$${AFF_MIN}</strong>. A smaller balance rolls over to the next month. ${SITE} pays from its own account; the transfer is made by hand, so allow a few business days after the first of the month.`,
+    `Earnings may be taxable where you live. In the United States, anyone paid $600 or more in a year will be asked for a W-9 and will receive a 1099. You are responsible for your own taxes.`,
+    `You can see your referral count, earnings, what has been paid and what is owed on the Settings page while signed in.`),
+
+  s('What counts as a referral',
+    `An account counts as yours when it is created in a browser that visited ${SITE} through your link within the previous 30 days. Accounts you create yourself, accounts for people in your household, and accounts created to earn commission on your own subscription do not count, and commission on them is reversed if found.`),
+
+  s('How you may promote the link',
+    ul([
+      `Say what ${SITE} is: a charting tool for learning to read charts. Do not describe it as a way to make money, a signal service, or financial advice, and do not quote or imply returns.`,
+      `Do not send unsolicited email or messages, post the link where it is not welcome, or run paid search advertising on the name ${SITE} or chartgauge.com.`,
+      `Do not present yourself as ${SITE} or as speaking for it. Say you are an affiliate when asked, and wherever the law where you live requires it.`,
+    ]),
+    `Breaking these rules ends the arrangement and forfeits any unpaid balance.`),
+
+  s('Ending it',
+    `Either side can end the arrangement at any time, for any reason, by email. Your Pro access ends with it. A balance of $${AFF_MIN} or more that was earned properly is still paid at the next monthly run; a smaller balance is forfeited. Commission stops accruing on your referred accounts when the arrangement ends.`),
+
+  s('Changes',
+    `The rate, the window, and the minimum may change for future payments. A change is announced by email to affiliates at least 30 days before it applies, and never reduces what has already been earned.`),
+].join(''));
+
 // Rebuilt whenever the launch period flips, so a process that was running
 // before the cutoff stops advertising it the moment it passes rather than at
 // the next deploy. Same content otherwise, so this is one rebuild, not one
@@ -206,6 +246,7 @@ function buildPages() {
     privacy: { title: `Privacy Policy | ${SITE}`, desc: `What ${SITE} stores about you, who it sends data to, what it never collects, and how to have your account deleted.`, html: buildPrivacy(), heading: 'Privacy Policy' },
     refunds: { title: `Refunds and Cancellation | ${SITE}`, desc: `Cancel any time from Stripe's billing portal, and a full refund within 14 days of a charge, no questions asked.`, html: buildRefunds(), heading: 'Refunds and Cancellation' },
     contact: { title: `Contact | ${SITE}`, desc: `How to reach ${SITE} about billing, refunds, account deletion, or a bug.`, html: buildContact(), heading: 'Contact' },
+    'affiliate-terms': { title: `Affiliate Terms | ${SITE}`, desc: `What a ${SITE} affiliate earns (${AFF_SHARE}% of referred payments for ${AFF_MONTHS} months), how and when it is paid, what counts as a referral, and the rules for promoting the link.`, html: buildAffiliateTerms(), heading: 'Affiliate Terms' },
   };
 }
 function getPages() {
