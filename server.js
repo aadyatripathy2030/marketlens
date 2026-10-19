@@ -2239,8 +2239,11 @@ async function handleAdminAffiliateSync(req, res) {
   const me = await currentUser(req);
   if (!isAdmin(me)) return json(res, 403, { error: 'Admin access only.' });
   if (!STRIPE_SECRET_KEY) return json(res, 400, { error: 'STRIPE_SECRET_KEY is not set, so there is nothing to sync from.' });
+  // Also the moment to notice Connect being switched on in the dashboard,
+  // rather than waiting for the hourly probe.
+  if (!connectOn) await detectConnect().catch(logError);
   const r = await syncAffiliateLedger();
-  return json(res, 200, r);
+  return json(res, 200, { ...r, connectOn });
 }
 // Records that money was sent. It does not move any: the admin pays from
 // their own bank or PayPal first, then presses the button.

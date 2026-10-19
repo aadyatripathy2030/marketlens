@@ -3394,7 +3394,7 @@
       try { r = await (await fetch('/api/admin/affiliate/sync', { method: 'POST' })).json(); }
       catch { r = { error: 'Couldn’t reach the server.' }; }
       const t = r.result || {};
-      adminAffNote = r.error ? r.error : `Synced with Stripe: ${t.invoice_credited || 0} new commission${t.invoice_credited === 1 ? '' : 's'}, ${t.refund_debited || 0} refund${t.refund_debited === 1 ? '' : 's'} applied.`;
+      adminAffNote = r.error ? r.error : `Synced with Stripe: ${t.invoice_credited || 0} new commission${t.invoice_credited === 1 ? '' : 's'}, ${t.refund_debited || 0} refund${t.refund_debited === 1 ? '' : 's'} applied.${r.connectOn ? ' Stripe Connect is on.' : ' Stripe Connect is not enabled yet.'}`;
       await loadAdmin();
     };
   }
