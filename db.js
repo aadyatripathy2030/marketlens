@@ -12,7 +12,7 @@ let mode = 'memory';
 let lastErr = null;
 const mem = { users: new Map(), byEmail: new Map(), sessions: new Map(), watch: new Map(),
   alerts: new Map(), usage: new Map(), preds: new Map(), etokens: new Map(), codes: new Map(),
-  paper: new Map(), pos: new Map(), fills: new Map(), payouts: new Map(), ledger: [] };
+  paper: new Map(), pos: new Map(), fills: new Map(), payouts: new Map(), ledger: [], settings: new Map() };
 
 // Render's INTERNAL Postgres host has no dot (e.g. dpg-xxxx-a) and speaks plain
 // TCP; hosted/external hosts (Neon, Render external) are dotted and need SSL.
@@ -72,6 +72,9 @@ async function init() {
         amount INTEGER NOT NULL, currency TEXT NOT NULL DEFAULT 'usd',
         stripe_ref TEXT UNIQUE, group_ref TEXT, note TEXT, ts BIGINT NOT NULL)`);
       await pool.query('CREATE INDEX IF NOT EXISTS affiliate_ledger_aff_idx ON affiliate_ledger (aff_uid, ts DESC)');
+      // Small named values the server must remember across restarts, such as
+      // which month the automatic payout run last covered.
+      await pool.query('CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT, updated BIGINT NOT NULL)');
       // When a referred account first paid: the commission window runs from it.
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS first_paid BIGINT');
       // Stripe Connect, for affiliates who set up payouts on Stripe's page:
@@ -714,19 +717,34 @@ async function ledgerGroupSum(group, kind) {
   return mem.ledger.filter(x => x.group_ref === group && x.kind === kind).reduce((s, x) => s + x.amount, 0);
 }
 // earned = commissions less refunds; paid = what has been sent; owed = balance.
+// rows is how many ledger rows the account has: it only ever grows, so
+// (owed, rows) names a balance state exactly.
 async function ledgerTotals(uid) {
-  let rows;
-  if (mode === 'postgres') { const r = await pool.query('SELECT kind, sum(amount) AS s FROM affiliate_ledger WHERE aff_uid=$1 GROUP BY kind', [uid]); rows = r.rows.map(x => [x.kind, Number(x.s)]); }
-  else { const m = {}; for (const x of mem.ledger) if (x.aff_uid === uid) m[x.kind] = (m[x.kind] || 0) + x.amount; rows = Object.entries(m); }
+  let rows, n = 0;
+  if (mode === 'postgres') { const r = await pool.query('SELECT kind, sum(amount) AS s, count(*) AS n FROM affiliate_ledger WHERE aff_uid=$1 GROUP BY kind', [uid]); rows = r.rows.map(x => { n += Number(x.n); return [x.kind, Number(x.s)]; }); }
+  else { const m = {}; for (const x of mem.ledger) if (x.aff_uid === uid) { n++; m[x.kind] = (m[x.kind] || 0) + x.amount; } rows = Object.entries(m); }
   const by = Object.fromEntries(rows);
   const earned = (by.commission || 0) + (by.refund || 0);
   const paid = -(by.payout || 0);
-  return { earned, paid, owed: earned - paid };
+  return { earned, paid, owed: earned - paid, rows: n };
 }
 async function ledgerRows(uid, limit) {
   limit = limit || 50;
   if (mode === 'postgres') { const r = await pool.query('SELECT kind, amount, currency, note, ts FROM affiliate_ledger WHERE aff_uid=$1 ORDER BY ts DESC LIMIT $2', [uid, limit]); return r.rows.map(x => ({ ...x, ts: Number(x.ts) })); }
   return mem.ledger.filter(x => x.aff_uid === uid).sort((a, b) => b.ts - a.ts).slice(0, limit).map(({ kind, amount, currency, note, ts }) => ({ kind, amount, currency, note, ts }));
+}
+
+// Named values; JSON in, JSON out. Missing keys read as null.
+async function getSetting(key) {
+  if (mode === 'postgres') { const r = await pool.query('SELECT value FROM settings WHERE key=$1', [key]); return r.rows[0] ? JSON.parse(r.rows[0].value) : null; }
+  return mem.settings.has(key) ? mem.settings.get(key) : null;
+}
+async function setSetting(key, value) {
+  if (mode === 'postgres') {
+    await pool.query('INSERT INTO settings (key, value, updated) VALUES ($1,$2,$3) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value, updated=EXCLUDED.updated', [key, JSON.stringify(value), Date.now()]);
+    return;
+  }
+  mem.settings.set(key, value);
 }
 
 async function affiliateInfo(uid) {
@@ -928,7 +946,7 @@ module.exports = {
   makeAffiliate, dropAffiliate, getUserByAffiliateCode, setReferrer, countReferrals,
   affiliateInfo, listAffiliates, getPayout, savePayout, payoutSummary,
   findByStripeCustomer, setFirstPaid, addLedger, ledgerByRef, ledgerGroupSum, ledgerTotals, ledgerRows,
-  setConnectAccount, setConnectStatus,
+  setConnectAccount, setConnectStatus, getSetting, setSetting,
   createLoginCode, getLoginCode, checkLoginCode, deleteLoginCode,
   getStreak, saveStreak,
   getRisk, saveRisk, RISK_DEFAULTS,

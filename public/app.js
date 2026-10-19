@@ -3251,6 +3251,21 @@
     html += `<div class="aff-sync"><span>Commission is ${esc(d.affiliateShare || '0')}% of referred payments for ${d.affiliateMonths} months, paid monthly from ${usd(minC)}. ${syncLine}${connectLine}</span><span>`
       + (anyDue ? `<button id="affPayAll" class="btn btn-primary btn-sm">Pay everyone due via Stripe</button> ` : '')
       + (sy.stripe ? `<button id="affSync" class="btn btn-ghost btn-sm"${sy.running ? ' disabled' : ''}>Sync with Stripe</button>` : '') + `</span></div>`;
+    // The schedule: when the next automatic run is, and what the last one did.
+    const ap = d.autoPay || {};
+    if (sy.stripe) {
+      const dmy = (t) => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+      const last = ap.last;
+      const lastLine = !last ? ' No run has happened yet.'
+        : last.error ? ` The last run on ${dmy(last.at)} stopped with an error: ${esc(last.error)}.`
+        : ` Last run ${dmy(last.at)}${last.by && last.by !== 'automatic' ? ' (started by ' + esc(last.by) + ')' : ''}: sent ${usd(last.total)} to ${last.paid.length} affiliate${last.paid.length === 1 ? '' : 's'}`
+          + (last.failed.length ? `, ${last.failed.length} failed` : '') + (last.manual.length ? `, ${last.manual.length} to pay by hand` : '') + (last.rolling.length ? `, ${last.rolling.length} rolled over` : '') + '.'
+          + (last.emailed === false ? ' The summary email did not send.' : '');
+      html += `<div class="aff-sync"><span>${ap.on
+        ? `Automatic payouts are on: everyone due is paid through Stripe on the ${ap.day === 1 ? '1st' : ap.day + 'th'} of each month and a summary goes to ${esc(ap.to)}. Next run ${dmy(ap.next)}.`
+        : 'Automatic payouts are off (AFFILIATE_AUTOPAY=off), so the monthly run only happens when you press the button.'}${lastLine}</span>`
+        + `<span><button id="affRunNow" class="btn btn-ghost btn-sm"${ap.running ? ' disabled' : ''}>${ap.running ? 'Running…' : 'Run the monthly payout now'}</button></span></div>`;
+    }
     html += (affs.length
       ? `<div class="compare-scroll"><table class="admin-table"><thead><tr><th>Email</th><th>Link</th><th>Referrals</th><th>Earned</th><th>Paid</th><th>Owed</th><th>Payout to</th><th></th></tr></thead><tbody>` + affs.map(a => {
         const link = location.origin + '/?ref=' + a.code;
@@ -3386,6 +3401,17 @@
       if (!confirm(`Send every balance of ${usd(minC)} or more to its affiliate through Stripe now?`)) return;
       payAll.disabled = true; payAll.textContent = 'Sending…';
       transfer({ all: true });
+    };
+    const runNow = $('affRunNow');
+    if (runNow) runNow.onclick = async () => {
+      if (!confirm(`Run the monthly payout now?\n\nThis syncs with Stripe, sends every balance of ${usd(minC)} or more to its affiliate through Stripe, and emails you the summary.`)) return;
+      runNow.disabled = true; runNow.textContent = 'Running…';
+      let r;
+      try { r = await (await fetch('/api/admin/affiliate/autopay', { method: 'POST' })).json(); }
+      catch { r = { error: 'Couldn’t reach the server.' }; }
+      adminAffNote = r.error ? r.error
+        : `Monthly run done: sent ${usd(r.total)} to ${r.paid.length} affiliate${r.paid.length === 1 ? '' : 's'}${r.failed.length ? ', ' + r.failed.length + ' failed' : ''}${r.manual.length ? ', ' + r.manual.length + ' to pay by hand' : ''}.${r.emailed ? ' Summary emailed.' : r.emailed === false ? ' The summary email failed: ' + r.emailError : ' Nothing to report, so no email was sent.'}`;
+      await loadAdmin();
     };
     const syncBtn = $('affSync');
     if (syncBtn) syncBtn.onclick = async () => {

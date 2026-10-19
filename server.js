@@ -51,6 +51,14 @@ const AFFILIATE_MIN_PAYOUT = Number(process.env.AFFILIATE_MIN_PAYOUT || 25); // 
 const AFF_WINDOW_MS = AFFILIATE_MONTHS * 30.4375 * 86400000;
 const money = (cents, cur) => (!cur || cur === 'usd' ? '$' : cur.toUpperCase() + ' ') + (Math.abs(cents) / 100).toFixed(2);
 const CONTACT_EMAIL = (process.env.CONTACT_EMAIL || 'chartgauge@gmail.com').trim();
+// The monthly payout run: on this day of the month (UTC) everyone at or over
+// the minimum who finished Stripe's setup is paid through Stripe, and a
+// summary goes to the report address. AFFILIATE_AUTOPAY=off leaves it to the
+// admin's button. A server that was asleep on the day runs as soon as it
+// wakes, so a quiet site is not skipped.
+const AFFILIATE_AUTOPAY = String(process.env.AFFILIATE_AUTOPAY || 'on').trim().toLowerCase() !== 'off';
+const AFFILIATE_PAY_DAY = Math.min(28, Math.max(1, Number(process.env.AFFILIATE_PAY_DAY) || 1));
+const AFFILIATE_REPORT_EMAIL = (process.env.AFFILIATE_REPORT_EMAIL || CONTACT_EMAIL).trim();
 // AES-256-GCM, key derived from PAYOUT_KEY; iv and tag travel with the text.
 const payoutCipherKey = () => crypto.createHash('sha256').update(PAYOUT_KEY).digest();
 function sealJson(obj) {
@@ -124,7 +132,7 @@ const KNOWN_API = new Set([
   '/api/movers', '/api/ranked', '/api/accuracy', '/api/admin', '/api/admin/plan', '/api/stream',
   '/api/admin/affiliate', '/api/admin/payout', '/api/affiliate/payout',
   '/api/admin/affiliate/pay', '/api/admin/affiliate/sync', '/api/admin/affiliate/ledger',
-  '/api/admin/affiliate/transfer', '/api/affiliate/connect',
+  '/api/admin/affiliate/transfer', '/api/admin/affiliate/autopay', '/api/affiliate/connect',
   '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
   '/api/auth/delete', '/api/auth/google', '/api/auth/google/callback',
   '/api/auth/verify', '/api/auth/resend',
@@ -1440,6 +1448,10 @@ function emailHtml(o) {
       + `<a href="${esc(o.box.url || o.box.value)}" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:15px;color:#b3a6ff;text-decoration:none;word-break:break-all;">${esc(o.box.value)}</a></div>`
     : '';
   const intro2 = o.intro2 ? `<p style="margin:12px 0 0;font-family:${MAIL_FONT};font-size:15px;line-height:1.6;color:#d6d2c8;">${esc(o.intro2)}</p>` : '';
+  // Short parallel items, one per line: a report's rows.
+  const lines = o.lines && o.lines.length
+    ? `<ul style="margin:14px 0 0;padding-left:20px;font-family:${MAIL_FONT};font-size:14px;line-height:1.7;color:#d6d2c8;">` + o.lines.map(l => `<li>${esc(l)}</li>`).join('') + `</ul>`
+    : '';
   const button = o.button
     ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 14px;"><tr><td style="background:#9d8cff;border-radius:3px;">`
       + `<a href="${esc(o.button.url)}" style="display:inline-block;padding:13px 26px;font-family:${MAIL_FONT};font-size:15px;font-weight:700;color:#121211;text-decoration:none;">${esc(o.button.label)}</a></td></tr></table>`
@@ -1455,7 +1467,7 @@ function emailHtml(o) {
     + `<tr><td style="background:#1d1d1a;border:1px solid #2e2d28;border-radius:4px;padding:28px 26px;">`
     + `<h1 style="margin:0 0 10px;font-family:${MAIL_FONT};font-size:22px;font-weight:700;color:#f0efec;">${esc(o.title)}</h1>`
     + `<p style="margin:0;font-family:${MAIL_FONT};font-size:15px;line-height:1.6;color:#d6d2c8;">${esc(o.intro)}</p>`
-    + intro2 + code + box + button
+    + intro2 + lines + code + box + button
     + `<p style="margin:18px 0 0;font-family:${MAIL_FONT};font-size:13px;line-height:1.6;color:#9a958c;">${esc(o.outro)}</p>`
     + `</td></tr>`
     + `<tr><td style="padding:16px 4px 0;font-family:${MAIL_FONT};font-size:12px;line-height:1.5;color:#7a756b;">ChartGauge is a charting tool for learning to read charts. Nothing on it is financial advice.<br><a href="https://chartgauge.com" style="color:#9a958c;">chartgauge.com</a></td></tr>`
@@ -2044,6 +2056,7 @@ async function handleAdmin(req, res) {
     payoutsOn: payoutsOn(), affiliateShare: AFFILIATE_SHARE || null, affiliateMonths: AFFILIATE_MONTHS, affiliateMin: AFFILIATE_MIN_PAYOUT,
     connectOn, stripeOn: !!STRIPE_SECRET_KEY,
     affiliateSync: { ...affSync, stripe: !!STRIPE_SECRET_KEY },
+    autoPay: await autoPayInfo(),
     usage,
     errors: errorLog.slice(-25).reverse(),
     store: db.storeMode(),
@@ -2341,9 +2354,10 @@ async function handleAffiliateConnect(req, res) {
   }
 }
 // Sends what is owed to the affiliate's connected account. The idempotency
-// key holds for a day on (affiliate, amount), so a double press or a retry
-// after a timeout cannot pay twice, and the ledger row is keyed by the
-// transfer id for the same reason.
+// key is (affiliate, amount, ledger row count), so a double press or a retry
+// after a timeout cannot pay twice, while a genuinely new balance (the ledger
+// has moved on) gets a fresh key. The ledger row is keyed by the transfer id
+// for the same reason: a replayed transfer is noticed, not counted again.
 async function transferToAffiliate(user, by) {
   const t = await db.ledgerTotals(user.id);
   if (!(t.owed > 0)) return { email: user.email, error: 'Nothing is owed.' };
@@ -2351,10 +2365,11 @@ async function transferToAffiliate(user, by) {
   const c = await connectRefresh(user, true);
   if (!c || c.status !== 'ready') return { email: user.email, error: `${user.email} has not finished setting up Stripe payouts.` };
   try {
-    const key = `aff-${user.id}-${t.owed}-${new Date().toISOString().slice(0, 10)}`;
+    const key = `aff-${user.id}-${t.owed}-${t.rows}`;
     const tr = await stripePost('transfers', { amount: String(t.owed), currency: 'usd', destination: user.stripe_account,
       description: 'ChartGauge affiliate commission', 'metadata[uid]': user.id }, { 'Idempotency-Key': key });
-    await db.addLedger({ aff_uid: user.id, kind: 'payout', amount: -t.owed, stripe_ref: tr.id, note: `Stripe transfer ${tr.id}${by ? ' by ' + by : ''}` });
+    const fresh = await db.addLedger({ aff_uid: user.id, kind: 'payout', amount: -t.owed, stripe_ref: tr.id, note: `Stripe transfer ${tr.id}${by ? ' by ' + by : ''}` });
+    if (!fresh) return { email: user.email, error: `Stripe answered with transfer ${tr.id}, which is already in the ledger, so nothing new was sent. Try again in a minute.` };
     return { email: user.email, paid: t.owed, transfer: tr.id, totals: await db.ledgerTotals(user.id) };
   } catch (e) {
     logError(e);
@@ -2382,6 +2397,102 @@ async function handleAdminAffiliateTransfer(req, res) {
   if (!user || !user.affiliate_code) return json(res, 404, { error: `${email} is not an affiliate.` });
   const r = await transferToAffiliate(user, me.email);
   return json(res, r.error ? 400 : 200, r);
+}
+// The monthly run. Reconciles with Stripe first so no balance is stale, pays
+// everyone who is due and set up on Stripe, notes who is due but must be paid
+// by hand, and emails the report address a summary. Remembers the month it
+// covered so a restart on the day does not run it twice; the transfers
+// themselves are idempotent anyway.
+const monthKey = (d) => d.toISOString().slice(0, 7);
+const monthName = (key) => new Date(key + '-01T00:00:00Z').toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+let autoPayRunning = false;
+async function runMonthlyPayout(by) {
+  if (!STRIPE_SECRET_KEY) return { error: 'STRIPE_SECRET_KEY is not set.' };
+  if (autoPayRunning) return { error: 'A run is already in progress.' };
+  autoPayRunning = true;
+  const now = new Date();
+  const run = { month: monthKey(now), at: now.getTime(), by: by || 'automatic', paid: [], failed: [], manual: [], rolling: [], total: 0 };
+  try {
+    await syncAffiliateLedger();
+    if (!connectOn) await detectConnect().catch(logError);
+    const min = AFFILIATE_MIN_PAYOUT * 100;
+    for (const a of await db.listAffiliates()) {
+      const owed = (a.totals && a.totals.owed) || 0;
+      if (!(owed > 0)) continue;
+      if (owed < min) { run.rolling.push({ email: a.email, owed }); continue; }
+      if (!a.connect || !connectOn) { run.manual.push({ email: a.email, owed, method: a.payout ? a.payout.method : null }); continue; }
+      const r = await transferToAffiliate(await db.getUserById(a.id), run.by);
+      if (r.error) run.failed.push({ email: a.email, owed, error: r.error });
+      else { run.paid.push({ email: a.email, paid: r.paid, transfer: r.transfer }); run.total += r.paid; }
+    }
+    await db.setSetting('affiliate_autopay_last', run);
+    try { await sendPayoutReport(run); run.emailed = true; } catch (e) { logError(e); run.emailed = false; run.emailError = String(e.message || e); }
+    await db.setSetting('affiliate_autopay_last', run);
+  } catch (e) {
+    logError(e);
+    run.error = String((e && e.message) || e);
+    await db.setSetting('affiliate_autopay_last', run).catch(logError);
+  } finally { autoPayRunning = false; }
+  return run;
+}
+async function sendPayoutReport(run) {
+  const n = run.paid.length;
+  const nothing = !n && !run.failed.length && !run.manual.length && !run.rolling.length;
+  if (nothing) return;  // a month with no affiliate activity is not worth an email
+  const lines = [
+    ...run.paid.map(p => `Paid ${money(p.paid)} to ${p.email} through Stripe (${p.transfer}).`),
+    ...run.failed.map(f => `Could not pay ${money(f.owed)} to ${f.email}: ${f.error}`),
+    ...run.manual.map(m => `${m.email} is owed ${money(m.owed)} and is paid by hand${m.method ? ' (' + (m.method === 'paypal' ? 'PayPal' : 'bank transfer') + ')' : ''}. Open the admin page for the details, then press Mark paid.`),
+    ...run.rolling.map(r => `${r.email} has ${money(r.owed)}, under the ${money(AFFILIATE_MIN_PAYOUT * 100)} minimum, so it rolls over.`),
+  ];
+  const intro = n ? `The monthly run sent ${money(run.total)} to ${n} affiliate${n === 1 ? '' : 's'} through Stripe. Stripe pays it on to their banks on its usual schedule.`
+    : 'The monthly run found nothing to send through Stripe.';
+  const todo = run.failed.length + run.manual.length;
+  const intro2 = todo ? `${todo} item${todo === 1 ? ' needs' : 's need'} your attention; see below.` : 'Nothing needs your attention.';
+  const outro = `Sent by chartgauge.com on the ${AFFILIATE_PAY_DAY === 1 ? '1st' : AFFILIATE_PAY_DAY + 'th'} of each month while automatic payouts are on. The admin page shows the same figures and the full ledger.`;
+  await sendMail(AFFILIATE_REPORT_EMAIL, `Affiliate payouts for ${monthName(run.month)}: ${n ? money(run.total) + ' sent' : 'nothing sent'}${todo ? ', ' + todo + ' to look at' : ''}`,
+    `${intro}\n${intro2}\n\n${lines.join('\n')}\n\n${outro}`,
+    emailHtml({ title: `Affiliate payouts, ${monthName(run.month)}`, intro, intro2, lines, outro }));
+}
+// What the admin page shows about the schedule.
+async function autoPayInfo() {
+  const last = await db.getSetting('affiliate_autopay_last').catch(() => null);
+  const now = new Date();
+  const thisMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), AFFILIATE_PAY_DAY, 12));
+  const next = (last && last.month === monthKey(now)) || now >= thisMonth
+    ? new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, AFFILIATE_PAY_DAY, 12)) : thisMonth;
+  return { on: AFFILIATE_AUTOPAY && !!STRIPE_SECRET_KEY, day: AFFILIATE_PAY_DAY, to: AFFILIATE_REPORT_EMAIL, running: autoPayRunning,
+    last: last && last.at ? last : null, next: AFFILIATE_AUTOPAY ? next.getTime() : null };
+}
+async function handleAdminAffiliateAutopay(req, res) {
+  const me = await currentUser(req);
+  if (!isAdmin(me)) return json(res, 403, { error: 'Admin access only.' });
+  if (!STRIPE_SECRET_KEY) return json(res, 400, { error: 'STRIPE_SECRET_KEY is not set, so nothing can be paid.' });
+  const run = await runMonthlyPayout(me.email);
+  return json(res, run.error ? 400 : 200, { ...run, autoPay: await autoPayInfo() });
+}
+// Checks every ten minutes whether this month's run is still owed: it is once
+// the pay day has arrived (from noon UTC on the day itself) and the last run
+// covered an earlier month. On the very first boot nothing has ever run, so
+// the current month is marked done rather than paying out mid-month on deploy.
+function startAutoPay() {
+  if (!AFFILIATE_AUTOPAY) return;
+  const tick = async () => {
+    try {
+      const now = new Date();
+      let last = await db.getSetting('affiliate_autopay_last');
+      if (!last) { last = { month: monthKey(now), at: 0, initial: true }; await db.setSetting('affiliate_autopay_last', last); return; }
+      if (last.month >= monthKey(now)) return;
+      const due = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), AFFILIATE_PAY_DAY, 12));
+      if (now < due) return;
+      console.log('[affiliates] monthly payout run for ' + monthKey(now));
+      await runMonthlyPayout('automatic');
+    } catch (e) { logError(e); }
+  };
+  const first = setTimeout(tick, 90000);
+  const t = setInterval(tick, 600000);
+  if (first.unref) first.unref();
+  if (t.unref) t.unref();
 }
 
 async function handleWatchlist(req, res) {
@@ -3497,6 +3608,7 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/admin/affiliate/sync' && req.method === 'POST') return await handleAdminAffiliateSync(req, res);
     if (url === '/api/admin/affiliate/ledger' && req.method === 'GET') return await handleAdminAffiliateLedger(req, res);
     if (url === '/api/admin/affiliate/transfer' && req.method === 'POST') return await handleAdminAffiliateTransfer(req, res);
+    if (url === '/api/admin/affiliate/autopay' && req.method === 'POST') return await handleAdminAffiliateAutopay(req, res);
     if (url === '/api/affiliate/connect' && req.method === 'POST') return await handleAffiliateConnect(req, res);
     if (url === '/api/affiliate/payout' && req.method === 'POST') return await handleAffiliatePayout(req, res);
     if (url === '/affiliate/payout' && req.method === 'GET') return await servePayoutPage(req, res);
@@ -3609,6 +3721,7 @@ db.init().then((storeMode) => {
       const daily = setInterval(() => syncAffiliateLedger().catch(logError), 24 * 3600000);
       if (first.unref) first.unref();
       if (daily.unref) daily.unref();
+      startAutoPay();
     }
     // A database that was unreachable at boot (expired, restarting, a bad
     // moment) is tried again every minute, so the site reconnects on its own

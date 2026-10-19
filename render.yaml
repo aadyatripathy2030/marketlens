@@ -80,6 +80,8 @@ services:
 # Read by the app but deliberately NOT declared here, because each has a working
 # default and listing them would prompt for a value on every blueprint sync:
 #   AFFILIATE_MONTHS (commission window, 12), AFFILIATE_MIN_PAYOUT (dollars, 25),
+#   AFFILIATE_AUTOPAY (on|off, on), AFFILIATE_PAY_DAY (day of month, 1),
+#   AFFILIATE_REPORT_EMAIL (monthly payout summary, defaults to CONTACT_EMAIL),
 #   AI_FREE_DAILY, ACCURACY_HORIZON, ANTHROPIC_MODEL_FREE, DATA_CREDITS_PER_MIN,
 #   DATA_USER_RESERVE, FINNHUB_PER_MIN, FREE_ALERT_MAX, FREE_WATCH_MAX,
 #   MAIL_FROM (sender of the confirmation email; its domain must be verified in

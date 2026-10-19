@@ -213,7 +213,7 @@ const buildAffiliateTerms = () => h('Affiliate Terms', [
     `Commission is calculated on the amount actually paid, after any discount or promotion code, and before Stripe's processing fee. A free trial earns nothing until the first real charge. If a payment is refunded or charged back, the same share of the refund is deducted.`),
 
   s('How you are paid',
-    `Balances are paid once a month, by bank transfer or PayPal to the details you enter on the payout form, once the balance reaches <strong>$${AFF_MIN}</strong>. A smaller balance rolls over to the next month. ${SITE} pays from its own account; the transfer is made by hand, so allow a few business days after the first of the month.`,
+    `Balances are paid on the first of each month once the balance reaches <strong>$${AFF_MIN}</strong>. A smaller balance rolls over to the next month. If you set up payouts through Stripe, the money is sent to your Stripe account automatically on the first and Stripe pays it on to your bank, usually within a few business days. If you entered bank or PayPal details instead, ${SITE} sends the money by hand, so allow a few business days after the first of the month.`,
     `Earnings may be taxable where you live. In the United States, anyone paid $600 or more in a year will be asked for a W-9 and will receive a 1099. You are responsible for your own taxes.`,
     `You can see your referral count, earnings, what has been paid and what is owed on the Settings page while signed in.`),
 
