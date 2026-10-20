@@ -84,7 +84,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
    brand colour behind it. */
 .home-chart { margin: 0 0 32px; position: relative; }
 .home-chart::before { content: ''; position: absolute; inset: -70px -6% -30px; pointer-events: none; z-index: 0;
-  background: radial-gradient(ellipse 55% 50% at 50% 38%, rgba(157,140,255,.17), transparent 72%); filter: blur(26px); }
+  background: radial-gradient(ellipse 55% 50% at 50% 38%, rgba(233,228,217,.09), transparent 72%); filter: blur(26px); }
 .home-chart > * { position: relative; z-index: 1; }
 /* What is here: the doors into the app, from the landing page. */
 .features { margin: 0 0 32px; }
@@ -1226,3 +1226,86 @@ body.drawer-open .drawer { transform: translateX(0); }
 .skel-card { height: 96px; border-radius: var(--radius); }
 .skel-line { height: 12px; margin: 12px 0; max-width: 520px; }
 .skel-line.short { max-width: 320px; }
+
+/* ===================================================================
+   Life, in one tone. Everything below stays bone-on-charcoal; the depth
+   comes from layered greys, a paper grain, one inverted cream band, type
+   with more presence, and small movements on hover and arrival.
+   =================================================================== */
+
+/* Ground: a faint warm glow at the top of every page and a film grain over
+   it, so flat charcoal becomes something with a surface. */
+body { background: radial-gradient(ellipse 90% 40% at 50% -5%, #1f1e1a 0%, var(--bg) 60%) fixed; }
+body::before { content: ''; position: fixed; inset: 0; z-index: 1000; pointer-events: none; opacity: .045; mix-blend-mode: screen;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 220px 220px; }
+
+/* Header: frosted over the page, with a hairline under it. */
+.topbar { background: color-mix(in srgb, var(--bg2) 78%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); }
+
+/* Hero: bigger, tighter, and a faint candlestick motif behind the right side. */
+.hero { position: relative; overflow: hidden; padding: 56px 0 40px; }
+.hero::after { content: ''; position: absolute; right: -4%; top: -10px; width: 46%; height: 115%; pointer-events: none; opacity: .11;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360' viewBox='0 0 640 360' fill='none' stroke='%23e9e4d9' stroke-width='2'%3E%3Cg stroke-linecap='round'%3E%3Cpath d='M40 60v240M100 110v170M160 40v260M220 90v200M280 130v190M340 70v220M400 120v160M460 50v240M520 100v200M580 30v260'/%3E%3C/g%3E%3Cg fill='%23121211'%3E%3Crect x='28' y='120' width='24' height='110' rx='2'/%3E%3Crect x='88' y='150' width='24' height='70' rx='2'/%3E%3Crect x='148' y='90' width='24' height='140' rx='2'/%3E%3Crect x='208' y='140' width='24' height='90' rx='2'/%3E%3Crect x='268' y='170' width='24' height='100' rx='2'/%3E%3Crect x='328' y='110' width='24' height='120' rx='2'/%3E%3Crect x='388' y='160' width='24' height='70' rx='2'/%3E%3Crect x='448' y='90' width='24' height='130' rx='2'/%3E%3Crect x='508' y='150' width='24' height='90' rx='2'/%3E%3Crect x='568' y='70' width='24' height='150' rx='2'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right center; background-size: contain;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 35%, #000 85%, transparent); mask-image: linear-gradient(90deg, transparent, #000 35%, #000 85%, transparent); }
+.hero > * { position: relative; z-index: 1; }
+.hero-h { font-size: clamp(40px, 6vw, 72px); letter-spacing: -2.2px; line-height: 1.02; max-width: 14ch; }
+.hero-sub { font-size: 17px; margin: 22px 0 28px; }
+.hero-search .input { font-size: 16px; }
+@media (max-width: 700px) { .hero::after { display: none; } .hero { padding: 40px 0 28px; } .hero-h { letter-spacing: -1.4px; } }
+
+/* Arrival: the hero rises into place, one piece after another. */
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.hero-h, .hero-sub, .hero-search, .hero-cta, .hero-assure { animation: rise .7s cubic-bezier(.2,.7,.2,1) both; }
+.hero-sub { animation-delay: .08s; } .hero-search { animation-delay: .16s; } .hero-cta { animation-delay: .24s; } .hero-assure { animation-delay: .32s; }
+@media (prefers-reduced-motion: reduce) { .hero-h, .hero-sub, .hero-search, .hero-cta, .hero-assure { animation: none; } }
+
+/* Section labels: small caps with a rule running to the edge. */
+.mkt-h { display: flex; align-items: center; gap: 14px; font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.mkt-h::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, var(--border-strong), transparent); }
+
+/* Surfaces: a hairline border, a light catch along the top edge, a shadow
+   beneath. Tiles and cards that lead somewhere lift when pointed at. */
+.card, .feature, .learn-card, .plan-card, .chart-card, .home-chart > .chart-head + div > *, .record-grid, .tile-row, .admin-stat, .aff-card, .wl-card {
+  border: 1px solid var(--border); box-shadow: inset 0 1px 0 rgba(255,255,255,.045), 0 1px 2px rgba(0,0,0,.35); }
+.feature, .learn-card { transition: transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease; }
+.feature:hover, .learn-card:hover { transform: translateY(-3px); border-color: var(--border-strong); background: var(--card-hi);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 12px 28px -12px rgba(0,0,0,.7); }
+@media (prefers-reduced-motion: reduce) { .feature:hover, .learn-card:hover { transform: none; } }
+
+/* Feature tiles: numbered, with an arrow that steps in on hover. */
+.feature-grid { counter-reset: door; gap: 14px; }
+.feature { position: relative; padding: 22px 22px 20px; }
+.feature::before { counter-increment: door; content: counter(door, decimal-leading-zero); display: block; font-family: var(--font-head); font-size: 11px; font-weight: 700; letter-spacing: .14em; color: var(--muted); margin-bottom: 14px; }
+.feature-h { font-size: 20px; display: flex; align-items: center; gap: 8px; }
+.feature-h::after { content: '\2192'; font-weight: 400; color: var(--muted); opacity: 0; transform: translateX(-6px); transition: opacity .18s, transform .18s; }
+.feature:hover .feature-h::after { opacity: 1; transform: none; }
+
+/* The record: the one inverted band. Cream paper, ink text, so the thing the
+   site is proudest of is the brightest thing on the page. */
+.record { background: var(--accent); color: var(--bg); border-radius: var(--radius); padding: 28px 28px 26px; margin: 8px 0 40px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 20px 40px -24px rgba(0,0,0,.8); }
+.record .mkt-h { color: #6b665c; }
+.record .mkt-h::after { background: linear-gradient(90deg, rgba(18,18,17,.22), transparent); }
+.record-grid { border: 0; box-shadow: none; background: transparent; gap: 0; margin-bottom: 16px; }
+.record-tile { background: transparent; border-right: 1px solid rgba(18,18,17,.14); padding: 14px 20px 14px 0; margin-right: 20px; }
+.record-tile:last-child { margin-right: 0; }
+.record-val { font-size: clamp(30px, 3.4vw, 44px); font-weight: 700; letter-spacing: -1.5px; color: var(--bg); line-height: 1.05; }
+.record-lbl { color: #5d584f; font-size: 13px; margin-top: 6px; }
+.record-line { color: #3a3732; max-width: 76ch; }
+.record-line a { color: var(--bg); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+@media (max-width: 700px) { .record { padding: 20px 18px; } .record-tile { padding-right: 12px; margin-right: 12px; } .record-tile:nth-child(2n) { border-right: 0; margin-right: 0; } }
+
+/* Buttons: a little light on the top edge, a little lift under the pointer. */
+.btn-primary { background: linear-gradient(180deg, #f4f0e8 0%, #e4dfd2 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 1px 2px rgba(0,0,0,.45); transition: transform .12s ease, box-shadow .12s ease, filter .12s ease; }
+.btn-primary:hover { background: linear-gradient(180deg, #fbf8f2 0%, #ebe6da 100%); transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 6px 14px -6px rgba(0,0,0,.7); }
+.btn-primary:active { transform: translateY(0); box-shadow: inset 0 1px 2px rgba(0,0,0,.18); }
+.btn-ghost, .chip { transition: transform .12s ease, border-color .12s ease, color .12s ease, background .12s ease; }
+.chip:hover { transform: translateY(-1px); background: var(--card-hi); }
+@media (prefers-reduced-motion: reduce) { .btn-primary:hover, .chip:hover { transform: none; } }
+
+/* Footer: the wordmark, very large and very faint, behind the links. */
+.site-foot { position: relative; overflow: hidden; padding-top: 28px; margin-top: 48px; }
+.site-foot::after { content: 'ChartGauge'; position: absolute; right: -6px; bottom: -34px; font-family: var(--font-head); font-size: clamp(72px, 11vw, 150px); font-weight: 700; letter-spacing: -5px; line-height: 1; color: rgba(240,239,236,.03); pointer-events: none; user-select: none; white-space: nowrap; }
+.site-foot > * { position: relative; z-index: 1; }
