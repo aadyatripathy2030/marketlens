@@ -17,7 +17,7 @@
      so direction is always carried by a sign, an arrow or position as well as
      by hue. Both sit >= 4.5:1 on --card (AA) and inside the lightness band. */
   --good: #44a85a; --good-soft: #152a1a; --bad: #e0564d; --bad-soft: #2c1816;
-  --warn: #d9a13b; --neutral: #7a756b;
+  --warn: #c9a15a; --neutral: #7a756b;
   /* Chart overlays, validated as a categorical pair against --card:
      dE 22.9 protan / 23.1 tritan, both inside the lightness band 0.48-0.67.
      The projection stays deliberately neutral and is drawn dashed, so it
@@ -373,8 +373,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 
 .sym-row { display: flex; align-items: center; gap: 12px; }
 .watch-btn { font-family: var(--font); font-size: 12px; font-weight: 700; color: var(--muted); background: var(--card-hi); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 6px 12px; cursor: pointer; white-space: nowrap; }
-.watch-btn:hover { border-color: var(--sma20); color: var(--sma20); }
-.watch-btn.on { color: var(--sma20); border-color: var(--sma20); background: color-mix(in srgb, var(--sma20) 16%, transparent); }
+.watch-btn:hover { border-color: var(--accent); color: var(--accent); }
+.watch-btn.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
 
 .watchlist { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
 .watchlist .wl-label { font-size: 13px; font-weight: 500; color: var(--muted); }
@@ -507,7 +507,9 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .tile-lbl { font-size: 12px; color: var(--muted); margin-top: 4px; }
 .tile-val.up { color: var(--good); } .tile-val.down { color: var(--bad); } .tile-val.hot { color: var(--warn); }
 
-.risk { font-size: 13px; color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, var(--card)); border-left: 2px solid var(--warn); border-radius: var(--radius-sm); padding: 12px 16px; line-height: 1.6; margin-bottom: 20px; }
+/* A caution note is chrome, not data, so it is bone on a raised card with a
+   bone rule, not amber. Only the danger variant keeps a colour. */
+.risk { font-size: 13px; color: var(--text); background: var(--card-hi); border-left: 2px solid var(--accent); border-radius: var(--radius-sm); padding: 12px 16px; line-height: 1.6; margin-bottom: 20px; }
 .risk.danger { color: var(--bad); background: var(--bad-soft); border-color: var(--bad); }
 
 /* AI rating strip */
@@ -903,7 +905,7 @@ body.drawer-open .drawer { transform: translateX(0); }
   display: inline-flex; align-items: center; gap: 6px;
   font-family: var(--font-num); font-size: 13px; font-weight: 800;
   color: var(--bg);
-  background: var(--warn);
+  background: var(--accent);
   border: 0; border-radius: var(--radius-sm);
   padding: 4px 12px 4px 8px; cursor: default; font-variant-numeric: tabular-nums;
 }
@@ -940,7 +942,7 @@ body.drawer-open .drawer { transform: translateX(0); }
 /* ---- Practice account ---- */
 .prac-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 24px; }
 .prac-tag { flex: none; font-family: var(--font-num); font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  color: var(--muted); background: var(--card-hi); border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm); padding: 4px 12px; }
 
 .prac-setup { max-width: 440px; border: 1px solid var(--border); background: var(--card);
