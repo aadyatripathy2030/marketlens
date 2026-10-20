@@ -4,14 +4,14 @@
   --bg: #121211; --bg2: #191917; --card: #1d1d1a; --card-hi: #252521;
   --text: #f0efec; --muted: #9a958c;
   --border: #2e2d28; --border-strong: #423f38;
-  /* The brand colour. Sky blue: the cool complement to the warm charcoal
-     ground, the same blue as the social card, and clear of the red, green
-     and amber that carry meaning on the chart. It marks the active thing, the
-     buttons, the links, the gauge when a reading leans neither way, and the
-     model-written block. (Bone until October 2026, then violet, then orange,
-     then this.) 6.2:1 on --card, 6.8:1 under the dark button text. */
-  --accent: #4c9eff; --accent-hi: #74b6ff; --accent-soft: #16263a;
-  --ai: #4c9eff; --ai-2: #74b6ff; --ai-soft: #16263a;
+  /* The chrome is monotone: bone on charcoal, no brand hue at all, so every
+     colour on the page belongs to data (green up, red down, amber caution,
+     the two average lines). The active thing, the buttons, the links, the
+     gauge when a reading leans neither way, and the model-written block are
+     all bone. (This was the original scheme; violet, orange and blue were
+     tried in October 2026 and dropped.) 13:1 on --card. */
+  --accent: #e9e4d9; --accent-hi: #f7f4ee; --accent-soft: #2a2821;
+  --ai: #e9e4d9; --ai-2: #d6d2c8; --ai-soft: #252521;
   /* Direction, reserved: green up, red down, amber caution — never decoration.
      Red/green cannot be told apart by a deuteranope and is unavoidable here,
      so direction is always carried by a sign, an arrow or position as well as
