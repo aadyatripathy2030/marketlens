@@ -1511,6 +1511,8 @@
     if (typeof EventSource === 'undefined') return;
     const sym = lastData && lastData.symbol;
     if (!sym || lastData.source === 'demo') { closeStream(); return; }
+    // The stream needs an account; asking without one only logs a refusal.
+    if (!currentUser) { closeStream(); return; }
     if (tickStreamSym === sym && tickStream) return;        // already on it
     closeStream();
     tickStreamSym = sym;
