@@ -10,8 +10,8 @@
      gauge when a reading leans neither way, and the model-written block are
      all bone. (This was the original scheme; violet, orange and blue were
      tried in October 2026 and dropped.) 13:1 on --card. */
-  --accent: #e9e4d9; --accent-hi: #f7f4ee; --accent-soft: #2a2821;
-  --ai: #e9e4d9; --ai-2: #d6d2c8; --ai-soft: #252521;
+  --accent: #e8d5d9; --accent-hi: #f3e6e9; --accent-soft: #2e2224;
+  --ai: #e8d5d9; --ai-2: #d6c3c7; --ai-soft: #2a2022;
   /* Direction, reserved: green up, red down, amber caution — never decoration.
      Red/green cannot be told apart by a deuteranope and is unavoidable here,
      so direction is always carried by a sign, an arrow or position as well as
@@ -84,7 +84,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
    brand colour behind it. */
 .home-chart { margin: 0 0 32px; position: relative; }
 .home-chart::before { content: ''; position: absolute; inset: -70px -6% -30px; pointer-events: none; z-index: 0;
-  background: radial-gradient(ellipse 55% 50% at 50% 38%, rgba(233,228,217,.09), transparent 72%); filter: blur(26px); }
+  background: radial-gradient(ellipse 55% 50% at 50% 38%, rgba(232,213,217,.09), transparent 72%); filter: blur(26px); }
 .home-chart > * { position: relative; z-index: 1; }
 /* What is here: the doors into the app, from the landing page. */
 .features { margin: 0 0 32px; }
@@ -905,7 +905,7 @@ body.drawer-open .drawer { transform: translateX(0); }
   display: inline-flex; align-items: center; gap: 6px;
   font-family: var(--font-num); font-size: 13px; font-weight: 800;
   color: var(--bg);
-  background: var(--accent);
+  background: #d9a13b;   /* the streak keeps its original amber, by request */
   border: 0; border-radius: var(--radius-sm);
   padding: 4px 12px 4px 8px; cursor: default; font-variant-numeric: tabular-nums;
 }
@@ -1246,7 +1246,7 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 1000; pointer-ev
 /* Hero: bigger, tighter, and a faint candlestick motif behind the right side. */
 .hero { position: relative; overflow: hidden; padding: 56px 0 40px; }
 .hero::after { content: ''; position: absolute; right: -4%; top: -10px; width: 46%; height: 115%; pointer-events: none; opacity: .11;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360' viewBox='0 0 640 360' fill='none' stroke='%23e9e4d9' stroke-width='2'%3E%3Cg stroke-linecap='round'%3E%3Cpath d='M40 60v240M100 110v170M160 40v260M220 90v200M280 130v190M340 70v220M400 120v160M460 50v240M520 100v200M580 30v260'/%3E%3C/g%3E%3Cg fill='%23121211'%3E%3Crect x='28' y='120' width='24' height='110' rx='2'/%3E%3Crect x='88' y='150' width='24' height='70' rx='2'/%3E%3Crect x='148' y='90' width='24' height='140' rx='2'/%3E%3Crect x='208' y='140' width='24' height='90' rx='2'/%3E%3Crect x='268' y='170' width='24' height='100' rx='2'/%3E%3Crect x='328' y='110' width='24' height='120' rx='2'/%3E%3Crect x='388' y='160' width='24' height='70' rx='2'/%3E%3Crect x='448' y='90' width='24' height='130' rx='2'/%3E%3Crect x='508' y='150' width='24' height='90' rx='2'/%3E%3Crect x='568' y='70' width='24' height='150' rx='2'/%3E%3C/g%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360' viewBox='0 0 640 360' fill='none' stroke='%23e8d5d9' stroke-width='2'%3E%3Cg stroke-linecap='round'%3E%3Cpath d='M40 60v240M100 110v170M160 40v260M220 90v200M280 130v190M340 70v220M400 120v160M460 50v240M520 100v200M580 30v260'/%3E%3C/g%3E%3Cg fill='%23121211'%3E%3Crect x='28' y='120' width='24' height='110' rx='2'/%3E%3Crect x='88' y='150' width='24' height='70' rx='2'/%3E%3Crect x='148' y='90' width='24' height='140' rx='2'/%3E%3Crect x='208' y='140' width='24' height='90' rx='2'/%3E%3Crect x='268' y='170' width='24' height='100' rx='2'/%3E%3Crect x='328' y='110' width='24' height='120' rx='2'/%3E%3Crect x='388' y='160' width='24' height='70' rx='2'/%3E%3Crect x='448' y='90' width='24' height='130' rx='2'/%3E%3Crect x='508' y='150' width='24' height='90' rx='2'/%3E%3Crect x='568' y='70' width='24' height='150' rx='2'/%3E%3C/g%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right center; background-size: contain;
   -webkit-mask-image: linear-gradient(90deg, transparent, #000 35%, #000 85%, transparent); mask-image: linear-gradient(90deg, transparent, #000 35%, #000 85%, transparent); }
 .hero > * { position: relative; z-index: 1; }
@@ -1286,20 +1286,20 @@ body::before { content: ''; position: fixed; inset: 0; z-index: 1000; pointer-ev
    site is proudest of is the brightest thing on the page. */
 .record { background: var(--accent); color: var(--bg); border-radius: var(--radius); padding: 28px 28px 26px; margin: 8px 0 40px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 20px 40px -24px rgba(0,0,0,.8); }
-.record .mkt-h { color: #6b665c; }
+.record .mkt-h { color: #6e5c60; }
 .record .mkt-h::after { background: linear-gradient(90deg, rgba(18,18,17,.22), transparent); }
 .record-grid { border: 0; box-shadow: none; background: transparent; gap: 0; margin-bottom: 16px; }
 .record-tile { background: transparent; border-right: 1px solid rgba(18,18,17,.14); padding: 14px 20px 14px 0; margin-right: 20px; }
 .record-tile:last-child { margin-right: 0; }
 .record-val { font-size: clamp(30px, 3.4vw, 44px); font-weight: 700; letter-spacing: -1.5px; color: var(--bg); line-height: 1.05; }
-.record-lbl { color: #5d584f; font-size: 13px; margin-top: 6px; }
-.record-line { color: #3a3732; max-width: 76ch; }
+.record-lbl { color: #5f4f53; font-size: 13px; margin-top: 6px; }
+.record-line { color: #3b3134; max-width: 76ch; }
 .record-line a { color: var(--bg); text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
 @media (max-width: 700px) { .record { padding: 20px 18px; } .record-tile { padding-right: 12px; margin-right: 12px; } .record-tile:nth-child(2n) { border-right: 0; margin-right: 0; } }
 
 /* Buttons: a little light on the top edge, a little lift under the pointer. */
-.btn-primary { background: linear-gradient(180deg, #f4f0e8 0%, #e4dfd2 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 1px 2px rgba(0,0,0,.45); transition: transform .12s ease, box-shadow .12s ease, filter .12s ease; }
-.btn-primary:hover { background: linear-gradient(180deg, #fbf8f2 0%, #ebe6da 100%); transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 6px 14px -6px rgba(0,0,0,.7); }
+.btn-primary { background: linear-gradient(180deg, #f3e3e6 0%, #e2ced3 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 1px 2px rgba(0,0,0,.45); transition: transform .12s ease, box-shadow .12s ease, filter .12s ease; }
+.btn-primary:hover { background: linear-gradient(180deg, #f9edf0 0%, #e9d8dc 100%); transform: translateY(-1px); box-shadow: inset 0 1px 0 rgba(255,255,255,.8), 0 6px 14px -6px rgba(0,0,0,.7); }
 .btn-primary:active { transform: translateY(0); box-shadow: inset 0 1px 2px rgba(0,0,0,.18); }
 .btn-ghost, .chip { transition: transform .12s ease, border-color .12s ease, color .12s ease, background .12s ease; }
 .chip:hover { transform: translateY(-1px); background: var(--card-hi); }

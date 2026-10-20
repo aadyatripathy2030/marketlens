@@ -1445,7 +1445,7 @@ function emailHtml(o) {
   const box = o.box
     ? `<div style="margin:22px 0 4px;padding:14px 16px;border:1px solid #423f38;border-radius:4px;background:#121211;">`
       + `<div style="font-family:${MAIL_FONT};font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:#9a958c;margin-bottom:6px;">${esc(o.box.label)}</div>`
-      + `<a href="${esc(o.box.url || o.box.value)}" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:15px;color:#e9e4d9;text-decoration:none;word-break:break-all;">${esc(o.box.value)}</a></div>`
+      + `<a href="${esc(o.box.url || o.box.value)}" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:15px;color:#e8d5d9;text-decoration:none;word-break:break-all;">${esc(o.box.value)}</a></div>`
     : '';
   const intro2 = o.intro2 ? `<p style="margin:12px 0 0;font-family:${MAIL_FONT};font-size:15px;line-height:1.6;color:#d6d2c8;">${esc(o.intro2)}</p>` : '';
   // Short parallel items, one per line: a report's rows.
@@ -1453,7 +1453,7 @@ function emailHtml(o) {
     ? `<ul style="margin:14px 0 0;padding-left:20px;font-family:${MAIL_FONT};font-size:14px;line-height:1.7;color:#d6d2c8;">` + o.lines.map(l => `<li>${esc(l)}</li>`).join('') + `</ul>`
     : '';
   const button = o.button
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 14px;"><tr><td style="background:#e9e4d9;border-radius:3px;">`
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 14px;"><tr><td style="background:#e8d5d9;border-radius:3px;">`
       + `<a href="${esc(o.button.url)}" style="display:inline-block;padding:13px 26px;font-family:${MAIL_FONT};font-size:15px;font-weight:700;color:#121211;text-decoration:none;">${esc(o.button.label)}</a></td></tr></table>`
       + `<p style="margin:0;font-family:${MAIL_FONT};font-size:12px;line-height:1.6;color:#9a958c;word-break:break-all;">Or paste this link into your browser:<br><a href="${esc(o.button.url)}" style="color:#9a958c;">${esc(o.button.url)}</a></p>`
     : '';
