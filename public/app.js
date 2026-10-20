@@ -53,18 +53,34 @@
     catch (e) { /* analytics must never break the app */ }
   }
 
+  // A Global Privacy Control signal counts as a refusal and is said to have
+  // been honoured, rather than asking a question the browser already answered.
+  const gpcOn = () => !!(navigator.globalPrivacyControl);
+  const CONSENT_ASK = 'ChartGauge uses a cookie to keep you signed in, which is always on. It can also use Google Analytics to count visits, but only if you say yes. See the <a href="/privacy">Privacy Policy</a>.';
+  const CONSENT_GPC = 'Your browser sent a Global Privacy Control signal, so Google Analytics stays off and no analytics cookie is set. You can still turn it on here if you want to. See the <a href="/privacy">Privacy Policy</a>.';
+  function openConsent() {
+    const bar = $('consent');
+    if (!bar) return;
+    $('consentText').innerHTML = gpcOn() ? CONSENT_GPC : CONSENT_ASK;
+    bar.classList.remove('hidden');
+  }
   function initConsent() {
     const bar = $('consent');
     if (!bar) return;
-    const choice = readConsent();
-    if (choice === 'granted') { loadAnalytics(); return; }
-    if (choice === 'denied') return;
-    bar.classList.remove('hidden');
     const decide = (v) => { writeConsent(v); bar.classList.add('hidden'); if (v === 'granted') loadAnalytics(); };
     $('consentYes').addEventListener('click', () => decide('granted'));
     $('consentNo').addEventListener('click', () => decide('denied'));
+    const settings = $('cookieSettings');
+    if (settings) settings.addEventListener('click', openConsent);
+    const choice = readConsent();
+    if (choice === 'granted') { loadAnalytics(); return; }
+    if (choice === 'denied') return;
+    if (gpcOn()) { writeConsent('denied'); }
+    openConsent();
   }
   initConsent();
+  const footYear = $('footYear');
+  if (footYear) footYear.textContent = String(new Date().getFullYear());
 
   // Nobody is asked to sign in on arrival. The site is browsable: the lessons,
   // the measured record, the pricing, the policies, and the chart itself —
@@ -130,8 +146,9 @@
       w.appendChild(h); w.appendChild(p); w.appendChild(btns);
       sec.appendChild(w);
     }
+    // The page keeps its heading; only the data under it is withheld.
     Array.prototype.forEach.call(sec.children, el => {
-      if (el !== w) el.classList.add('wall-off');
+      if (el !== w && !el.classList.contains('view-h')) el.classList.add('wall-off');
     });
     w.classList.remove('hidden');
   }
@@ -618,13 +635,18 @@
   function setStrategy(mode) {
     if (!STRATEGY_INTERVAL[mode]) return;
     strategy = mode;
-    $('strat').querySelectorAll('.strat-btn').forEach(x => x.classList.toggle('active', x.dataset.mode === mode));
+    $('strat').querySelectorAll('.strat-btn').forEach(x => {
+      const on = x.dataset.mode === mode;
+      x.classList.toggle('active', on);
+      x.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
     const iv = STRATEGY_INTERVAL[strategy];
     if (iv && iv !== interval) {
       interval = iv;
       viewCandles = INTRADAY.has(interval) ? DEFAULT_CANDLES : null;
       syncIntervalButtons();
       $('range').querySelectorAll('.range-btn').forEach(x => x.classList.remove('active'));
+      syncPressed('range');
     }
   }
   $('strat').querySelectorAll('.strat-btn').forEach(b => b.addEventListener('click', () => {
@@ -638,15 +660,23 @@
   const stockPath = (sym) => '/stock/' + sym + '/' + (MODE_SLUG[strategy] || 'day-trading');
   // The markup ships one interval marked active; this is what keeps that
   // marker true after the state changes it.
+  // aria-pressed follows the active class, so a screen reader hears which
+  // interval and range are chosen.
+  function syncPressed(id) {
+    $(id).querySelectorAll('.range-btn').forEach(x => x.setAttribute('aria-pressed', x.classList.contains('active') ? 'true' : 'false'));
+  }
   function syncIntervalButtons() {
     $('interval').querySelectorAll('.range-btn').forEach(x =>
       x.classList.toggle('active', x.dataset.iv === interval));
+    syncPressed('interval');
   }
   syncIntervalButtons();
+  syncPressed('range');
   // Chart range buttons (how far back to view)
   $('range').querySelectorAll('.range-btn').forEach(b => b.addEventListener('click', () => {
     $('range').querySelectorAll('.range-btn').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
+    syncPressed('range');
     rangeDays = parseInt(b.dataset.days, 10);
     viewCandles = null;               // an explicit history range overrides the candle default
     resetView(); drawChart();
@@ -655,9 +685,11 @@
   $('interval').querySelectorAll('.range-btn').forEach(b => b.addEventListener('click', () => {
     $('interval').querySelectorAll('.range-btn').forEach(x => x.classList.remove('active'));
     b.classList.add('active');
+    syncPressed('interval');
     interval = b.dataset.iv;
     viewCandles = DEFAULT_CANDLES;    // reset zoom to a sensible in-view amount on every interval change
     $('range').querySelectorAll('.range-btn').forEach(x => x.classList.remove('active'));
+    syncPressed('range');
     if (lastData) run(lastData.symbol);
   }));
   // Overlay toggles: candles/line, each SMA, projection (redraw only, no refetch)
@@ -734,11 +766,12 @@
       const a = document.createElement('a');
       a.className = 'drawer-link' + (dst.v === currentView ? ' active' : '');
       a.dataset.view = dst.v;
+      a.href = dst.v === 'home' ? '/' : '/' + dst.v;
       a.innerHTML = `<span class="drawer-link-top"><span class="dl-dot" aria-hidden="true"></span>`
         + `<span class="drawer-link-name">${esc(dst.t)}</span>`
         + (dst.badge ? `<span class="nav-badge hidden" id="${dst.badge}"></span>` : '')
         + `</span><span class="drawer-link-desc">${esc(dst.d)}</span>`;
-      a.addEventListener('click', () => { showView(dst.v); closeDrawer(); });
+      a.addEventListener('click', (e) => { e.preventDefault(); showView(dst.v); closeDrawer(); });
       host.appendChild(a);
     });
     // The badge element is rebuilt with the menu, so restore what it was showing.
@@ -2648,7 +2681,7 @@
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
   let currentView = 'home';
   const VIEWS = ['home', 'analyze', 'compare', 'screener', 'markets', 'movers', 'accuracy', 'watchlist', 'alerts', 'practice', 'learn', 'settings', 'pricing', 'admin', 'legal'];
-  const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact', 'affiliate-terms'];
+  const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact', 'affiliate-terms', 'accessibility', 'security'];
   // Each view has a real URL now, so navigation updates the address bar and
   // the back button works. pushUrl is skipped when we are *reacting* to a URL
   // (initial load, popstate) to avoid pushing a duplicate entry.
@@ -2734,7 +2767,8 @@
   // Hero
   $('heroForm').addEventListener('submit', (e) => { e.preventDefault(); const s = $('heroInput').value.trim().toUpperCase(); if (s) goAnalyze(s); });
   $('heroMarkets').addEventListener('click', () => showView('markets'));
-  $('heroExamples').innerHTML = ['AAPL', 'NVDA', 'TSLA', 'MSFT', 'AMZN', 'GOOGL'].map(s => `<button class="chip" data-s="${s}">${s}</button>`).join('');
+  // The chips are in the document already, so the page does not shift when
+  // the script arrives; this only wires them up.
   $('heroExamples').querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => goAnalyze(b.dataset.s)));
 
   // Markets + quotes
@@ -3219,7 +3253,7 @@
     if (usageEntries.length) html += `<div class="admin-sec"><div class="mkt-h">Top endpoints</div><div class="compare-scroll"><table class="admin-table"><thead><tr><th>Endpoint</th><th>Calls</th></tr></thead><tbody>` + usageEntries.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join('') + `</tbody></table></div></div>`;
     html += `<div class="admin-sec"><div class="mkt-h">Plan</div>
       <div class="admin-plan">
-        <input id="planEmail" class="input" type="email" placeholder="name@example.com" autocomplete="off" spellcheck="false">
+        <input id="planEmail" class="input" type="email" placeholder="you@email.com" autocomplete="off" spellcheck="false">
         <button id="planPro" class="btn btn-primary">Make Pro</button>
         <button id="planFree" class="btn btn-ghost">Make free</button>
       </div>
@@ -3228,7 +3262,7 @@
     const affs = d.affiliates || [];
     html += `<div class="admin-sec"><div class="mkt-h">Affiliates${affs.length ? ` (${affs.length})` : ''}</div>
       <div class="admin-plan">
-        <input id="affEmail" class="input" type="email" placeholder="name@example.com" autocomplete="off" spellcheck="false">
+        <input id="affEmail" class="input" type="email" placeholder="you@email.com" autocomplete="off" spellcheck="false">
         <button id="affAdd" class="btn btn-primary">Make affiliate</button>
         <button id="affRemove" class="btn btn-ghost">Remove affiliate</button>
       </div>
@@ -3504,11 +3538,22 @@
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);   // iPadOS reports as Mac
   const isSafari = () => /Safari/.test(navigator.userAgent) && !/CriOS|FxiOS|EdgiOS|Chrome/.test(navigator.userAgent);
 
+  // The bar sits above the content, so showing it moves everything down. It
+  // waits for the visitor's first tap or keypress (the consent buttons count),
+  // when a shift is expected rather than a surprise, and so does not count
+  // against the page's layout stability.
+  let interacted = false, pendingInstall = null;
+  const onFirstInteraction = () => {
+    interacted = true;
+    if (pendingInstall) { const p = pendingInstall; pendingInstall = null; showInstallBar(p[0], p[1]); }
+  };
+  ['pointerdown', 'keydown', 'touchstart'].forEach(ev => window.addEventListener(ev, onFirstInteraction, { once: true, passive: true }));
   function showInstallBar(html, withButton) {
     const bar = $('installBar');
     if (!bar) return;
     try { if (localStorage.getItem(INSTALL_KEY) === '1') return; } catch (e) {}
     if (standalone()) return;                      // already installed
+    if (!interacted) { pendingInstall = [html, withButton]; return; }
     $('installText').innerHTML = html;
     $('installBtn').classList.toggle('hidden', !withButton);
     bar.classList.remove('hidden');
@@ -3667,10 +3712,10 @@
     const l = LESSONS.find(x => x.id === id); if (!l) return renderLearnGrid();
     window.scrollTo(0, 0);
     let html = `<div class="learn-detail"><button type="button" class="link-btn learn-back" id="learnBack">← All lessons</button>`;
-    html += `<h2 class="learn-h">${esc(l.title)}</h2>`
+    html += `<h1 class="learn-h">${esc(l.title)}</h1>`
       + `<div class="learn-meta"><span class="applies applies-${esc(l.applies)}">${esc(APPLIES_LABEL[l.applies] || '')}</span>`
       + ` ${esc(l.level)} · ${l.minutes} min read · ${l.quiz.length} question quiz</div>`;
-    html += l.sections.map(s => `<div class="learn-section"><h3>${esc(s.h)}</h3><p>${esc(s.p)}</p></div>`).join('');
+    html += l.sections.map(s => `<div class="learn-section"><h2>${esc(s.h)}</h2><p>${esc(s.p)}</p></div>`).join('');
     html += `<div class="card quiz" id="quiz"></div>`;
     html += `</div>`;
     $('learnHost').innerHTML = html;

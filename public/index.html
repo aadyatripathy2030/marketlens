@@ -22,27 +22,28 @@
 <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to content</a>
 
 <header class="topbar">
   <button type="button" class="nav-toggle" id="navToggle" aria-label="Open the menu" aria-expanded="false" aria-controls="drawer">
     <span></span><span></span><span></span>
   </button>
-  <a class="brand" data-view="home"><svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><rect width="64" height="64" rx="14" fill="#0e1014"/><rect x="19.75" y="15" width="4.5" height="34" rx="1" fill="#ff5f56"/><rect x="14" y="23" width="16" height="18" rx="2" fill="#ff5f56"/><rect x="39.75" y="11" width="4.5" height="40" rx="1" fill="#3ddc84"/><rect x="34" y="17" width="16" height="28" rx="2" fill="#3ddc84"/></svg>ChartGauge</a>
+  <a class="brand" href="/" data-view="home"><svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><rect width="64" height="64" rx="14" fill="#0e1014"/><rect x="19.75" y="15" width="4.5" height="34" rx="1" fill="#ff5f56"/><rect x="14" y="23" width="16" height="18" rx="2" fill="#ff5f56"/><rect x="39.75" y="11" width="4.5" height="40" rx="1" fill="#3ddc84"/><rect x="34" y="17" width="16" height="28" rx="2" fill="#3ddc84"/></svg>ChartGauge</a>
   <div class="topbar-right">
     <span class="tag" id="modeTag"></span>
     <div class="acct" id="acct"></div>
   </div>
 </header>
 
-<div class="install-bar hidden" id="installBar">
+<div class="install-bar hidden" id="installBar" role="region" aria-label="Install ChartGauge">
   <span id="installText"></span>
   <button type="button" class="btn btn-primary btn-sm hidden" id="installBtn">Install</button>
   <button type="button" class="launch-x" id="installClose" aria-label="Dismiss">&times;</button>
 </div>
 
-<div class="launch-bar hidden" id="launchBar">
+<div class="launch-bar hidden" id="launchBar" role="region" aria-label="Launch notice">
   <span id="launchText"></span>
-  <a class="launch-link" data-view="pricing">See what changes</a>
+  <a class="launch-link" href="/pricing" data-view="pricing">See what changes</a>
   <button type="button" class="launch-x" id="launchClose" aria-label="Dismiss">&times;</button>
 </div>
 
@@ -57,7 +58,7 @@
   <nav class="drawer-nav" id="drawerNav" aria-label="Destinations"></nav>
 </aside>
 
-<main class="app">
+<main class="app" id="main" tabindex="-1">
   <!-- HOME -->
   <section class="view" id="view-home">
     <div class="hero">
@@ -69,8 +70,9 @@
       </form>
       <div class="hero-cta">
         <button type="button" class="btn btn-ghost" id="heroMarkets">Indices &amp; trending</button>
-        <span class="hero-examples" id="heroExamples"></span>
+        <span class="hero-examples" id="heroExamples"><button type="button" class="chip" data-s="AAPL">AAPL</button><button type="button" class="chip" data-s="NVDA">NVDA</button><button type="button" class="chip" data-s="TSLA">TSLA</button><button type="button" class="chip" data-s="MSFT">MSFT</button><button type="button" class="chip" data-s="AMZN">AMZN</button><button type="button" class="chip" data-s="GOOGL">GOOGL</button></span>
       </div>
+      <p class="hero-assure">The chart is open to anyone. The reading of it is free with an account, and no card is asked for.</p>
     </div>
     <!-- The front page opens on a live chart: the analyze panel, moved in
          here, on the index fund's daily bars. Anyone can see it; the reading
@@ -101,16 +103,17 @@
     <section class="features">
       <div class="mkt-h">What is here</div>
       <div class="feature-grid">
-        <a class="feature" data-view="analyze"><div class="feature-h">Analyze</div><p>Any stock or crypto pair: thirteen indicators, stop and target levels, and a written read of the chart.</p></a>
-        <a class="feature" data-view="practice"><div class="feature-h">Practice</div><p>Trade pretend money at live prices, with a risk meter on the whole book.</p></a>
-        <a class="feature" data-view="learn"><div class="feature-h">Learn</div><p>Nineteen short lessons, each with a quiz. Free to anyone, no account needed.</p></a>
-        <a class="feature" data-view="pricing"><div class="feature-h">Pro</div><p>Unlimited written reports, chart-image reading, the screener and side-by-side compare.</p></a>
+        <a class="feature" href="/analyze" data-view="analyze"><div class="feature-h">Analyze</div><p>Any stock or crypto pair: thirteen indicators, stop and target levels, and a written read of the chart.</p></a>
+        <a class="feature" href="/practice" data-view="practice"><div class="feature-h">Practice</div><p>Trade pretend money at live prices, with a risk meter on the whole book.</p></a>
+        <a class="feature" href="/learn" data-view="learn"><div class="feature-h">Learn</div><p>Nineteen short lessons, each with a quiz. Free to anyone, no account needed.</p></a>
+        <a class="feature" href="/pricing" data-view="pricing"><div class="feature-h">Pro</div><p>Unlimited written reports, chart-image reading, the screener and side-by-side compare.</p></a>
       </div>
     </section>
   </section>
 
   <!-- ANALYZE -->
   <section class="view hidden" id="view-analyze">
+  <h1 class="view-h" id="analyzeH">Chart analysis</h1>
   <div class="controls">
     <form class="search" id="searchForm">
       <div class="search-box">
@@ -124,8 +127,8 @@
 
     <div class="control-row">
       <div class="strat" id="strat" role="tablist" aria-label="Strategy">
-        <button class="strat-btn active" data-mode="daytrade" role="tab">Day trading<small>Short-term momentum</small></button>
-        <button class="strat-btn" data-mode="longterm" role="tab">Long-term<small>50 / 200-day trend</small></button>
+        <button class="strat-btn active" data-mode="daytrade" role="tab" aria-selected="true">Day trading<small>Short-term momentum</small></button>
+        <button class="strat-btn" data-mode="longterm" role="tab" aria-selected="false">Long-term<small>50 / 200-day trend</small></button>
       </div>
     </div>
     <div class="error hidden" id="error"></div>
@@ -188,7 +191,7 @@
             <div class="chart-time">
               <div class="tf-group tf-interval">
                 <span class="tf-label">Each candle</span>
-                <div class="range" id="interval" role="tablist" aria-label="Candle interval: how much time each candle covers">
+                <div class="range" id="interval" role="group" aria-label="Candle interval: how much time each candle covers">
                   <button class="range-btn" data-iv="1min">1m</button>
                   <button class="range-btn active" data-iv="5min">5m</button>
                   <button class="range-btn" data-iv="15min">15m</button>
@@ -202,7 +205,7 @@
               </div>
               <div class="tf-group">
                 <span class="tf-label">History</span>
-                <div class="range" id="range" role="tablist" aria-label="How far back to view">
+                <div class="range" id="range" role="group" aria-label="How far back to view">
                   <button class="range-btn" data-days="21">1M</button>
                   <button class="range-btn" data-days="63">3M</button>
                   <button class="range-btn active" data-days="126">6M</button>
@@ -658,8 +661,13 @@
       <a href="/refunds">Refunds &amp; cancellation</a>
       <a href="/contact">Contact</a>
       <a href="/accuracy">Accuracy record</a>
+      <a href="/affiliate-terms">Affiliates</a>
+      <a href="/accessibility">Accessibility</a>
+      <a href="/security">Security</a>
+      <button type="button" class="foot-btn" id="cookieSettings">Cookie settings</button>
     </nav>
     <p class="foot-note">ChartGauge is a charting tool for learning to read charts. Nothing on it is financial advice.</p>
+    <p class="foot-copy">&copy; <span id="footYear">2026</span> ChartGauge</p>
   </footer>
 
   <p class="disclaimer">For education only. <strong>Not financial advice</strong>. The Buy / Sell / Hold verdict is taken from the indicator score (Strongly up, Leans up, Mixed, Leans down, Strongly down), which describes how far the past-price indicators agree, and it is held back to Hold whenever bars like the current one went on to perform clearly worse, or better, than that symbol&rsquo;s own base rate. Neither is a recommendation. The score has been measured against future returns and did not predict them, and for images the read comes from one picture alone. Signals like these are wrong <em>often</em>, because no tool reliably predicts markets. This is not a recommendation to trade; decisions and their consequences are yours alone. Never trade based on this tool.</p>
@@ -671,8 +679,8 @@
     <h2 class="modal-title" id="authTitle">Sign in</h2>
     <p class="modal-sub" id="authSub">Save your watchlist and pick up where you left off, on any device.</p>
     <form id="authForm">
-      <input type="email" id="authEmail" class="input" placeholder="you@email.com" autocomplete="email" />
-      <input type="password" id="authPass" class="input" placeholder="Password (8+ characters)" autocomplete="current-password" />
+      <input type="email" id="authEmail" class="input" placeholder="you@email.com" aria-label="Email address" autocomplete="email" />
+      <input type="password" id="authPass" class="input" placeholder="Password (8+ characters)" aria-label="Password" autocomplete="current-password" />
       <div class="auth-err hidden" id="authErr"></div>
       <button type="submit" class="btn btn-primary btn-block" id="authSubmit">Sign in</button>
       <button type="button" class="btn btn-google btn-block hidden" id="authGoogle">
@@ -721,7 +729,7 @@
 <!-- Cookie consent. Hidden until app.js decides the visitor has not chosen
      yet; analytics does not load until Accept is pressed. -->
 <div class="consent hidden" id="consent" role="region" aria-label="Cookie choices">
-  <p class="consent-text">ChartGauge uses a cookie to keep you signed in, which is always on. It can also use Google Analytics to count visits, but only if you say yes. See the <a href="/privacy">Privacy Policy</a>.</p>
+  <p class="consent-text" id="consentText">ChartGauge uses a cookie to keep you signed in, which is always on. It can also use Google Analytics to count visits, but only if you say yes. See the <a href="/privacy">Privacy Policy</a>.</p>
   <div class="consent-btns">
     <button type="button" class="btn btn-ghost consent-btn" id="consentNo">Decline</button>
     <button type="button" class="btn btn-primary consent-btn" id="consentYes">Accept</button>

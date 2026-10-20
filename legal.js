@@ -137,11 +137,12 @@ const buildPrivacy = () => h('Privacy Policy', [
     ul([
       '<strong>Session cookie</strong>: set only when you sign in. HttpOnly and SameSite=Lax, so it is not readable by scripts and is not sent with cross-site requests. It is strictly necessary for staying signed in.',
       '<strong>Local storage</strong>: your display preferences, whether you have accepted the terms notice, and your analytics choice below. This never leaves your browser.',
+      '<strong>Nothing is sold or shared.</strong> No personal data is sold, and none is shared for advertising. There is no advertising on the site and no advertising pixel in it.',
       '<strong>Google Analytics cookies</strong>: set <strong>only if you press Accept</strong> on the cookie banner. Until then Google Analytics is not loaded at all: no request is made to Google and no analytics cookie exists. If you decline, you are not asked again on that device, and the site works exactly the same.',
     ])),
 
   s('Your choices',
-    `You can change your analytics choice at any time by clearing this site's data in your browser, which makes the banner appear again on your next visit.`,
+    `You can change your analytics choice at any time with the <strong>Cookie settings</strong> link in the footer of every page, which brings the banner back. If your browser sends a Global Privacy Control signal, ${SITE} treats it as a refusal: analytics stays off and the banner says so instead of asking.`,
     `You can delete your account and everything attached to it by emailing <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> from the address on the account. Deletion removes the account record, sessions, watchlist, and alerts.`,
     `You can ask what is held about you, ask for it to be corrected, or ask for it to be exported, at the same address. Depending on where you live you may have these rights under the GDPR, the UK GDPR, or the CCPA; they are offered to everyone regardless.`,
     `Data is kept for as long as the account exists. Subscription records are kept by Stripe for as long as their own retention and tax obligations require.`),
@@ -235,6 +236,72 @@ const buildAffiliateTerms = () => h('Affiliate Terms', [
     `The rate, the window, and the minimum may change for future payments. A change is announced by email to affiliates at least 30 days before it applies, and never reduces what has already been earned.`),
 ].join(''));
 
+// ---------------------------------------------------------- accessibility
+const buildAccessibility = () => h('Accessibility Statement', [
+  s('The standard',
+    `${SITE} aims to meet the Web Content Accessibility Guidelines (WCAG) 2.2 at level AA. This page says what has been done toward that, what is known to fall short, and how to report a problem.`),
+
+  s('What is in place',
+    ul([
+      'Every page can be used with a keyboard alone. The first link on each page skips to the content, and the focused control is always visibly outlined.',
+      'Pages use landmarks (header, navigation, main, footer), one top-level heading each, headings in order, and a declared language.',
+      'Text and controls meet the 4.5:1 and 3:1 contrast ratios in the default dark theme, and the site honours the system light and dark setting.',
+      'Form fields have labels, and errors are written out next to the field rather than shown by colour alone.',
+      'Animation stops when the operating system asks for reduced motion. Nothing moves, flashes or plays sound on its own.',
+      'The site works at a 320 pixel width, zooms to 400% without horizontal scrolling, and its buttons and links are at least 24 by 24 pixels.',
+      'There is no accessibility overlay widget. The fixes are in the pages themselves.',
+    ])),
+
+  s('Known gaps',
+    ul([
+      'The candlestick chart is drawn on a canvas, which a screen reader cannot read. The numbers it shows are also presented as text: the last price, the change, every indicator value, the score and the stop-loss and take-profit levels. A per-bar text table of the chart is not yet offered.',
+      'Up and down candles are told apart by colour. The colours can be changed in Settings, and every figure the colours summarise is also given as a signed number, but the chart itself still relies on colour.',
+      'The chart-image reading accepts a screenshot and describes it in text, which is the accessible direction; there is no equivalent in the other direction yet.',
+    ])),
+
+  s('Tell us',
+    `If something on ${SITE} is hard or impossible to use, email <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> with the page address and what happened. Reports are read by the person who builds the site, and problems that block a task are fixed first.`,
+    `This statement was last reviewed in ${esc(UPDATED)}.`),
+].join(''));
+
+// --------------------------------------------------------------- security
+// Facts only: what is done, where things are, and what is not held. No
+// certification is claimed because none is held.
+const buildSecurity = () => h('Security', [
+  s('The short version',
+    `${SITE} holds very little that is worth stealing: an email address, a password hash, a watchlist and some price alerts. Card details go to Stripe and never pass through ${SITE}. This page says how what is held is protected and how to report a weakness.`),
+
+  s('Where things run',
+    ul([
+      '<strong>Hosting</strong>: the application and its database run on Render, in the United States.',
+      '<strong>Transport</strong>: every page and request is served over HTTPS. Plain HTTP is redirected, and browsers are told to keep using HTTPS for a year (HSTS).',
+      '<strong>Browser protections</strong>: a Content Security Policy limits where scripts, styles, images and connections can come from; the site cannot be framed by other sites; and the referrer sent to third parties is trimmed.',
+    ])),
+
+  s('Accounts',
+    ul([
+      '<strong>Passwords</strong> are stored only as scrypt hashes with a per-user salt. They cannot be recovered, only reset.',
+      '<strong>Every sign-in</strong>, with a password or with Google, finishes with a 6-digit code sent to the account\'s email, so a leaked password alone does not open an account.',
+      '<strong>Sessions</strong> live in an HttpOnly, SameSite cookie that scripts cannot read. Signing out ends the session on the server.',
+      '<strong>Rate limits</strong> apply to sign-up, sign-in, code entry and the contact points, so passwords and codes cannot be guessed at speed.',
+    ])),
+
+  s('Payments and payout details',
+    ul([
+      '<strong>Subscriptions</strong> are taken on Stripe\'s hosted checkout page and managed on Stripe\'s billing portal. ' + SITE + ' never sees a card number and stores only the subscription status and Stripe\'s customer id.',
+      '<strong>Affiliate payout details</strong> (for the few people in the affiliate programme) are either held by Stripe, or, if entered on ' + SITE + '\'s own form, encrypted with AES-256-GCM under a key that exists only in the server\'s environment, never in the database or the code.',
+    ])),
+
+  s('Third parties',
+    `Price data, email delivery, payments and the written analysis each come from a named provider. The <a href="/privacy">Privacy Policy</a> lists every one and what it receives.`),
+
+  s('What is not claimed',
+    `${SITE} is a small independent service. It holds no SOC 2 report and no ISO 27001 certificate, has not had an external penetration test, and does not run a bug bounty. The measures above are what is actually in place.`),
+
+  s('Reporting a weakness',
+    `If you find a security problem, email <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> with enough detail to reproduce it. The same address is published at <a href="/.well-known/security.txt">/.well-known/security.txt</a>. Please give a reasonable time for a fix before describing it publicly, and do not access other people\'s accounts or data while testing. Reports are answered, and a real finding is credited here if you wish.`),
+].join(''));
+
 // Rebuilt whenever the launch period flips, so a process that was running
 // before the cutoff stops advertising it the moment it passes rather than at
 // the next deploy. Same content otherwise, so this is one rebuild, not one
@@ -247,6 +314,8 @@ function buildPages() {
     refunds: { title: `Refunds and Cancellation | ${SITE}`, desc: `Cancel any time from Stripe's billing portal, and a full refund within 14 days of a charge, no questions asked.`, html: buildRefunds(), heading: 'Refunds and Cancellation' },
     contact: { title: `Contact | ${SITE}`, desc: `How to reach ${SITE} about billing, refunds, account deletion, or a bug.`, html: buildContact(), heading: 'Contact' },
     'affiliate-terms': { title: `Affiliate Terms | ${SITE}`, desc: `What a ${SITE} affiliate earns (${AFF_SHARE}% of referred payments for ${AFF_MONTHS} months), how and when it is paid, what counts as a referral, and the rules for promoting the link.`, html: buildAffiliateTerms(), heading: 'Affiliate Terms' },
+    accessibility: { title: `Accessibility Statement | ${SITE}`, desc: `The standard ${SITE} is built to (WCAG 2.2 AA), what is in place, the known gaps, and how to report a problem.`, html: buildAccessibility(), heading: 'Accessibility Statement' },
+    security: { title: `Security | ${SITE}`, desc: `How ${SITE} protects accounts and payments, where it runs, what it does not claim, and how to report a weakness.`, html: buildSecurity(), heading: 'Security' },
   };
 }
 function getPages() {

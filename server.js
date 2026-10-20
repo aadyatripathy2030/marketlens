@@ -3296,6 +3296,16 @@ function jsonLd(seo, origin) {
     offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
     description: VIEW_SEO[''].desc,
   }];
+  if (seo.view === 'home') {
+    blocks.push({
+      '@context': 'https://schema.org', '@type': 'Organization', name: SITE_NAME, url: origin + '/',
+      logo: origin + '/icon-512.png', email: CONTACT_EMAIL,
+    });
+    blocks.push({
+      '@context': 'https://schema.org', '@type': 'WebSite', name: SITE_NAME, url: origin + '/',
+      potentialAction: { '@type': 'SearchAction', target: { '@type': 'EntryPoint', urlTemplate: origin + '/stock/{search_term_string}' }, 'query-input': 'required name=search_term_string' },
+    });
+  }
   if (seo.symbol) {
     blocks.push({
       '@context': 'https://schema.org', '@type': 'BreadcrumbList',
@@ -3384,11 +3394,51 @@ const GA_SNIPPET = (GA_ID ? `<meta name="ga-id" content="${esc(GA_ID)}">` : '')
 // 'admin' is routable so the operator can open /admin directly, but it is
 // absent from VIEW_SEO, so it never reaches the sitemap, and robots.txt
 // disallows it. The page itself is guarded server-side regardless.
-const APP_PATH = /^\/(analyze|markets|movers|accuracy|compare|screener|alerts|watchlist|practice|learn|settings|pricing|terms|privacy|refunds|contact|affiliate-terms|admin)(\/|$)|^\/stock\//;
+const APP_PATH = /^\/(analyze|markets|movers|accuracy|compare|screener|alerts|watchlist|practice|learn|settings|pricing|terms|privacy|refunds|contact|affiliate-terms|accessibility|security|admin)(\/|$)|^\/stock\//;
 
 // A mistyped URL used to return the two words "Not found" as plain text on a
 // blank white page, with no styling, no way back and no branding. Cheap to do
 // properly, and it is the page a search engine sees for every dead link.
+// Fixed at boot: the date this build went up, for the sitemap, and the date
+// security.txt stops being trusted, a year on, which every deploy renews.
+const DEPLOYED_ON = new Date().toISOString().slice(0, 10);
+const SECURITY_TXT_EXPIRES = new Date(Date.now() + 365 * 86400000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+const ROBOTS_TXT = `User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /affiliate/
+
+# Crawlers that feed AI search answers: welcome, same rules as everyone.
+User-agent: OAI-SearchBot
+User-agent: Claude-SearchBot
+User-agent: PerplexityBot
+Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /affiliate/
+
+# Crawlers that collect training data: not permitted.
+User-agent: GPTBot
+User-agent: ClaudeBot
+User-agent: Google-Extended
+User-agent: CCBot
+Disallow: /
+
+`;
+// A failure while building a page gets a page, not a JSON fragment: the
+// browser asked for a document.
+function serverError(req, res) {
+  if (res.headersSent) return;
+  const wantsHtml = /text\/html/.test(String(req.headers.accept || '')) && !String(req.url || '').startsWith('/api/');
+  if (!wantsHtml) return json(res, 500, { error: 'Internal error' });
+  res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(`<!doctype html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Something went wrong | ${SITE_NAME}</title><meta name="robots" content="noindex" /><link rel="stylesheet" href="/styles.css" /></head><body>
+<div class="nf-wrap"><div class="nf-code">500</div><h1 class="nf-title">Something went wrong on our side</h1>
+<p class="nf-sub">The page could not be built. It has been logged. Reloading usually works; if it keeps happening, <a href="/contact">tell us</a>.</p>
+<div class="nf-links"><a class="nf-primary" href="/">Go to the charts</a><a class="nf-link" href="/learn">Lessons</a><a class="nf-link" href="/contact">Contact</a></div></div></body></html>`);
+}
 function notFound(req, res) {
   const origin = siteOrigin(req);
   const body = `<!doctype html><html lang="en"><head><meta charset="UTF-8" />
@@ -3423,7 +3473,8 @@ function serveDocument(req, res, urlPath) {
       .replace(/<title>[\s\S]*?<\/title>/, `<title>${esc(seo.title)}</title>`)
       .replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${esc(seo.desc)}" />`)
       .replace('<!--SEO-->', seoHead(seo, origin))
-      .replace('<!--GA-->', GA_SNIPPET);
+      .replace('<!--GA-->', GA_SNIPPET)
+      .replace('<span id="footYear">2026</span>', `<span id="footYear">${new Date().getFullYear()}</span>`);
     // One <h1> per rendered page: the active view keeps it, the rest step down.
     out = out.replace(/<h1 class="(hero-h|view-h)"/g, '<h2 class="$1"');
     if (seo.lesson || seo.legal) { /* the rendered page supplies its own h1 */ }
@@ -3573,11 +3624,18 @@ const server = http.createServer(async (req, res) => {
     }
     if (url === '/robots.txt') {
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-      return res.end(`User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\nDisallow: /affiliate/\n\nSitemap: ${siteOrigin(req)}/sitemap.xml\n`);
+      return res.end(ROBOTS_TXT + `Sitemap: ${siteOrigin(req)}/sitemap.xml\n`);
+    }
+    if (url === '/.well-known/security.txt') {
+      const origin = siteOrigin(req);
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end(`Contact: mailto:${CONTACT_EMAIL}\nExpires: ${SECURITY_TXT_EXPIRES}\nPreferred-Languages: en\nCanonical: ${origin}/.well-known/security.txt\nPolicy: ${origin}/security\n`);
     }
     if (url === '/sitemap.xml') {
       const origin = siteOrigin(req);
-      const today = new Date().toISOString().slice(0, 10);
+      // lastmod is the deploy date, not the request date: the pages change
+      // when the code does, and a date that moved daily would say nothing.
+      const today = DEPLOYED_ON;
       // A curated list only: publishing a URL per ticker would be thousands of
       // near-identical pages, which is thin content rather than coverage.
       const FEATURED = ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AMD','NFLX','JPM','V','WMT','XOM','KO','DIS','BAC','INTC','CRM','ORCL','AVGO','BTC/USD','ETH/USD','SOL/USD','XRP/USD','DOGE/USD'];
@@ -3661,7 +3719,7 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/billing/checkout' && req.method === 'POST') return await handleCheckout(req, res);
     if (url === '/api/billing/portal' && req.method === 'POST') return await handlePortal(req, res);
     serveStatic(req, res);
-  } catch (e) { logError(e); console.error('server error:', e); json(res, 500, { error: 'Internal error' }); }
+  } catch (e) { logError(e); console.error('server error:', e); serverError(req, res); }
 });
 
 // ---- Staying up ----

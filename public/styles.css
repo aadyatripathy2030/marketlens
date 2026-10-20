@@ -127,6 +127,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .btn-ghost { background: var(--card); color: var(--text); border: 1px solid var(--border-strong); }
 .btn-ghost:hover { border-color: var(--accent); }
 .hero-examples { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.hero-assure { font-size: 13px; color: var(--muted); margin: 14px 0 0; }
 
 /* Market / watchlist quote grids */
 .mkt-section { margin-bottom: 24px; }
@@ -324,7 +325,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .learn-detail { max-width: 720px; }
 .learn-h { font-size: 28px; font-weight: 680; letter-spacing: -.4px; margin: 4px 0 2px; }
 .learn-section { margin-top: 20px; }
-.learn-section h3 { font-size: 16px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+.learn-section h2, .learn-section h3 { font-size: 16px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
 .learn-section p { font-size: 16px; line-height: 1.7; color: var(--text); }
 .quiz { margin-top: 24px; }
 .quiz-h { font-size: 14px; font-weight: 700; margin-bottom: 16px; }
@@ -440,7 +441,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .control-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: stretch; }
 .strat { display: flex; gap: 8px; flex: 1; min-width: 280px; }
 .strat-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; font-family: var(--font); font-size: 14px; font-weight: 700; color: var(--muted); background: var(--card); border: none; border-radius: var(--radius-sm); padding: 12px 8px; cursor: pointer; transition: color .15s, background .15s; }
-.strat-btn small { font-size: 11px; font-weight: 500; opacity: .8; }
+.strat-btn small { font-size: 11px; font-weight: 500; }
 .strat-btn:hover { background: var(--card-hi); color: var(--text); }
 .strat-btn.active { color: var(--accent); background: var(--accent-soft); }
 .direction { display: flex; background: var(--card); border-radius: var(--radius-sm); padding: 4px; gap: 4px; }
@@ -622,6 +623,17 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .foot-links a { font-size: 13px; color: var(--muted); text-decoration: none; }
 .foot-links a:hover { color: var(--text); text-decoration: underline; }
 .foot-note { font-size: 13px; color: var(--muted); }
+.foot-copy { font-size: 12px; color: var(--muted); margin-top: 8px; }
+.foot-btn { font: inherit; font-size: 13px; color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; }
+.foot-btn:hover { color: var(--text); text-decoration: underline; }
+/* Skip link: off-screen until focused, then the first thing on the page. */
+.skip-link { position: absolute; left: 16px; top: -100px; z-index: 100; padding: 10px 14px; background: var(--accent); color: #121211; font-weight: 700; border-radius: 4px; text-decoration: none; }
+.skip-link:focus { top: 12px; }
+#main:focus { outline: none; }
+/* Read by assistive technology, not shown: the chart page's heading, which the chart header otherwise stands in for. */
+#analyzeH { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+/* Room for the chart before it is drawn, so the page below it does not jump. */
+#chartSlotHome { min-height: 560px; }
 
 .legal { max-width: 72ch; }
 .legal h1 { font-size: 28px; font-weight: 680; letter-spacing: -.5px; margin-bottom: 6px; }
@@ -646,6 +658,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
   .price { font-size: 28px; }
   .verdict { min-width: 96px; }
   #chart { height: 320px; }
+  #chartSlotHome { min-height: 440px; }
   .control-row { flex-direction: column; }
   .strat { min-width: 0; }
   .direction { justify-content: center; }
