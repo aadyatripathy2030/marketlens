@@ -4,14 +4,14 @@
   --bg: #121211; --bg2: #191917; --card: #1d1d1a; --card-hi: #252521;
   --text: #f0efec; --muted: #9a958c;
   --border: #2e2d28; --border-strong: #423f38;
-  /* The brand colour. Violet, because it is the one hue no data on the page
-     uses: green and red are direction, amber is caution and the fast average,
-     blue is the slow average. It marks the active thing, the buttons, the
-     links, the gauge when a reading leans neither way, and the model-written
-     block. (The chrome was bone until October 2026; this was a deliberate
-     change to give the site a colour of its own.) 6:1 on --card. */
-  --accent: #9d8cff; --accent-hi: #b3a6ff; --accent-soft: #272342;
-  --ai: #9d8cff; --ai-2: #b3a6ff; --ai-soft: #272342;
+  /* The brand colour. Deep orange: warmer than the amber of the fast average
+     and far from the red that means down, so it still reads as chrome, not
+     data. It marks the active thing, the buttons, the links, the gauge when a
+     reading leans neither way, and the model-written block. (Bone until
+     October 2026, then violet for a few days, then this.) 5.5:1 on --card,
+     6:1 under the dark button text. */
+  --accent: #ef6c1f; --accent-hi: #ff8a45; --accent-soft: #3a2416;
+  --ai: #ef6c1f; --ai-2: #ff8a45; --ai-soft: #3a2416;
   /* Direction, reserved: green up, red down, amber caution — never decoration.
      Red/green cannot be told apart by a deuteranope and is unavoidable here,
      so direction is always carried by a sign, an arrow or position as well as
