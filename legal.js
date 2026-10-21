@@ -50,7 +50,7 @@ const ul = (items) => `<ul>${items.map(i => `<li>${i}</li>`).join('')}</ul>`;
 // ---------------------------------------------------------------- terms
 const buildTerms = () => h('Terms of Service', [
   s('What ChartGauge is',
-    `${SITE} is a charting tool. It pulls price history for a stock or crypto pair, computes standard technical indicators, marks stop-loss and take-profit levels derived from volatility and recent swing levels, and writes a plain-English description of what those indicators read. It is built to help you learn to read a chart.`,
+    `${SITE} is a charting tool. It pulls price history for a stock or crypto pair, computes standard technical indicators, marks stop-loss and take-profit levels derived from volatility and recent swing levels, and writes a description of what those indicators read. It is built to help you find, size and time trades. Trading and investing carry a real risk of loss, including everything you put in, and that risk is yours to take.`,
     `By using ${SITE} you agree to these terms. If you do not agree, do not use the service.`),
 
   s('It is not financial advice',
@@ -193,7 +193,7 @@ const buildContact = () => h('Contact', [
     `Email from the address on the account and say you want it deleted. Everything attached to it is removed. See the <a href="/privacy">Privacy Policy</a>.`),
 
   s('What cannot be answered',
-    `No question about what to buy, sell, or hold can be answered, and no view on any specific security will be given. ${SITE} is a charting tool, not an adviser. See the <a href="/terms">Terms of Service</a>.`),
+    `No question about what to buy, sell, or hold can be answered, and no view on any specific security will be given. ${SITE} is a trading tool, not an adviser. See the <a href="/terms">Terms of Service</a>.`),
 ].join(''));
 
 // ------------------------------------------------------ affiliate terms
@@ -223,7 +223,7 @@ const buildAffiliateTerms = () => h('Affiliate Terms', [
 
   s('How you may promote the link',
     ul([
-      `Say what ${SITE} is: a charting tool for learning to read charts. Do not describe it as a way to make money, a signal service, or financial advice, and do not quote or imply returns.`,
+      `Say what ${SITE} is: a trading tool with a published record. Do not promise profits, quote or imply returns, or call it a signal service or financial advice, and say that trading can lose money.`,
       `Do not send unsolicited email or messages, post the link where it is not welcome, or run paid search advertising on the name ${SITE} or chartgauge.com.`,
       `Do not present yourself as ${SITE} or as speaking for it. Say you are an affiliate when asked, and wherever the law where you live requires it.`,
     ]),

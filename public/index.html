@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ChartGauge | stock charts, indicators and a plain-English read</title>
-<meta name="description" content="Free stock charts with SMA, RSI, MACD, Bollinger bands, ATR and VWAP, plus ATR-based stop-loss and take-profit levels and a written read of what the indicators say. Stocks and crypto. Educational, not financial advice." />
+<title>ChartGauge | charts, indicators and trade levels for stocks and crypto</title>
+<meta name="description" content="Stock and crypto charts with SMA, RSI, MACD, Bollinger bands, ATR and VWAP, stop-loss and take-profit levels, and a written read of what the indicators say. Built for trading. Losses are a real risk; not financial advice." />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <!-- 180px is what iOS asks for. This used to point at avatar.png, the
      4096px original, so every device saving the site pulled 490KB for an icon. -->
@@ -63,7 +63,7 @@
   <section class="view" id="view-home">
     <div class="hero">
       <h1 class="hero-h">Charts that show their work.</h1>
-      <p class="hero-sub">Type a ticker. Get thirteen indicators, stop and target levels, and a plain-English read of the chart, graded in public against what the price actually did.</p>
+      <p class="hero-sub">Type a ticker. Get thirteen indicators, stop and target levels, and a written read of the chart, graded in public against what the price did next.</p>
       <form class="hero-search" id="heroForm">
         <input id="heroInput" class="input" aria-label="Search for a ticker, company or crypto pair" placeholder="Search a ticker, company, or crypto: AAPL, Tesla, BTC/USD…" autocomplete="off" maxlength="16" />
         <button type="submit" class="btn btn-primary">Analyze</button>
@@ -270,7 +270,7 @@
         <div class="card hidden" id="levelsCard">
           <div class="section-h">Stop loss &amp; take profit <span class="sub" id="levelsSub"></span></div>
           <div id="levelsBody"></div>
-          <p class="levels-note">These are arithmetic, not a recommendation: the stop is placed from ATR or the recent
+          <p class="levels-note">These are arithmetic, not a personal recommendation: the stop is placed from ATR or the recent
             swing level, and each target is a multiple of that same distance. Nothing here knows your position size,
             your costs, or whether the trade is worth taking. Gaps and fast markets can skip straight past a stop.</p>
         </div>
@@ -432,7 +432,7 @@
     <p class="learn-lead">Every reading this site shows is written down when it is shown, before anyone knows what happens next, and graded against what the price actually did afterwards. The record below is published whether it flatters the tool or not.</p>
     <div id="accuracySsr"></div>
     <p class="acc-note">This is not a backtest. A backtest can be adjusted until the past looks good; these are timestamped readings recorded in advance and never revised. The comparison column is every graded reading taken together: the return you would have had without consulting the score at all.</p>
-    <p class="acc-note"><strong>Why publish this?</strong> Because the alternative is asking you to take it on faith, and the measured answer so far is that this score has not predicted direction. A tool that tells you when it does not work is more useful than one that never admits it.</p>
+    <p class="acc-note"><strong>Why publish this?</strong> So you can see how much weight the score deserves before you put money behind it. A tool that shows its record, good months and bad, is worth more than one that asks for faith.</p>
   </section>
 
   <!-- MOVERS -->
@@ -650,7 +650,7 @@
   <!-- LEARN -->
   <section class="view hidden" id="view-learn">
     <h1 class="view-h">Learn</h1>
-    <p class="learn-lead">Free, plain-English lessons, each with a quick quiz. Tap any lesson to start.</p>
+    <p class="learn-lead">Free lessons in plain English, each with a quick quiz. Tap any lesson to start.</p>
     <div id="learnHost"></div>
   </section>
 
@@ -666,11 +666,11 @@
       <a href="/security">Security</a>
       <button type="button" class="foot-btn" id="cookieSettings">Cookie settings</button>
     </nav>
-    <p class="foot-note">ChartGauge is a charting tool for learning to read charts. Nothing on it is financial advice.</p>
+    <p class="foot-note">ChartGauge is a trading tool. Trading can lose money, including everything you put in, and nothing on it is financial advice.</p>
     <p class="foot-copy">&copy; <span id="footYear">2026</span> ChartGauge</p>
   </footer>
 
-  <p class="disclaimer">For education only. <strong>Not financial advice</strong>. The Buy / Sell / Hold verdict is taken from the indicator score (Strongly up, Leans up, Mixed, Leans down, Strongly down), which describes how far the past-price indicators agree, and it is held back to Hold whenever bars like the current one went on to perform clearly worse, or better, than that symbol&rsquo;s own base rate. Neither is a recommendation. The score has been measured against future returns and did not predict them, and for images the read comes from one picture alone. Signals like these are wrong <em>often</em>, because no tool reliably predicts markets. This is not a recommendation to trade; decisions and their consequences are yours alone. Never trade based on this tool.</p>
+  <p class="disclaimer">ChartGauge is built to help you find, size and time trades. <strong>Trading carries real risk</strong>: you can lose money, including everything you put in, and the risk is yours to take. The Buy / Sell / Hold verdict is taken from the indicator score (Strongly up, Leans up, Mixed, Leans down, Strongly down), which describes how far the past-price indicators agree, and it is held back to Hold whenever bars like the current one went on to perform clearly worse, or better, than that symbol&rsquo;s own base rate. Check the <a href="/accuracy">published record</a> before you lean on it; for images the read comes from one picture alone. None of this is financial advice or a personal recommendation. The decision, and its outcome, is yours.</p>
 </main>
 
 <div class="modal-overlay hidden" id="authModal">
@@ -722,7 +722,7 @@
       <p class="auth-status" id="authCodeStatus"></p>
     </div>
     <p class="auth-toggle" id="authToggleRow"><span id="authToggleText">New to ChartGauge?</span> <button type="button" class="link-btn" id="authToggle">Create an account</button></p>
-    <p class="auth-note">By continuing you agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>. ChartGauge is for learning, not for trading, and nothing on it is financial advice.<br /><br />Never enter a real trading or bank password here. This is a demo; passwords are hashed, never stored in plain text.</p>
+    <p class="auth-note">By continuing you agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>. ChartGauge is a trading tool, not an adviser: trading can lose money, and nothing on it is financial advice.<br /><br />Never enter a real trading or bank password here. This is a demo; passwords are hashed, never stored in plain text.</p>
   </div>
 </div>
 

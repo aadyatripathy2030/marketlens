@@ -1,11 +1,12 @@
 # ChartGauge
 
 Stock and crypto charts with thirteen indicators, stop-loss and take-profit
-levels, a plain-English reading of the chart, lessons, and a public record of
-how often the reading was right. Live at https://chartgauge.com.
+levels, a written read of the chart, lessons, and a public record of how
+often the read was right. Live at https://chartgauge.com.
 
-> For education only, **not financial advice**. Every reading is a formula
-> applied to past prices, and the site publishes how often it was wrong.
+> A trading tool, **not financial advice**. Trading can lose money, including
+> everything put in. Every reading is a formula applied to past prices, and
+> the site publishes how often it was right.
 
 ## Run locally
 

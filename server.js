@@ -583,7 +583,7 @@ function ruleBasedSummary(p) {
     : rsi <= 30 ? `and momentum is washed out: RSI at ${rsi} is oversold, which can precede a bounce. `
     : rsi >= 50 ? `and momentum is firm (RSI ${rsi}). ` : `but momentum is soft (RSI ${rsi}). `;
   const volTxt = t.volatility ? `Volatility is ${t.volatility.annual < 25 ? 'low' : t.volatility.annual < 45 ? 'moderate' : 'elevated'} (~${Math.round(t.volatility.annual)}% annualized). ` : '';
-  const closer = `It's a mechanical blend of trend, momentum, and volatility, a starting point for your research, not a call to act.`;
+  const closer = `It's a mechanical blend of trend, momentum, and volatility: a starting point for the trade, not the whole decision.`;
   return `${lead}${trend}${mom}${volTxt}${closer}`;
 }
 // Rule-based bull/bear/conclusion from the computed technicals (no AI needed).
@@ -614,7 +614,7 @@ function ruleBasedReport(p) {
 function reportPrompt(p) {
   const t = p.tech || {}, r = p.rating || {}, sma = t.sma || {};
   const fmt = (x) => x == null ? 'n/a' : (typeof x === 'number' ? x.toFixed(2) : x);
-  const system = 'You are a sharp, balanced equity analyst writing for curious beginners. You will be given a stock and a set of already-computed technical indicators plus a mechanical rating. Respond with ONLY a JSON object (no markdown, no prose outside it) of the form: {"summary": string (3-4 lively plain-English sentences on where the stock stands and what is driving the rating), "bull": [2 to 4 short bullet strings: the strongest reasons it could go up, as many as the numbers support], "bear": [2 to 4 short bullet strings: the strongest risks, as many as the numbers support], "conclusion": string (2 sentences tying it together)}. Ground every point in the numbers provided; do not invent fundamentals, news, or price targets. Be explicit in the conclusion that this is a mechanical technical read, often wrong, and NOT financial advice. Write in plain sentences and do not use em dashes.';
+  const system = 'You are a sharp, balanced equity analyst writing for active traders. You will be given a stock and a set of already-computed technical indicators plus a mechanical rating. Respond with ONLY a JSON object (no markdown, no prose outside it) of the form: {"summary": string (3-4 lively sentences on where the stock stands and what is driving the rating), "bull": [2 to 4 short bullet strings: the strongest reasons it could go up, as many as the numbers support], "bear": [2 to 4 short bullet strings: the strongest risks, as many as the numbers support], "conclusion": string (2 sentences tying it together)}. Ground every point in the numbers provided; do not invent fundamentals, news, or price targets. End the conclusion with one short sentence saying this is a mechanical technical read, not financial advice, and that the trade and its risk belong to the reader. Write in plain sentences and do not use em dashes.';
   const user = `SYMBOL: ${p.symbol} @ ${fmt(p.latest)} ${p.currency} (${fmt(p.changePct)}% today)\n`
     + (r.insufficient
         ? `RATING: none. Not enough price history (${r.groupCount} of ${r.groupsPossible} indicator groups computable). Say plainly that there is too little history to read, and do not invent a rating.\n`
@@ -801,7 +801,7 @@ async function handleAnalyze(req, res) {
 
 // ---- Uploaded-chart analysis (Claude vision) ----
 async function callClaudeVision(base64, mediaType) {
-  const system = 'You are a cautious technical-analysis assistant reading a stock chart image. Write in plain sentences and do not use em dashes. Describe what you see: overall trend, notable support/resistance levels, chart patterns, and what the visible momentum suggests. Then give a single mechanical read ("Buy", "Sell", or "Mixed") naming which way the visible price action points, based ONLY on the visible price action, and explain why in one sentence. Be explicit that this is a mechanical read of one image, is frequently wrong, and is NOT financial advice. Keep it to 4-6 sentences. If the image is not a stock/price chart, say so instead.';
+  const system = 'You are a cautious technical-analysis assistant reading a stock chart image. Write in plain sentences and do not use em dashes. Describe what you see: overall trend, notable support/resistance levels, chart patterns, and what the visible momentum suggests. Then give a single mechanical read ("Buy", "Sell", or "Mixed") naming which way the visible price action points, based ONLY on the visible price action, and explain why in one sentence. End with one short sentence saying this is a mechanical read of one image, not financial advice, and that the trade and its risk belong to the reader. Keep it to 4-6 sentences. If the image is not a stock/price chart, say so instead.';
   const user = 'Analyze this chart and give your read plus a buy / sell / mixed description of what it shows.';
   const body = JSON.stringify({
     model: AI_MODEL, max_tokens: 500, system,
@@ -1470,7 +1470,7 @@ function emailHtml(o) {
     + intro2 + lines + code + box + button
     + `<p style="margin:18px 0 0;font-family:${MAIL_FONT};font-size:13px;line-height:1.6;color:#9a958c;">${esc(o.outro)}</p>`
     + `</td></tr>`
-    + `<tr><td style="padding:16px 4px 0;font-family:${MAIL_FONT};font-size:12px;line-height:1.5;color:#7a756b;">ChartGauge is a charting tool for learning to read charts. Nothing on it is financial advice.<br><a href="https://chartgauge.com" style="color:#9a958c;">chartgauge.com</a></td></tr>`
+    + `<tr><td style="padding:16px 4px 0;font-family:${MAIL_FONT};font-size:12px;line-height:1.5;color:#7a756b;">ChartGauge is a trading tool. Trading can lose money, and nothing on it is financial advice.<br><a href="https://chartgauge.com" style="color:#9a958c;">chartgauge.com</a></td></tr>`
     + `</table></td></tr></table></body></html>`;
 }
 async function sendMail(to, subject, text, html) {
@@ -3204,8 +3204,8 @@ const LEGAL = require('./legal');
 const siteOrigin = (req) => (req.headers['x-forwarded-proto'] || 'http') + '://' + (req.headers.host || 'chartgauge.com');
 
 const VIEW_SEO = {
-  '': { view: 'home', title: 'ChartGauge | stock charts, indicators and a plain-English read',
-    desc: 'Stock and crypto charts: thirteen indicators, stop-loss and take-profit levels, all in plain English, plus a public record of how often the reading was right.' },
+  '': { view: 'home', title: 'ChartGauge | charts, indicators and trade levels for stocks and crypto',
+    desc: 'Stock and crypto charts with thirteen indicators, stop-loss and take-profit levels and a written read of the chart, plus a public record of how often the read was right. Built for trading; losses are a real risk.' },
   'analyze': { view: 'analyze', title: 'Analyze a stock or crypto pair | ChartGauge',
     desc: 'Enter a ticker or crypto pair for a candlestick chart, 13 technical indicators, an indicator score, and stop-loss and take-profit levels derived from ATR and recent swing highs and lows.' },
   'markets': { view: 'markets', title: 'Market snapshot: indices and trending stocks | ChartGauge',
@@ -3218,7 +3218,7 @@ const VIEW_SEO = {
     desc: 'Set a target above or below the current price and get flagged when a stock crosses it.' },
   'watchlist': { view: 'watchlist', title: 'Your watchlist | ChartGauge',
     desc: 'Keep the tickers you follow in one place, with live prices and one-click analysis.' },
-  'learn': { view: 'learn', title: 'Learn investing: free plain-English lessons | ChartGauge',
+  'learn': { view: 'learn', title: 'Learn trading and investing: free lessons with quizzes | ChartGauge',
     desc: 'Nineteen short lessons covering market basics, technical and fundamental analysis, valuation, financial statements, risk management, order types, candlesticks, volume, trading psychology, costs and index funds, each with a quiz.' },
   'practice': { view: 'practice', title: 'Paper trading: practice with pretend money | ChartGauge',
     desc: 'A practice account with a starting balance you choose. Fills use the live price, positions are valued in real time, and a risk meter measures the book against limits you set. None of it is real money.' },
@@ -3276,7 +3276,7 @@ function seoFor(urlPath, req) {
     if (sym) return {
       view: 'analyze', symbol: sym,
       title: `${sym} ${mode === 'long-term' ? 'long-term' : mode === 'day-trading' ? 'day-trading' : ''} chart, indicators and stop-loss levels | ${SITE_NAME}`.replace(/\s+/g, ' '),
-      desc: `${sym} candlestick chart with SMA, RSI, MACD, Bollinger bands, ATR and VWAP, an indicator score, and ATR-based stop-loss and take-profit levels. Educational, not financial advice.`,
+      desc: `${sym} candlestick chart with SMA, RSI, MACD, Bollinger bands, ATR and VWAP, an indicator score, and ATR-based stop-loss and take-profit levels. Built for trading; losses are a real risk, and none of it is financial advice.`,
       canonical: `${origin}/stock/${sym}`,
     };
   }
