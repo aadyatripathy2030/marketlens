@@ -341,7 +341,11 @@
     ['UNI/USD', 'Uniswap'], ['ATOM/USD', 'Cosmos'], ['ETC/USD', 'Ethereum Classic'], ['XLM/USD', 'Stellar'],
   ];
 
-  const TICKERS = [
+  // The short list is hand-written so the names read well; tickers.js, built
+  // by tools/build-tickers.mjs from the exchange listings, adds every other
+  // US-listed stock behind it (biggest first) so a name like Aveanna
+  // Healthcare is offered rather than needing its symbol known in advance.
+  const CURATED = [
     ['AAPL', 'Apple'], ['MSFT', 'Microsoft'], ['GOOGL', 'Alphabet (Class A)'], ['GOOG', 'Alphabet (Class C)'],
     ['AMZN', 'Amazon'], ['NVDA', 'NVIDIA'], ['META', 'Meta Platforms'], ['TSLA', 'Tesla'],
     ['BRK.B', 'Berkshire Hathaway'], ['JPM', 'JPMorgan Chase'], ['V', 'Visa'], ['MA', 'Mastercard'],
@@ -368,6 +372,11 @@
     ['SPY', 'SPDR S&P 500 ETF'], ['QQQ', 'Invesco QQQ (Nasdaq-100)'], ['DIA', 'SPDR Dow Jones ETF'],
     ['IWM', 'iShares Russell 2000'], ['VTI', 'Vanguard Total Market'], ['VOO', 'Vanguard S&P 500'],
   ];
+  const TICKERS = (() => {
+    const seen = new Set(CURATED.map(t => t[0]));
+    const extra = (Array.isArray(window.TICKER_LIST) ? window.TICKER_LIST : []).filter(t => Array.isArray(t) && t[0] && !seen.has(t[0]));
+    return CURATED.concat(extra);
+  })();
   // One matcher for both pickers, so the hero search and the practice ticket
   // can never offer different things for the same letters.
   //
@@ -376,11 +385,19 @@
   // return Amazon, Johnson, Exxon and Chevron — which reads as the picker
   // showing random stocks. camelCase counts as a word boundary, so UnitedHealth
   // is United + Health and "health" still finds it.
+  // Cached: with a few thousand names the split would otherwise run for every
+  // one of them on every keystroke.
+  const wordCache = new Map();
   function nameWords(n) {
-    return n.split(/[^A-Za-z0-9]+/)
-      .flatMap(w => w.split(/(?=[A-Z])/))
-      .filter(Boolean)
-      .map(w => w.toUpperCase());
+    let w = wordCache.get(n);
+    if (!w) {
+      w = n.split(/[^A-Za-z0-9]+/)
+        .flatMap(x => x.split(/(?=[A-Z])/))
+        .filter(Boolean)
+        .map(x => x.toUpperCase());
+      wordCache.set(n, w);
+    }
+    return w;
   }
   function matchTickers(qRaw, limit) {
     const q = (qRaw || '').trim().toUpperCase();
