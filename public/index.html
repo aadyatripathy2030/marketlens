@@ -95,12 +95,86 @@
       </div>
       <div id="chartSlotHome"></div>
     </div>
+    <!-- How it works: the three steps, so a first visitor knows what they
+         get before they type anything. -->
+    <section class="home-sec" id="homeHow">
+      <h2 class="home-h">How it works</h2>
+      <ol class="steps">
+        <li><span class="step-n">1</span><h3 class="step-h">Type a ticker</h3><p>Any US-listed stock, or a crypto pair such as BTC/USD. Pick day trading or long-term.</p></li>
+        <li><span class="step-n">2</span><h3 class="step-h">Get the call</h3><p>Buy, sell or hold, worked out from the indicators, with a stop-loss and a take-profit level set from the stock&rsquo;s own recent range.</p></li>
+        <li><span class="step-n">3</span><h3 class="step-h">Check it first</h3><p>See how often readings like this one have paid off on that symbol before. When the history disagrees, the call drops to hold.</p></li>
+      </ol>
+    </section>
     <!-- The record, in public. The thing most tools would hide is the thing
          this one leads with, for everyone, signed in or not. -->
     <section class="record" id="homeRecord">
       <h2 class="record-h">Every call, graded in public</h2>
       <div class="record-grid" id="recordGrid"></div>
       <p class="record-line">Each reading is saved before the outcome is known, then checked against what the price did. The numbers stay up whether they flatter us or not. <a href="/accuracy">See the full record</a></p>
+    </section>
+
+    <!-- What else is here, as a list rather than tiles. -->
+    <section class="home-sec">
+      <h2 class="home-h">More than one chart</h2>
+      <div class="tools">
+        <a class="tool" href="/practice" data-view="practice"><h3 class="tool-h">Practice</h3><p>Trade pretend money at live prices, with a risk meter on the whole account. Nothing touches a broker.</p><span class="tool-go">Open practice &rarr;</span></a>
+        <a class="tool" href="/learn" data-view="learn"><h3 class="tool-h">Learn</h3><p>Nineteen short lessons with quizzes, on day trading and on long-term investing. Free, no account needed.</p><span class="tool-go">Start a lesson &rarr;</span></a>
+        <a class="tool" href="/alerts" data-view="alerts"><h3 class="tool-h">Watchlist and alerts</h3><p>Keep the tickers you follow in one place, and get flagged when one crosses a price you set.</p><span class="tool-go">Set an alert &rarr;</span></a>
+        <a class="tool" href="/screener" data-view="screener"><h3 class="tool-h">Screener and compare</h3><p>Filter stocks by sector, size and price, then put two or more side by side on valuation, margins and debt.</p><span class="tool-go">Open the screener &rarr;</span></a>
+      </div>
+    </section>
+
+    <!-- Price, stated on the front page. The numbers that can change with
+         configuration are filled in from /api/auth/me by app.js. -->
+    <section class="home-sec" id="homePlans">
+      <h2 class="home-h">Free to start</h2>
+      <div class="plans-2">
+        <div class="plan2">
+          <h3 class="plan2-h">Free</h3>
+          <div class="plan2-price">$0</div>
+          <ul class="plan2-list">
+            <li>Every chart and indicator, stocks and crypto</li>
+            <li>The call, a stop-loss and a take-profit level</li>
+            <li><span id="homeAiN">3</span> written reports a day</li>
+            <li>A watchlist and price alerts</li>
+            <li>Every lesson and the practice account</li>
+          </ul>
+        </div>
+        <div class="plan2">
+          <h3 class="plan2-h">Pro</h3>
+          <div class="plan2-price" id="homeProPrice">See plans</div>
+          <ul class="plan2-list">
+            <li>Unlimited written reports</li>
+            <li>Read any chart from a screenshot</li>
+            <li>The screener and side-by-side compare</li>
+            <li>More take-profit levels, no watchlist or alert limits</li>
+            <li>Cancel any time; full refund within 14 days of a charge</li>
+          </ul>
+          <p class="plan2-note" id="homeTrial"></p>
+        </div>
+      </div>
+      <p class="home-more"><a href="/pricing" data-view="pricing">Compare plans &rarr;</a></p>
+    </section>
+
+    <!-- The questions a careful visitor asks before signing up. -->
+    <section class="home-sec" id="homeFaq">
+      <h2 class="home-h">Questions</h2>
+      <div class="faq">
+        <details><summary>Do I need to pay?</summary><p>No. The chart is open to anyone, and a free account, with no card, gets the call, the levels and a few written reports a day. Pro removes the limits.</p></details>
+        <details><summary>What can I look up?</summary><p>US-listed stocks and the major crypto pairs. The search suggests nearly four thousand companies, and any symbol you type still works.</p></details>
+        <details><summary>How is the call made?</summary><p>Mechanically. Trend, momentum and a short projection are scored together, and the score sets buy, sell or hold. The call is held back to hold when bars like today&rsquo;s have done clearly worse, or better, than usual on that symbol. A written report then explains the reasoning.</p></details>
+        <details><summary>Where do the prices come from?</summary><p>From Twelve Data. Market data can be delayed or wrong. If live prices are unavailable, the site says so and shows labelled demo data instead.</p></details>
+        <details><summary>Is this financial advice?</summary><p>No. ChartGauge is a tool for finding and timing trades, and trading can lose money, including everything you put in. The decision is yours.</p></details>
+      </div>
+    </section>
+
+    <!-- The one action, asked again at the end of the page. -->
+    <section class="home-end">
+      <h2 class="home-end-h">Start with one ticker.</h2>
+      <div class="home-end-btns">
+        <button type="button" class="btn btn-primary" id="homeEndCta">Create a free account</button>
+        <button type="button" class="btn btn-ghost" id="homeEndTry">Search a ticker</button>
+      </div>
     </section>
   </section>
 

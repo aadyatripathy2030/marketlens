@@ -833,7 +833,7 @@
   // The observer's first report on each element decides: already in sight
   // means it is left alone, so the first view never flickers and live quotes
   // re-rendering in place never replay.
-  const REVEAL_SEL = '.home-chart, .record-h, .record-tile, .record-line, .card, .learn-card, .plan-card, .quote-card, .wl-card';
+  const REVEAL_SEL = '.home-chart, .record-h, .record-tile, .record-line, .home-h, .steps > li, .tool, .plan2, .faq, .home-end, .card, .learn-card, .plan-card, .quote-card, .wl-card';
   const revealSeen = new WeakSet();
   const revealIO = ('IntersectionObserver' in window) && !matchMedia('(prefers-reduced-motion: reduce)').matches
     ? new IntersectionObserver((entries) => entries.forEach(e => {
@@ -2460,6 +2460,7 @@
 
   function renderAcct() {
     const el = $('acct');
+    renderHomePlans();
     if (currentUser) {
       const isPro = currentUser.plan === 'pro';
       const badge = `<span class="plan ${isPro ? 'pro' : ''}">${isPro ? 'PRO' : 'FREE'}</span>`;
@@ -3189,6 +3190,29 @@
   // reports null while everything is open, so this cannot be read from limits.
   const AI_FALLBACK_N = 3;
   const PRICING_LEAD_AFTER = 'The chart is open to anyone. Every indicator, the stop-loss and take-profit levels and the measured base rate are free with an account. Pro adds the parts that cost money to run each time: unlimited written reports, chart-image reading, the screener and side-by-side compare, and more take-profit levels.';
+  // The front page's two-plan summary: the allowance and the prices come
+  // from the server, so the page never quotes a number Stripe disagrees with.
+  function renderHomePlans() {
+    if (!$('homePlans')) return;
+    $('homeAiN').textContent = limits.aiPerDay || AI_FALLBACK_N;
+    const order = [['monthly', 'a month'], ['weekly', 'a week'], ['yearly', 'a year']]
+      .filter(([k]) => billingPlans && billingPlans[k] && billingPlans[k].amount != null);
+    if (order.length) {
+      const [k0, w0] = order[0], p0 = billingPlans[k0];
+      $('homeProPrice').innerHTML = `${esc(money(p0.amount, p0.currency))}<small> ${w0}</small>`;
+      const others = order.slice(1).map(([k, w]) => `${money(billingPlans[k].amount, billingPlans[k].currency)} ${w}`);
+      $('homeTrial').textContent = [others.length ? 'Or ' + others.join(', or ') + '.' : '',
+        trialDays > 0 ? `${trialDays} days free on your first subscription.` : ''].filter(Boolean).join(' ');
+    }
+    const signedIn = !!currentUser;
+    $('homeEndCta').textContent = signedIn ? 'Analyze a ticker' : 'Create a free account';
+    $('homeEndTry').classList.toggle('hidden', signedIn);
+  }
+  if ($('homeEndCta')) $('homeEndCta').addEventListener('click', () => currentUser ? showView('analyze') : openAuth('signup'));
+  if ($('homeEndTry')) $('homeEndTry').addEventListener('click', () => {
+    document.body.scrollTo({ top: 0, behavior: 'smooth' }); window.scrollTo({ top: 0, behavior: 'smooth' });
+    setTimeout(() => $('heroInput').focus({ preventScroll: true }), 300);
+  });
   function renderPricing() {
     const pro = !!(currentUser && currentUser.plan === 'pro');
     const li = (arr) => arr.map(([t, on]) => `<li class="${on ? '' : 'off'}">${esc(t)}</li>`).join('');

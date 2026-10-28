@@ -1270,6 +1270,51 @@ body.drawer-open .drawer { transform: translateX(0); }
   .record-tile { border: 0; }
 }
 
+/* The rest of the front page: each section is a heading, a hairline and
+   room. No boxes; columns and distance do the grouping. */
+.home-sec { margin: 0 0 64px; padding: 64px 0 0; border-top: 1px solid var(--border); }
+.home-h { font-size: 32px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; margin: 0 0 32px; }
+.home-sec p { font-size: 17px; line-height: 1.6; color: var(--muted); }
+.steps { list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+.step-n { display: block; font-size: 15px; font-weight: 600; color: var(--muted); margin-bottom: 16px; }
+.step-h, .tool-h, .plan2-h { font-size: 20px; font-weight: 600; letter-spacing: -.01em; line-height: 1.3; margin: 0 0 8px; color: var(--text); }
+.tools { display: grid; grid-template-columns: repeat(2, 1fr); gap: 48px 32px; }
+.tool { display: block; color: inherit; text-decoration: none; max-width: 52ch; }
+.tool-go { display: inline-block; margin-top: 16px; font-size: 15px; font-weight: 600; color: var(--accent); transition: color .15s; }
+.tool:hover .tool-go { color: var(--accent-hi); text-decoration: underline; text-underline-offset: 3px; }
+.plans-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 32px; }
+.plan2 { padding-top: 24px; border-top: 1px solid var(--border-strong); }
+.plan2-price { font-size: 40px; font-weight: 600; letter-spacing: -.02em; line-height: 1.1; margin: 8px 0 24px; }
+.plan2-price small { font-size: 17px; font-weight: 400; color: var(--muted); letter-spacing: 0; }
+.plan2-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.plan2-list li { font-size: 17px; line-height: 1.5; color: var(--muted); padding-left: 24px; position: relative; }
+.plan2-list li::before { content: '\2013'; position: absolute; left: 0; color: var(--border-strong); }
+.home-sec .plan2-note { font-size: 15px; margin-top: 16px; }
+.home-more { margin-top: 32px; }
+.home-more a { font-size: 17px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.home-more a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.faq { max-width: 72ch; }
+.faq details { border-bottom: 1px solid var(--border); }
+.faq details:first-child { border-top: 1px solid var(--border); }
+.faq summary { list-style: none; cursor: pointer; display: flex; justify-content: space-between; gap: 16px;
+  font-size: 19px; font-weight: 600; padding: 24px 0; color: var(--text); }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: '+'; font-weight: 400; color: var(--muted); transition: transform .2s; }
+.faq details[open] summary::after { transform: rotate(45deg); }
+.faq details p { margin: -8px 0 24px; max-width: 64ch; }
+.home-end { padding: 96px 0 32px; border-top: 1px solid var(--border); }
+.home-end-h { font-size: clamp(32px, 4.4vw, 56px); font-weight: 700; letter-spacing: -.03em; line-height: 1.1; margin: 0 0 32px; }
+.home-end-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.home-end-btns .hidden { display: none; }
+@media (max-width: 760px) {
+  .steps, .tools, .plans-2 { grid-template-columns: 1fr; }
+  .home-sec { padding-top: 48px; margin-bottom: 48px; }
+  .home-h { font-size: 26px; }
+  .tools { gap: 32px; }
+  .home-end { padding-top: 64px; }
+}
+@media (prefers-reduced-motion: reduce) { .faq summary::after { transition: none; } }
+
 /* Section labels and page titles. */
 .mkt-h { font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; }
 .view-h { font-weight: 700; letter-spacing: -.02em; }
