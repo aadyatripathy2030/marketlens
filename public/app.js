@@ -828,6 +828,51 @@
 
   window.addEventListener('resize', drawChart);
 
+  // ---- Scroll reveal ----
+  // Sections and cards below the fold rise into place as they scroll in.
+  // The observer's first report on each element decides: already in sight
+  // means it is left alone, so the first view never flickers and live quotes
+  // re-rendering in place never replay.
+  const REVEAL_SEL = '.home-chart, .record-h, .record-tile, .record-line, .card, .learn-card, .plan-card, .quote-card, .wl-card';
+  const revealSeen = new WeakSet();
+  const revealIO = ('IntersectionObserver' in window) && !matchMedia('(prefers-reduced-motion: reduce)').matches
+    ? new IntersectionObserver((entries) => entries.forEach(e => {
+        const el = e.target;
+        if (!el.classList.contains('rv')) {
+          if (!e.boundingClientRect.height) return;  // in a hidden view; asked again when shown
+          if (e.isIntersecting || e.boundingClientRect.top < innerHeight) { revealIO.unobserve(el); return; }
+          const i = el.parentElement ? Array.prototype.indexOf.call(el.parentElement.children, el) % 4 : 0;
+          el.style.setProperty('--rd', (i * 60) + 'ms');
+          el.classList.add('rv');
+          return;
+        }
+        if (!e.isIntersecting) return;
+        // Once it has landed, drop the classes so its own hover transitions
+        // and timing are back in charge.
+        el.addEventListener('transitionend', function done(ev) {
+          if (ev.target !== el || ev.propertyName !== 'opacity') return;
+          el.classList.remove('rv', 'in'); el.style.removeProperty('--rd');
+          el.removeEventListener('transitionend', done);
+        });
+        el.classList.add('in');
+        revealIO.unobserve(el);
+      }), { rootMargin: '0px 0px -8% 0px', threshold: 0.08 })
+    : null;
+  let revealQueued = false;
+  function revealScan() {
+    if (!revealIO || revealQueued) return;
+    revealQueued = true;
+    requestAnimationFrame(() => {
+      revealQueued = false;
+      document.querySelectorAll('#main ' + REVEAL_SEL.split(', ').join(', #main ')).forEach(el => {
+        if (revealSeen.has(el) || !el.getClientRects().length) return;
+        revealSeen.add(el);
+        revealIO.observe(el);
+      });
+    });
+  }
+  if (revealIO) new MutationObserver(revealScan).observe($('main'), { childList: true, subtree: true });
+
   function sma(a, n) { return a.map((_, i) => i >= n - 1 ? a.slice(i - n + 1, i + 1).reduce((x, y) => x + y, 0) / n : null); }
 
   function resetView() {
@@ -2730,6 +2775,7 @@
     // chart, so it moves to whichever one is on screen. Before the wall check,
     // because the front page draws its chart for everyone.
     mountChart(name);
+    revealScan();
     if (name === 'home') { loadHomeChart(); loadHomeRecord(); }
     // Nothing about the data is rendered, and none of the loaders below run,
     // so there is nothing on the page to uncover.
