@@ -388,7 +388,7 @@ function knownUnknown(sym) {
   if (Date.now() > t) { unknownSymbols.delete(sym); return false; }
   return true;
 }
-const noSuchTicker = (sym) => ({ error: `No such ticker: ${sym}. Check the symbol, or try AAPL, TSLA, or BTC/USD for crypto.`, kind: 'not_found' });
+const noSuchTicker = (sym) => ({ error: `We couldn’t find ${sym}. Check the symbol, or try AAPL, TSLA, or BTC/USD for crypto.`, kind: 'not_found' });
 
 // Does this symbol actually exist? Used before saving one, so a typo cannot be
 // stored forever. Answers from the rejected-symbol memory or the bars cache
@@ -473,7 +473,7 @@ async function handleAccuracy(req, res) {
 
 async function handleStock(req, res, symbol, strategy, direction, interval) {
   symbol = String(symbol || '').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
-  if (!symbol) return json(res, 400, { error: 'Enter a ticker symbol.' });
+  if (!symbol) return json(res, 400, { error: 'Enter a stock or crypto symbol.' });
   strategy = I.STRAT[strategy] ? strategy : 'daytrade';
   direction = direction === 'short' ? 'short' : 'long';
   interval = INTERVALS.includes(interval) ? interval : '1day';
@@ -828,7 +828,7 @@ async function handleAnalyzeImage(req, res) {
   if (p.image.length > 7e6) return json(res, 413, { error: 'Image too large. Please use one under 5 MB.' });
   if (!ANTHROPIC_API_KEY) {
     return json(res, 200, { source: 'none',
-      summary: 'Image analysis needs Claude vision. Set ANTHROPIC_API_KEY on the server to analyze uploaded charts. (Ticker analysis above works without a key.)' });
+      summary: 'Image analysis needs Claude vision. Set ANTHROPIC_API_KEY on the server to analyze uploaded charts. (Stock analysis above works without a key.)' });
   }
   try { return json(res, 200, { summary: await callClaudeVision(p.image, p.mediaType), source: 'ai' }); }
   catch (e) { return json(res, 200, { source: 'error', summary: 'Could not analyze the image (' + e.message + ').' }); }
@@ -2633,7 +2633,7 @@ async function handleCompare(req, res, raw) {
   const { pro } = await plan(req);
   if (!pro) return json(res, 402, PRO_ONLY('Side-by-side compare'));
   const symbols = String(raw || '').toUpperCase().split(',').map(s => s.replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16)).filter(Boolean).filter((s, i, a) => a.indexOf(s) === i).slice(0, 4);
-  if (symbols.length < 2) return json(res, 400, { error: 'Add at least two tickers to compare.' });
+  if (symbols.length < 2) return json(res, 400, { error: 'Add at least two stocks to compare.' });
   const rows = await Promise.all(symbols.map(async (sym) => {
     try {
       const enc = encodeURIComponent(sym);
@@ -2647,7 +2647,7 @@ async function handleCompare(req, res, raw) {
         (async () => {
           if (STOCK_API_KEY) return await fetchLive(sym, '1day', 260);
           if (!demoAllowed()) throw new Error('Market data is not configured');
-          if (!DEMO_SYMBOLS.has(sym)) throw new Error(`No such ticker: ${sym}`);
+          if (!DEMO_SYMBOLS.has(sym)) throw new Error(`We couldn’t find ${sym}`);
           return buildDemo(sym, '1day');
         })(),
         FMP_API_KEY ? fmpSafe(`/stable/profile?symbol=${enc}`) : null,
@@ -3010,7 +3010,7 @@ async function handleAlerts(req, res) {
   const symbol = String(b.symbol || '').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
   const direction = b.direction === 'below' ? 'below' : 'above';
   const target = Number(b.target);
-  if (!symbol || !Number.isFinite(target) || target <= 0) return json(res, 400, { error: 'Enter a ticker and a target price above 0.' });
+  if (!symbol || !Number.isFinite(target) || target <= 0) return json(res, 400, { error: 'Enter a stock and a target price above 0.' });
   if (!(await symbolResolves(symbol))) return json(res, 404, noSuchTicker(symbol));
   if (!hasPro(user)) {
     const cur = await db.listAlerts(user.id);
@@ -3205,19 +3205,19 @@ const siteOrigin = (req) => (req.headers['x-forwarded-proto'] || 'http') + '://'
 
 const VIEW_SEO = {
   '': { view: 'home', title: 'ChartGauge | find, size and time stock and crypto trades',
-    desc: 'Type a stock or crypto ticker and get a buy, sell or hold call with a stop and a target, graded in public against what the price did next. Trading can lose money; not financial advice.' },
+    desc: 'Look up any stock or crypto pair and get a buy, sell or hold call with a stop and a target, graded in public against what the price did next. Trading can lose money; not financial advice.' },
   'analyze': { view: 'analyze', title: 'Analyze a stock or crypto pair | ChartGauge',
-    desc: 'Enter a ticker or crypto pair for a candlestick chart, 13 technical indicators, an indicator score, and stop-loss and take-profit levels derived from ATR and recent swing highs and lows.' },
+    desc: 'Enter a stock or crypto pair for a candlestick chart, 13 technical indicators, an indicator score, and stop-loss and take-profit levels derived from ATR and recent swing highs and lows.' },
   'markets': { view: 'markets', title: 'Market snapshot: indices and trending stocks | ChartGauge',
     desc: 'Live quotes for the major US indices and the most active stocks, with the percentage move on the day, and where the indicator score sits today across twenty large stocks.' },
   'compare': { view: 'compare', title: 'Compare stocks side by side | ChartGauge',
-    desc: 'Put two or more tickers next to each other on market cap, revenue, P/E, PEG, margins, ROE, debt to equity, dividend yield and beta.' },
+    desc: 'Put two or more stocks next to each other on market cap, revenue, P/E, PEG, margins, ROE, debt to equity, dividend yield and beta.' },
   'screener': { view: 'screener', title: 'Stock screener: filter by sector, market cap and price | ChartGauge',
     desc: 'Filter a curated universe of stocks by sector, market capitalisation and price range to find candidates worth a closer look.' },
   'alerts': { view: 'alerts', title: 'Price alerts | ChartGauge',
     desc: 'Set a target above or below the current price and get flagged when a stock crosses it.' },
   'watchlist': { view: 'watchlist', title: 'Your watchlist | ChartGauge',
-    desc: 'Keep the tickers you follow in one place, with live prices and one-click analysis.' },
+    desc: 'Keep the stocks you follow in one place, with live prices and one-click analysis.' },
   'learn': { view: 'learn', title: 'Learn trading and investing: free lessons with quizzes | ChartGauge',
     desc: 'Nineteen short lessons covering market basics, technical and fundamental analysis, valuation, financial statements, risk management, order types, candlesticks, volume, trading psychology, costs and index funds, each with a quiz.' },
   'practice': { view: 'practice', title: 'Paper trading: practice with pretend money | ChartGauge',

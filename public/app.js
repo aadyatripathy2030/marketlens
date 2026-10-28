@@ -757,14 +757,14 @@
   // the only navigation, so a label alone is not enough — someone opening
   // "Movers" or "Accuracy" for the first time should not have to guess.
   const DESTINATIONS = [
-    { v: 'home', t: 'Home',      d: 'Look up any ticker, and see where the major indices sit today.' },
+    { v: 'home', t: 'Home',      d: 'Look up any stock, and see where the major indices sit today.' },
     { v: 'analyze', t: 'Analyze',   d: 'The full read on one symbol: candlestick chart, thirteen indicators, exit levels and the measured base rate.' },
     { v: 'compare', t: 'Compare',   d: 'Put two or more companies side by side on valuation, margins, growth and debt.' },
     { v: 'screener', t: 'Screener',  d: 'Filter a curated list of stocks by sector, market capitalization and price.' },
     { v: 'markets', t: 'Markets',   d: 'Live quotes for the major US indices and the most active stocks.' },
     { v: 'movers', t: 'Movers',    d: 'What is actually moving right now, ranked by how unusual the volume and the day\u2019s range are.' },
     { v: 'accuracy', t: 'Accuracy',  d: 'The measured record of how this site\u2019s own readings have performed, published whether or not it flatters them.' },
-    { v: 'watchlist', t: 'Watchlist', d: 'The tickers you follow, with live prices and one-click analysis.' },
+    { v: 'watchlist', t: 'Watchlist', d: 'The stocks you follow, with live prices and one-click analysis.' },
     { v: 'alerts', t: 'Alerts',    d: 'Set a target above or below the current price and get flagged when a stock crosses it.', badge: 'alertBadge' },
     { v: 'practice', t: 'Practice',  d: 'A practice account with pretend money, so you can rehearse position sizing against your own risk limits. Nothing here touches a broker.' },
     { v: 'learn', t: 'Learn',     d: 'Nineteen short lessons with quizzes, split by whether they apply to day trading or long-term investing.' },
@@ -3088,13 +3088,13 @@
     return `<tr><td class="ct-label">${esc(label)}</td>` + cells.map(c => `<td>${isHtml ? c : esc(c)}</td>`).join('') + '</tr>';
   }
   async function loadCompare() {
-    if (compareSymbols.length < 2) { $('compareResult').innerHTML = `<p class="compare-note">Add at least two tickers to compare.</p>`; return; }
+    if (compareSymbols.length < 2) { $('compareResult').innerHTML = `<p class="compare-note">Add at least two stocks to compare.</p>`; return; }
     $('compareResult').innerHTML = skelLines(5);
     let data;
     try { data = await (await fetch('/api/compare?symbols=' + encodeURIComponent(compareSymbols.join(',')))).json(); } catch { $('compareResult').innerHTML = `<p class="compare-note">Couldn’t load comparison.</p>`; return; }
     if (isProGate(data)) { $('compareResult').innerHTML = proGateHtml(data); return; }
     const rows = (data.compare || []).filter(r => !r.error);
-    if (rows.length < 2) { $('compareResult').innerHTML = `<p class="compare-note">Couldn’t load enough data. Check the tickers.</p>`; return; }
+    if (rows.length < 2) { $('compareResult').innerHTML = `<p class="compare-note">Couldn’t load enough data. Check the symbols.</p>`; return; }
     let html = `<div class="compare-scroll"><table class="compare-table"><thead><tr><th></th>` +
       rows.map(r => `<th data-s="${esc(r.symbol)}">${esc(r.symbol)}<span class="ct-name">${esc(r.name || '')}</span></th>`).join('') + `</tr></thead><tbody>`;
     html += ctRow('Price', rows.map(r => '$' + (+r.price).toFixed(2)));
@@ -3205,7 +3205,7 @@
         trialDays > 0 ? `${trialDays} days free on your first subscription.` : ''].filter(Boolean).join(' ');
     }
     const signedIn = !!currentUser;
-    $('homeEndCta').textContent = signedIn ? 'Analyze a ticker' : 'Create a free account';
+    $('homeEndCta').textContent = signedIn ? 'Analyze a stock' : 'Create a free account';
     $('homeEndTry').classList.toggle('hidden', signedIn);
   }
   if ($('homeEndCta')) $('homeEndCta').addEventListener('click', () => currentUser ? showView('analyze') : openAuth('signup'));

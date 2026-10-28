@@ -105,7 +105,7 @@ const buildPrivacy = () => h('Privacy Policy', [
       '<strong>Email address</strong>: to identify your account and to contact you about it',
       '<strong>Password</strong>: stored only as a scrypt hash with a per-user salt, never in plain text and never recoverable',
       '<strong>Session token</strong>: a random value in an HttpOnly cookie so you stay signed in',
-      '<strong>Watchlist and price alerts</strong>: the ticker symbols and targets you choose to save',
+      '<strong>Watchlist and price alerts</strong>: the stocks and targets you choose to save',
       '<strong>Plan status</strong>: whether the account is free or Pro',
       '<strong>Email confirmation and sign-in codes</strong>: whether the address has been confirmed, a short-lived token while a confirmation link is outstanding, and a short-lived code while a sign-in is in progress',
       '<strong>Google account identifier</strong>: only if you sign in with Google: the opaque user id Google issues for you, stored so the same Google account signs into the same ChartGauge account next time. It is not your Google password, and it gives no access to anything else in your Google account.',
@@ -122,9 +122,9 @@ const buildPrivacy = () => h('Privacy Policy', [
 
   s('Who your data is sent to', `Using the service sends some information to these third parties:`,
     ul([
-      '<strong>Twelve Data</strong>: the ticker or pair you look up, to fetch prices.',
-      '<strong>Financial Modeling Prep</strong> and <strong>Finnhub</strong>: the ticker you look up, to fetch fundamentals and news.',
-      '<strong>Anthropic</strong>: when a written summary is generated: the ticker and the computed indicator values. If you upload a chart screenshot for reading, the image is sent too. Do not upload images containing personal or account information.',
+      '<strong>Twelve Data</strong>: the stock or crypto pair you look up, to fetch prices.',
+      '<strong>Financial Modeling Prep</strong> and <strong>Finnhub</strong>: the stock you look up, to fetch fundamentals and news.',
+      '<strong>Anthropic</strong>: when a written summary is generated: the stock and the computed indicator values. If you upload a chart screenshot for reading, the image is sent too. Do not upload images containing personal or account information.',
       '<strong>Stripe</strong>: your email address and subscription details, if you subscribe. If you are an affiliate and choose to be paid through Stripe, your email address is used to open a payout account with Stripe, and the bank details you then enter go to Stripe directly and are never seen by ' + SITE + '.',
       '<strong>Google Analytics</strong>: page views and general usage, to see which parts of the site get used. Only after you accept the cookie banner; if you decline, nothing is sent to Google.',
       '<strong>Google (sign-in)</strong>: only if you choose "Continue with Google". You sign in on Google\u2019s own page; ' + SITE + ' never sees your Google password. ' + SITE + ' asks Google for two things: your email address and your account identifier. Nothing else is requested, and nothing is written back to your Google account.',

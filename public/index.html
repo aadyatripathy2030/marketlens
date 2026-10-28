@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>ChartGauge | find, size and time stock and crypto trades</title>
-<meta name="description" content="Type a stock or crypto ticker and get a buy, sell or hold call with a stop and a target, graded in public against what the price did next. Trading can lose money; not financial advice." />
+<meta name="description" content="Look up any stock or crypto pair and get a buy, sell or hold call with a stop and a target, graded in public against what the price did next. Trading can lose money; not financial advice." />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <!-- 180px is what iOS asks for. This used to point at avatar.png, the
      4096px original, so every device saving the site pulled 490KB for an icon. -->
@@ -71,9 +71,9 @@
          to start in. Everything else on the page is evidence for it. -->
     <div class="hero">
       <h1 class="hero-h">Find, size and time your next trade.</h1>
-      <p class="hero-sub">Type a stock or crypto ticker. ChartGauge reads the chart, makes a buy, sell or hold call with a stop and a target, and grades every call in public.</p>
+      <p class="hero-sub">Search any stock or crypto pair. ChartGauge reads the chart, makes a buy, sell or hold call with a stop and a target, and grades every call in public.</p>
       <form class="hero-search" id="heroForm">
-        <input id="heroInput" class="input" aria-label="Search for a ticker, company or crypto pair" placeholder="AAPL, Tesla, BTC/USD" autocomplete="off" maxlength="16" />
+        <input id="heroInput" class="input" aria-label="Search for a stock or crypto pair" placeholder="AAPL, Tesla, BTC/USD" autocomplete="off" maxlength="16" />
         <button type="submit" class="btn btn-primary">Analyze</button>
       </form>
       <p class="hero-assure">The chart is free to anyone. The reading needs a free account, no card.</p>
@@ -100,7 +100,7 @@
     <section class="home-sec" id="homeHow">
       <h2 class="home-h">How it works</h2>
       <ol class="steps">
-        <li><span class="step-n">1</span><h3 class="step-h">Type a ticker</h3><p>Any US-listed stock, or a crypto pair such as BTC/USD. Pick day trading or long-term.</p></li>
+        <li><span class="step-n">1</span><h3 class="step-h">Pick a stock</h3><p>Any US-listed company, or a crypto pair such as BTC/USD. Pick day trading or long-term.</p></li>
         <li><span class="step-n">2</span><h3 class="step-h">Get the call</h3><p>Buy, sell or hold, worked out from the indicators, with a stop-loss and a take-profit level set from the stock&rsquo;s own recent range.</p></li>
         <li><span class="step-n">3</span><h3 class="step-h">Check it first</h3><p>See how often readings like this one have paid off on that symbol before. When the history disagrees, the call drops to hold.</p></li>
       </ol>
@@ -119,7 +119,7 @@
       <div class="tools">
         <a class="tool" href="/practice" data-view="practice"><h3 class="tool-h">Practice</h3><p>Trade pretend money at live prices, with a risk meter on the whole account. Nothing touches a broker.</p><span class="tool-go">Open practice &rarr;</span></a>
         <a class="tool" href="/learn" data-view="learn"><h3 class="tool-h">Learn</h3><p>Nineteen short lessons with quizzes, on day trading and on long-term investing. Free, no account needed.</p><span class="tool-go">Start a lesson &rarr;</span></a>
-        <a class="tool" href="/alerts" data-view="alerts"><h3 class="tool-h">Watchlist and alerts</h3><p>Keep the tickers you follow in one place, and get flagged when one crosses a price you set.</p><span class="tool-go">Set an alert &rarr;</span></a>
+        <a class="tool" href="/alerts" data-view="alerts"><h3 class="tool-h">Watchlist and alerts</h3><p>Keep the stocks you follow in one place, and get flagged when one crosses a price you set.</p><span class="tool-go">Set an alert &rarr;</span></a>
         <a class="tool" href="/screener" data-view="screener"><h3 class="tool-h">Screener and compare</h3><p>Filter stocks by sector, size and price, then put two or more side by side on valuation, margins and debt.</p><span class="tool-go">Open the screener &rarr;</span></a>
       </div>
     </section>
@@ -170,10 +170,10 @@
 
     <!-- The one action, asked again at the end of the page. -->
     <section class="home-end">
-      <h2 class="home-end-h">Start with one ticker.</h2>
+      <h2 class="home-end-h">Start with one stock.</h2>
       <div class="home-end-btns">
         <button type="button" class="btn btn-primary" id="homeEndCta">Create a free account</button>
-        <button type="button" class="btn btn-ghost" id="homeEndTry">Search a ticker</button>
+        <button type="button" class="btn btn-ghost" id="homeEndTry">Search for a stock</button>
       </div>
     </section>
   </section>
@@ -184,7 +184,7 @@
   <div class="controls">
     <form class="search" id="searchForm">
       <div class="search-box">
-        <input type="text" id="symbol" class="input" aria-label="Ticker or crypto pair" placeholder="Ticker or crypto pair: AAPL, TSLA, BTC/USD" autocomplete="off" maxlength="16" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest" />
+        <input type="text" id="symbol" class="input" aria-label="Stock or crypto pair" placeholder="Stock or crypto pair: Apple, TSLA, BTC/USD" autocomplete="off" maxlength="16" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggest" />
         <div class="suggest hidden" id="suggest" role="listbox"></div>
       </div>
       <button type="submit" class="btn btn-primary" id="goBtn">Analyze</button>
@@ -467,7 +467,7 @@
     <h1 class="view-h">Price alerts</h1>
     <p class="learn-lead">Get flagged when a stock crosses your target. Alerts are checked each time you open this page.</p>
     <form class="alert-form" id="alertForm">
-      <input id="alSymbol" class="input sc-in" placeholder="Ticker or pair" maxlength="16" autocomplete="off" />
+      <input id="alSymbol" class="input sc-in" placeholder="Stock or pair" maxlength="16" autocomplete="off" />
       <select id="alDir" class="sel"><option value="above">rises above</option><option value="below">falls below</option></select>
       <input id="alTarget" class="input sc-in" placeholder="Target $" inputmode="decimal" />
       <button class="btn btn-primary" type="submit">Add alert</button>
@@ -479,7 +479,7 @@
   <section class="view hidden" id="view-compare">
     <h1 class="view-h">Compare stocks</h1>
     <form class="compare-add" id="compareForm">
-      <input id="compareInput" class="input" placeholder="Add a ticker or pair: NVDA, BTC/USD" maxlength="16" autocomplete="off" />
+      <input id="compareInput" class="input" placeholder="Add a stock or pair: NVDA, BTC/USD" maxlength="16" autocomplete="off" />
       <button class="btn btn-primary" type="submit">Add</button>
     </form>
     <div class="compare-chips" id="compareChips"></div>
