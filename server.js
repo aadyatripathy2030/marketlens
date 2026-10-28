@@ -3204,8 +3204,8 @@ const LEGAL = require('./legal');
 const siteOrigin = (req) => (req.headers['x-forwarded-proto'] || 'http') + '://' + (req.headers.host || 'chartgauge.com');
 
 const VIEW_SEO = {
-  '': { view: 'home', title: 'ChartGauge | charts, indicators and trade levels for stocks and crypto',
-    desc: 'Stock and crypto charts with thirteen indicators, stop-loss and take-profit levels and a written read of the chart, plus a public record of how often the read was right. Built for trading; losses are a real risk.' },
+  '': { view: 'home', title: 'ChartGauge | find, size and time stock and crypto trades',
+    desc: 'Type a stock or crypto ticker and get a buy, sell or hold call with a stop and a target, graded in public against what the price did next. Trading can lose money; not financial advice.' },
   'analyze': { view: 'analyze', title: 'Analyze a stock or crypto pair | ChartGauge',
     desc: 'Enter a ticker or crypto pair for a candlestick chart, 13 technical indicators, an indicator score, and stop-loss and take-profit levels derived from ATR and recent swing highs and lows.' },
   'markets': { view: 'markets', title: 'Market snapshot: indices and trending stocks | ChartGauge',

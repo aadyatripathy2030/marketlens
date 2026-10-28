@@ -2723,7 +2723,8 @@
     if (!opts || !opts.fromUrl) syncUrl(name, !!(opts && opts.replace));
     VIEWS.forEach(v => $('view-' + v).classList.toggle('hidden', v !== name));
     currentView = name;
-    document.querySelectorAll('.drawer-link').forEach(l => l.classList.toggle('active', l.dataset.view === name));
+    document.body.dataset.view = name;
+    document.querySelectorAll('.drawer-link, .nav-link').forEach(l => l.classList.toggle('active', l.dataset.view === name));
     window.scrollTo(0, 0);
     // The chart panel is a single element shared by the views that show a
     // chart, so it moves to whichever one is on screen. Before the wall check,
@@ -2785,10 +2786,6 @@
 
   // Hero
   $('heroForm').addEventListener('submit', (e) => { e.preventDefault(); const s = $('heroInput').value.trim().toUpperCase(); if (s) goAnalyze(s); });
-  $('heroMarkets').addEventListener('click', () => showView('markets'));
-  // The chips are in the document already, so the page does not shift when
-  // the script arrives; this only wires them up.
-  $('heroExamples').querySelectorAll('.chip').forEach(b => b.addEventListener('click', () => goAnalyze(b.dataset.s)));
 
   // Markets + quotes
   const INDICES = [['SPY', 'S&P 500'], ['QQQ', 'Nasdaq 100'], ['DIA', 'Dow Jones'], ['IWM', 'Russell 2000']];
@@ -3561,6 +3558,9 @@
   // waits for the visitor's first tap or keypress (the consent buttons count),
   // when a shift is expected rather than a surprise, and so does not count
   // against the page's layout stability.
+  // Off: a bar asking to install is one more thing on arrival that is not
+  // the product. The browser's own install control still works.
+  const INSTALL_NUDGE = false;
   let interacted = false, pendingInstall = null;
   const onFirstInteraction = () => {
     interacted = true;
@@ -3573,6 +3573,7 @@
     try { if (localStorage.getItem(INSTALL_KEY) === '1') return; } catch (e) {}
     if (standalone()) return;                      // already installed
     if (!interacted) { pendingInstall = [html, withButton]; return; }
+    if (!INSTALL_NUDGE) return;
     $('installText').innerHTML = html;
     $('installBtn').classList.toggle('hidden', !withButton);
     bar.classList.remove('hidden');
