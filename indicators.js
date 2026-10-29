@@ -94,7 +94,7 @@ const STRAT = {
 };
 
 const RISK = {
-  daytrade: 'High risk. Most day traders lose money over time. This model reads DAILY bars — real day trading needs intraday (minute/hour) data, which you can enable with a market-data key.',
+  daytrade: 'High risk. Most day traders lose money over time, and short-term signals are noisier than long-term ones.',
   longterm: 'Even long-term trends reverse, and past performance does not guarantee future returns. Diversify; do your own research.',
 };
 const SHORT_RISK = ' Selling short adds UNLIMITED loss potential — a stock can keep rising with no ceiling — plus borrow fees, margin calls, and short-squeeze risk.';

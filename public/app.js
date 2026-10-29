@@ -227,7 +227,8 @@
     if (t.macd) bits.push(t.macd.hist > 0 ? 'MACD on the buy side' : 'MACD on the sell side');
     if (t.trend) bits.push((t.trend.strength >= 60 ? 'strong' : t.trend.strength >= 35 ? 'moderate' : 'weak') + ' ' + t.trend.direction + 'trend');
     if (r.insufficient) return `Only ${r.groupCount} of ${r.groupsPossible} indicator groups have enough history here, so no score is shown.`;
-    return `Comprehensive read across 13 signals → ${r.label || '—'}${bits.length ? '. ' + bits.join(', ') + '.' : ''}`;
+    if (!bits.length) return r.label ? `${r.label} reading across 13 indicators.` : '';
+    return `${r.label ? r.label + ' reading: ' : ''}${bits.join(', ')}.`;
   }
 
   // Probabilistic forecast bands.
@@ -477,7 +478,7 @@
       desc: 'The sentence under the price that sums up the read.' },
     { k: 'levels',       on: true,  sel: '#levelsCard',     name: 'Stop loss and take profit',
       desc: 'Exit levels derived from ATR and recent swing highs and lows.' },
-    { k: 'tiles',        on: true,  sel: '.tiles',          name: 'Key figures',
+    { k: 'tiles',        on: false, sel: '.tiles',          name: 'Key figures',
       desc: 'The row of headline numbers above the indicator grid.' },
     { k: 'tech',         on: true,  sel: '#techCard',       name: 'Technical readings',
       desc: 'All thirteen indicators in a grid, each with a one-line read.' },
@@ -3124,7 +3125,7 @@
     html += ctRow('Risk', rows.map(r => esc(r.rating.risk || '—')));
     if (data.hasFundamentals) CMP_ROWS.forEach(label => html += ctRow(label, rows.map(r => r.metrics ? (r.metrics[label] || '—') : '—')));
     html += `</tbody></table></div>`;
-    if (!data.hasFundamentals) html += `<p class="compare-note">Add FMP_API_KEY for fundamental rows (P/E, margins, ROE…).</p>`;
+    if (!data.hasFundamentals) html += `<p class="compare-note">Valuation, margin and debt rows aren’t available right now.</p>`;
     $('compareResult').innerHTML = html;
     $('compareResult').querySelectorAll('thead th[data-s]').forEach(th => th.addEventListener('click', () => goAnalyze(th.dataset.s)));
   }

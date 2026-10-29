@@ -3632,10 +3632,10 @@ function serveDocument(req, res, urlPath) {
 function accuracyHtml(st, horizon) {
   const pc = (v) => v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
   if (!st || !st.graded) {
-    return `<div class="acc-ssr"><p>ChartGauge writes down every reading it shows, before the outcome is known, `
-      + `and grades it against what the price actually did ${horizon} trading days later. `
+    // The lead above already says how grading works; this only says where it stands.
+    return `<div class="acc-ssr"><p>`
       + `${st && st.recorded ? esc(String(st.recorded)) + ' readings have been recorded so far; none have' : 'No readings have'} `
-      + `reached their ${horizon}-day outcome yet, so there is nothing to report. This page will fill in on its own.</p></div>`;
+      + `reached their ${horizon}-trading-day outcome yet, so there is nothing to grade. This page fills in on its own.</p></div>`;
   }
   const rows = ORDERED_LABELS
     .map(l => st.labels.find(x => x.label === l))
