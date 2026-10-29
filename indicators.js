@@ -579,20 +579,21 @@ function headlineCall(rating, e) {
   const lean = rating.score >= 58 ? 'Buy' : rating.score < 42 ? 'Sell' : 'Hold';
   const dir = lean === 'Buy' ? 'up' : 'down';
   const sig = edgeSignal(e);
-  const measured = sig ? sig.why.charAt(0).toLowerCase() + sig.why.slice(1) : '';
+  // Plain words here; the numbers behind the history check (sample size,
+  // margin of error) are in the measured line of the full reading.
   if (lean === 'Hold') {
     return { action: 'Hold', tone: 'neutral', vetoed: false,
-      why: 'The indicators are mixed.' + (sig && sig.action !== 'Hold'
-        ? ` On its own history this setup ${sig.action === 'Buy' ? 'beat' : 'lagged'} the base rate, but the indicators do not point that way.` : '') };
+      why: 'Trend and momentum point different ways, so there is no clear trade.' + (sig && sig.action !== 'Hold'
+        ? ` In the past, setups like this did ${sig.action === 'Buy' ? 'better' : 'worse'} than usual on this symbol, but the indicators do not back that up.` : '') };
   }
   if (sig && ((lean === 'Buy' && sig.action === 'Sell') || (lean === 'Sell' && sig.action === 'Buy'))) {
     return { action: 'Hold', tone: 'neutral', vetoed: true,
-      why: `The indicators lean ${dir}, but ${measured} The call is held back.` };
+      why: `The indicators point ${dir}, but in the past setups like this did ${lean === 'Buy' ? 'worse' : 'better'} than usual on this symbol, so the call is held back.` };
   }
   const tone = lean === 'Buy' ? 'bullish' : 'bearish';
-  const why = !sig ? `The indicators lean ${dir}. There is not enough history on this symbol to check that against its past.`
-    : sig.action === 'Hold' ? `The indicators lean ${dir}, and this symbol's own history does not disagree: ${measured}`
-    : `The indicators lean ${dir}, and this symbol's own history agrees: ${measured}`;
+  const why = !sig ? `The indicators point ${dir}. There is not enough history on this symbol yet to check that against its past.`
+    : sig.action === 'Hold' ? `The indicators point ${dir}. In the past, setups like this did about as well as an average day on this symbol, so treat it as a lean rather than a strong signal.`
+    : `The indicators point ${dir}, and in the past setups like this did ${lean === 'Buy' ? 'better' : 'worse'} than usual on this symbol.`;
   return { action: lean, tone, vetoed: false, why };
 }
 

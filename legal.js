@@ -54,12 +54,12 @@ const buildTerms = () => h('Terms of Service', [
     `By using ${SITE} you agree to these terms. If you do not agree, do not use the service.`),
 
   s('It is not financial advice',
-    `Nothing on ${SITE} is financial, investment, legal, or tax advice, and no adviser, broker, or fiduciary relationship is created by your use of it. ${SITE} does show a Buy / Sell / Hold verdict. It is a mechanical output, not advice: it is taken from the indicator score, and held back to Hold whenever bars resembling the current one went on to perform clearly worse, or better, than that same symbol's own base rate over the same period. It is not a prediction, it is not personalised to you or your circumstances, and it is not a recommendation that you do anything.`,
+    `Nothing on ${SITE} is financial, investment, legal, or tax advice, and no adviser, broker, or fiduciary relationship is created by your use of it. ${SITE} does show a Buy / Sell / Hold verdict. It is a mechanical output, not advice: it is taken from the indicator score, and held back to Hold whenever bars resembling the current one went on to perform clearly worse, or better, than that same symbol's own base rate over the same period. It is not a prediction, it is not personalized to you or your circumstances, and it is not a recommendation that you do anything.`,
     `The scores, ratings, projections, levels, and written summaries are mechanical outputs of formulas applied to past prices. They are frequently wrong. ${SITE} publishes a measured base rate beside its own score precisely so you can see how often that reading has actually preceded the move it implies, which is often no more often than chance.`,
     `All trading and investing involves risk, including the loss of everything you put in. Every decision you make, and every consequence of it, is yours alone.`),
 
   s('Accuracy and availability',
-    `Market data comes from third-party providers and may be delayed, incomplete, or wrong. When live data is unavailable the service falls back to clearly-labelled demo data, which is generated and does not represent any real market.`,
+    `Market data comes from third-party providers and may be delayed, incomplete, or wrong. When live data is unavailable the service falls back to clearly-labeled demo data, which is generated and does not represent any real market.`,
     `${SITE} is provided as-is, with no guarantee of uptime, accuracy, or fitness for any purpose. It may be slow, unavailable, or discontinued at any time.`),
 
   s('Your account',
@@ -81,9 +81,9 @@ const buildTerms = () => h('Terms of Service', [
     `<strong>Free with any account:</strong> the full chart and every indicator on it, for stocks and crypto; the stop-loss level and one take-profit level; the mechanical score and the measured base rate beside it; a limited number of AI-written reports each day, with the rule-based written read always available after that; a watchlist and a small number of price alerts; and every lesson. The chart itself can be viewed without an account. A free account (an email address and a password) is required for everything read from it and for the other market-data pages; the lessons and these policy pages are readable without one.${MAIL_ON ? ' A new account must confirm its address by opening a link sent to it before it can be used, and every sign-in, including with Google, is completed with a code sent to that address when email can be delivered.' : ''}`,
     `<strong>Pro adds:</strong> AI-written reports without the daily limit; reading an uploaded chart image; the screener and side-by-side compare; additional take-profit levels; and a watchlist and alerts without limits.`,
     `The daily limits and allowances above may be adjusted as running costs change. Any reduction applies from your next renewal.`,
-    `Subscriptions are billed in advance on the period you choose and renew automatically until cancelled. Payments are processed by Stripe; ${SITE} never receives or stores your card details. Prices may change, and any change applies from your next renewal, not retroactively.`,
+    `Subscriptions are billed in advance on the period you choose and renew automatically until canceled. Payments are processed by Stripe; ${SITE} never receives or stores your card details. Prices may change, and any change applies from your next renewal, not retroactively.`,
     TRIAL_DAYS > 0
-      ? `A first subscription starts with a free trial of ${TRIAL_DAYS} days. A card is taken at sign-up but nothing is charged during the trial, and cancelling before it ends costs nothing. If you do not cancel, the first payment is taken automatically on the day the trial ends and the subscription continues normally. The trial is offered once per account: if you have subscribed before, checkout charges immediately and the Plans page says so rather than offering a trial it will not give you.`
+      ? `A first subscription starts with a free trial of ${TRIAL_DAYS} days. A card is taken at sign-up but nothing is charged during the trial, and canceling before it ends costs nothing. If you do not cancel, the first payment is taken automatically on the day the trial ends and the subscription continues normally. The trial is offered once per account: if you have subscribed before, checkout charges immediately and the Plans page says so rather than offering a trial it will not give you.`
       : '',
     `Cancellation and refunds are covered on the <a href="/refunds">Refunds and Cancellation</a> page.`),
 
@@ -111,7 +111,7 @@ const buildPrivacy = () => h('Privacy Policy', [
       '<strong>Google account identifier</strong>: only if you sign in with Google: the opaque user id Google issues for you, stored so the same Google account signs into the same ChartGauge account next time. It is not your Google password, and it gives no access to anything else in your Google account.',
       '<strong>Affiliate details</strong>: only if you are invited into the affiliate programme and accept: a referral code, a count of the accounts created through your link, and the payout details you choose to enter (the name on the account and either a US bank account or a PayPal address). The account and routing numbers are stored encrypted with a key that is not kept in the database, are read only to send you a payment, and are deleted with your account. Money is only ever paid into the account you name; nothing is ever taken from it.',
     ]),
-    `Everything beyond the bare chart requires an account, so using those features means the above exists. The lessons and these policy pages can be read without an account, and reading them creates none of it. Your display preferences (simple or advanced mode, candle colours, the number of take-profit levels) are kept in your own browser and are never sent to the server.`),
+    `Everything beyond the bare chart requires an account, so using those features means the above exists. The lessons and these policy pages can be read without an account, and reading them creates none of it. Your display preferences (simple or advanced mode, candle colors, the number of take-profit levels) are kept in your own browser and are never sent to the server.`),
 
   s('What is never stored',
     ul([
@@ -161,16 +161,16 @@ const buildRefunds = () => h('Refunds and Cancellation', [
     `A Pro subscription covers the market-data and model costs of running ${SITE} and pays for the features that cost money each time they run: AI-written reports without the daily limit, chart-image reading, the screener and side-by-side compare, extra take-profit levels, and an unlimited watchlist and alerts.`,
     `The chart itself, every indicator, the stop-loss and take-profit levels, the score and the measured base rate beside it remain free for everyone, subscribed or not. Pro is worth paying for only if you want the parts listed above. The tool is fully usable without it. See the <a href="/terms">Terms of Service</a> for the full split.`),
 
-  s('Cancelling',
+  s('Canceling',
     TRIAL_DAYS > 0
-      ? `If you are in the free trial, cancelling before it ends means you are never charged at all. The Plans page shows the trial you would get, and Stripe emails you before the first payment.`
+      ? `If you are in the free trial, canceling before it ends means you are never charged at all. The Plans page shows the trial you would get, and Stripe emails you before the first payment.`
       : '',
     `You can cancel at any time, with no notice period and no cancellation fee, from the <strong>Manage subscription</strong> button on the Plans page. That opens Stripe's billing portal, where cancellation takes effect immediately for future renewals.`,
     `When you cancel, your subscription runs to the end of the period you have already paid for and then stops. After that the account returns to the free tier: nothing you saved is deleted, but the Pro-only features stop and the free daily limits apply again.`),
 
   s('Refunds',
     `If you are unhappy for any reason, email <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> within <strong>14 days</strong> of a charge and it will be refunded in full, no questions asked.`,
-    `After 14 days, a charge for the current period is generally not refunded. Cancel instead, and you will not be billed again. If something went genuinely wrong, such as being charged twice or charged after cancelling, that is refunded whenever you report it.`,
+    `After 14 days, a charge for the current period is generally not refunded. Cancel instead, and you will not be billed again. If something went genuinely wrong, such as being charged twice or charged after canceling, that is refunded whenever you report it.`,
     `Refunds go back to the original payment method through Stripe and usually appear within five to ten business days, depending on your bank.`),
 
   s('Before you dispute a charge',
@@ -246,7 +246,7 @@ const buildAccessibility = () => h('Accessibility Statement', [
       'Every page can be used with a keyboard alone. The first link on each page skips to the content, and the focused control is always visibly outlined.',
       'Pages use landmarks (header, navigation, main, footer), one top-level heading each, headings in order, and a declared language.',
       'Text and controls meet the 4.5:1 and 3:1 contrast ratios in the default dark theme, and the site honours the system light and dark setting.',
-      'Form fields have labels, and errors are written out next to the field rather than shown by colour alone.',
+      'Form fields have labels, and errors are written out next to the field rather than shown by color alone.',
       'Animation stops when the operating system asks for reduced motion. Nothing moves, flashes or plays sound on its own.',
       'The site works at a 320 pixel width, zooms to 400% without horizontal scrolling, and its buttons and links are at least 24 by 24 pixels.',
       'There is no accessibility overlay widget. The fixes are in the pages themselves.',
@@ -255,7 +255,7 @@ const buildAccessibility = () => h('Accessibility Statement', [
   s('Known gaps',
     ul([
       'The candlestick chart is drawn on a canvas, which a screen reader cannot read. The numbers it shows are also presented as text: the last price, the change, every indicator value, the score and the stop-loss and take-profit levels. A per-bar text table of the chart is not yet offered.',
-      'Up and down candles are told apart by colour. The colours can be changed in Settings, and every figure the colours summarise is also given as a signed number, but the chart itself still relies on colour.',
+      'Up and down candles are told apart by color. The colors can be changed in Settings, and every figure the colors summarize is also given as a signed number, but the chart itself still relies on color.',
       'The chart-image reading accepts a screenshot and describes it in text, which is the accessible direction; there is no equivalent in the other direction yet.',
     ])),
 

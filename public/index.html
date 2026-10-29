@@ -35,6 +35,7 @@
     <a class="nav-link" href="/analyze" data-view="analyze">Analyze</a>
     <a class="nav-link" href="/practice" data-view="practice">Practice</a>
     <a class="nav-link" href="/learn" data-view="learn">Learn</a>
+    <a class="nav-link" href="/accuracy" data-view="accuracy">Track record</a>
     <a class="nav-link" href="/pricing" data-view="pricing">Pricing</a>
     <button type="button" class="nav-more" id="navMore" aria-expanded="false" aria-controls="drawer">More</button>
   </nav>
@@ -128,7 +129,7 @@
 
     <!-- What else is here, as a list rather than tiles. -->
     <section class="home-sec">
-      <h2 class="home-h">Practise, learn, and keep watch</h2>
+      <h2 class="home-h">Practice, learn, and keep watch</h2>
       <div class="tools">
         <a class="tool" href="/practice" data-view="practice"><h3 class="tool-h">Practice</h3><p>Trade pretend money at live prices, with a risk meter on the whole account. Nothing touches a broker.</p><span class="tool-go">Open practice &rarr;</span></a>
         <a class="tool" href="/learn" data-view="learn"><h3 class="tool-h">Learn</h3><p>Nineteen short lessons with quizzes, on day trading and on long-term investing. Free, no account needed.</p><span class="tool-go">Start a lesson &rarr;</span></a>
@@ -159,7 +160,7 @@
           <ul class="plan2-list">
             <li>A written report on every call, not three a day</li>
             <li>Second and third take-profit levels on every call</li>
-            <li>Read any chart from a screenshot</li>
+            <li>Upload a chart screenshot from any app and get it read</li>
             <li>The screener and side-by-side compare</li>
             <li>No limit on the watchlist or alerts</li>
           </ul>
@@ -299,14 +300,14 @@
           </div>
           <div class="color-panel hidden" id="colorPanel">
             <div class="cp-row"><span class="cp-lbl">Up</span>
-              <label>Body <input type="color" data-c="upBody" aria-label="up body colour" /></label>
-              <label>Border <input type="color" data-c="upBorder" aria-label="up border colour" /></label>
-              <label>Wick <input type="color" data-c="upWick" aria-label="up wick colour" /></label>
+              <label>Body <input type="color" data-c="upBody" aria-label="up body color" /></label>
+              <label>Border <input type="color" data-c="upBorder" aria-label="up border color" /></label>
+              <label>Wick <input type="color" data-c="upWick" aria-label="up wick color" /></label>
             </div>
             <div class="cp-row"><span class="cp-lbl">Down</span>
-              <label>Body <input type="color" data-c="downBody" aria-label="down body colour" /></label>
-              <label>Border <input type="color" data-c="downBorder" aria-label="down border colour" /></label>
-              <label>Wick <input type="color" data-c="downWick" aria-label="down wick colour" /></label>
+              <label>Body <input type="color" data-c="downBody" aria-label="down body color" /></label>
+              <label>Border <input type="color" data-c="downBorder" aria-label="down border color" /></label>
+              <label>Wick <input type="color" data-c="downWick" aria-label="down wick color" /></label>
             </div>
             <button type="button" class="link-btn" id="cpReset">Reset to theme colors</button>
           </div>
@@ -623,7 +624,7 @@
             </div>
           </div>
           <!-- The real chart is moved in here. One renderer, so every layer,
-               colour and interaction the analyze page has works here too. -->
+               color and interaction the analyze page has works here too. -->
           <div id="chartSlotPractice"></div>
         </div>
 
@@ -712,7 +713,7 @@
 
     <div class="danger" id="dangerZone">
       <h2 class="danger-h">Delete your account</h2>
-      <p class="danger-p">This removes your account, your watchlist and your price alerts permanently. It cannot be undone. If you have a Pro subscription it is cancelled first, so you will not be charged again.</p>
+      <p class="danger-p">This removes your account, your watchlist and your price alerts permanently. It cannot be undone. If you have a Pro subscription it is canceled first, so you will not be charged again.</p>
       <label class="danger-label" for="delConfirm">Type <b>DELETE</b> to confirm</label>
       <div class="danger-row">
         <input type="text" id="delConfirm" class="input" placeholder="DELETE" autocomplete="off" spellcheck="false" />

@@ -1228,7 +1228,8 @@ body.drawer-open .drawer { transform: translateX(0); }
 .nav { flex: 0 1 auto; margin-left: 32px; gap: 8px; }
 .nav-link { font-size: 15px; font-weight: 500; padding: 8px; background: none; transition: color .15s; }
 .nav-link.active { color: var(--text); background: none; box-shadow: inset 0 -1px 0 var(--text); border-radius: 0; }
-@media (max-width: 760px) { .nav { display: none; } .topbar { padding: 12px 16px; } }
+@media (max-width: 1099px) { .nav { display: none; } }
+@media (max-width: 760px) { .topbar { padding: 12px 16px; } }
 
 /* Surfaces: a hairline at most. Nothing floats. */
 .card, .feature, .learn-card, .plan-card, .chart-card, .admin-stat, .aff-card, .wl-card, .modal, .suggest, .consent { box-shadow: none; }
@@ -1275,8 +1276,8 @@ body.drawer-open .drawer { transform: translateX(0); }
 
 /* The rest of the front page: each section is a heading, a hairline and
    room. No boxes; columns and distance do the grouping. */
-.home-sec { margin: 0 0 64px; padding: 64px 0 0; border-top: 1px solid var(--border); }
-.home-h { font-size: 32px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; margin: 0 0 32px; }
+.home-sec { margin: 0 0 48px; padding: 48px 0 0; border-top: 1px solid var(--border); }
+.home-h { font-size: 32px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; margin: 0 0 24px; }
 .home-sec p { font-size: 17px; line-height: 1.6; color: var(--muted); }
 .steps { list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
 .step-n { display: block; font-size: 15px; font-weight: 600; color: var(--muted); margin-bottom: 16px; }
@@ -1305,16 +1306,16 @@ body.drawer-open .drawer { transform: translateX(0); }
 .faq summary::after { content: '+'; font-weight: 400; color: var(--muted); transition: transform .2s; }
 .faq details[open] summary::after { transform: rotate(45deg); }
 .faq details p { margin: -8px 0 24px; max-width: 64ch; }
-.home-end { padding: 96px 0 32px; border-top: 1px solid var(--border); }
+.home-end { padding: 64px 0 16px; border-top: 1px solid var(--border); }
 .home-end-h { font-size: clamp(32px, 4.4vw, 56px); font-weight: 700; letter-spacing: -.03em; line-height: 1.1; margin: 0 0 32px; }
 .home-end-btns { display: flex; gap: 8px; flex-wrap: wrap; }
 .home-end-btns .hidden { display: none; }
 @media (max-width: 760px) {
   .steps, .tools, .plans-2 { grid-template-columns: 1fr; }
-  .home-sec { padding-top: 48px; margin-bottom: 48px; }
+  .home-sec { padding-top: 40px; margin-bottom: 40px; }
   .home-h { font-size: 26px; }
   .tools { gap: 32px; }
-  .home-end { padding-top: 64px; }
+  .home-end { padding-top: 48px; }
 }
 @media (prefers-reduced-motion: reduce) { .faq summary::after { transition: none; } }
 
@@ -1342,7 +1343,7 @@ body:not([data-view="analyze"]) .disclaimer { display: none; }
 #view-home { margin: 0; }
 
 /* Footer: links, the risk line, the year and a way to reach a person. */
-.site-foot { margin-top: 96px; padding-top: 32px; }
+.site-foot { margin-top: 64px; padding-top: 32px; }
 .foot-links { gap: 8px 24px; margin-bottom: 16px; }
 .foot-note { max-width: 64ch; }
 .foot-copy a { color: var(--muted); }
@@ -1351,10 +1352,13 @@ body:not([data-view="analyze"]) .disclaimer { display: none; }
 .disclaimer a { color: var(--accent); }
 
 /* Scroll reveal: a short fade and rise, once, for things below the fold.
+   It fires a quarter-screen before the element arrives.
    The class is only ever added by script, so without it everything shows. */
-.rv { opacity: 0; transform: translateY(16px); transition: none; }
+/* Never fully hidden: a section caught mid-reveal by a fast scroll is faint,
+   not missing. */
+.rv { opacity: .25; transform: translateY(8px); transition: none; }
 .rv.in { opacity: 1; transform: none;
-  transition: opacity .45s ease-out, transform .45s cubic-bezier(.2,.7,.2,1); transition-delay: var(--rd, 0ms); }
+  transition: opacity .3s ease-out, transform .3s cubic-bezier(.2,.7,.2,1); transition-delay: var(--rd, 0ms); }
 @media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; transition: none; } }
 
 /* ---- Headline face ---- */
@@ -1371,17 +1375,18 @@ body:not([data-view="analyze"]) .disclaimer { display: none; }
 
 /* ---- Header: one way to navigate per width ---- */
 /* Wide: the four links plus More, which opens the full menu. Narrow: the
-   menu button alone. */
+   menu button alone. The five links need about 1100px beside the account
+   buttons, so that is where it switches. */
 .nav-more { font: inherit; font-size: 15px; font-weight: 500; color: var(--muted); background: none; border: 0; padding: 8px; cursor: pointer; transition: color .15s; }
 .nav-more:hover { color: var(--text); }
-@media (min-width: 761px) { .nav-toggle { display: none; } }
+@media (min-width: 1100px) { .nav-toggle { display: none; } }
 /* Data source as a status, not a button: a dot and a word. */
 .tag { background: none; border: 0; padding: 0 8px 0 0; font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
 .tag::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
 .tag.demo::before { background: var(--warn); }
 
 /* ---- Hero: the pitch on the left, the live reading on the right ---- */
-.hero-wrap { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 64px; align-items: center; padding: 64px 0 96px; }
+.hero-wrap { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 64px; align-items: center; padding: 48px 0 64px; }
 .hero-wrap .hero { padding: 0; }
 .hero-h { font-size: clamp(38px, 4.6vw, 64px); max-width: 14ch; }
 .hero-sub { max-width: 46ch; }
@@ -1390,7 +1395,7 @@ body:not([data-view="analyze"]) .disclaimer { display: none; }
 @media (max-width: 560px) { .hero-search .input { flex: none; } }
 .hero-assure { color: var(--muted); }
 .hero-wrap .home-chart { margin: 0; }
-@media (max-width: 1100px) { .hero-wrap { grid-template-columns: 1fr; gap: 48px; padding: 48px 0 64px; } .hero-h { max-width: 18ch; } }
+@media (max-width: 1100px) { .hero-wrap { grid-template-columns: 1fr; gap: 40px; padding: 40px 0 48px; } .hero-h { max-width: 18ch; } }
 #view-home { max-width: 1280px; }
 
 /* The call, set above the chart it was read from. */
@@ -1420,9 +1425,9 @@ body:not([data-view="analyze"]) .disclaimer { display: none; }
 @media (max-width: 560px) { #chartSlotHome #chart { height: 300px; } }
 
 /* ---- The band: the one change of pace on the page ---- */
-.home-band { margin: 0 0 96px; padding: 64px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); }
+.home-band { margin: 0 0 48px; padding: 56px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); }
 .home-band-h { font-size: clamp(30px, 3.6vw, 48px); font-weight: 700; letter-spacing: -.025em; line-height: 1.12; max-width: 22ch; margin: 0 0 24px; }
 .home-band p { font-size: 19px; line-height: 1.6; color: var(--muted); max-width: 60ch; }
-@media (max-width: 760px) { .home-band { padding: 40px 24px; margin-bottom: 64px; } .home-band p { font-size: 17px; } }
+@media (max-width: 760px) { .home-band { padding: 40px 24px; margin-bottom: 40px; } .home-band p { font-size: 17px; } }
 .home-band + .home-sec { border-top: 0; padding-top: 0; }
 .faq a { color: var(--accent); }

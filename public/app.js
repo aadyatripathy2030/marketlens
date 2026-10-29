@@ -843,9 +843,10 @@
         const el = e.target;
         if (!el.classList.contains('rv')) {
           if (!e.boundingClientRect.height) return;  // in a hidden view; asked again when shown
+          // In sight, or within the pre-trigger zone below it: left alone.
           if (e.isIntersecting || e.boundingClientRect.top < innerHeight) { revealIO.unobserve(el); return; }
-          const i = el.parentElement ? Array.prototype.indexOf.call(el.parentElement.children, el) % 4 : 0;
-          el.style.setProperty('--rd', (i * 60) + 'ms');
+          const i = el.parentElement ? Array.prototype.indexOf.call(el.parentElement.children, el) % 3 : 0;
+          el.style.setProperty('--rd', (i * 40) + 'ms');
           el.classList.add('rv');
           return;
         }
@@ -859,7 +860,7 @@
         });
         el.classList.add('in');
         revealIO.unobserve(el);
-      }), { rootMargin: '0px 0px -8% 0px', threshold: 0.08 })
+      }), { rootMargin: '0px 0px 25% 0px', threshold: 0 })
     : null;
   let revealQueued = false;
   function revealScan() {
@@ -1817,7 +1818,7 @@
     $('homeCallLv').innerHTML = L
       ? `<span><i class="lv-dot bad"></i>Stop <b>${esc(pxFmt(L.stop))}</b></span>`
         + (t ? `<span><i class="lv-dot good"></i>Target <b>${esc(pxFmt(t.price))}</b></span>` : '')
-        + `<span class="muted">for a ${L.direction === 'short' ? 'short' : 'long'} trade</span>`
+        + `<span class="muted">${L.direction === 'short' ? 'if you sell short' : 'if you buy'}</span>`
       : '';
     $('homeCallWhy').textContent = call.why || '';
     $('homeCall').classList.remove('hidden');
@@ -3904,7 +3905,7 @@
     const err = p.get('google_error');
     if (!err && !p.get('google')) return;
     const MSG = {
-      cancelled: 'Google sign-in was cancelled.',
+      canceled: 'Google sign-in was canceled.',
       mail: 'Google signed you in, but the sign-in code could not be emailed. Please try again in a minute.',
       expired: 'That sign-in link expired. Please try again.',
       unverified_email: 'That Google account has no verified email address, so it cannot be used to sign in.',

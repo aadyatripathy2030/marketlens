@@ -117,7 +117,7 @@ window.LESSONS = [
       { q: 'Dollar-cost averaging is…', options: ['Buying only at all-time highs', 'Investing a fixed amount on a schedule', 'A type of option'], correct: 1, why: 'Investing steadily over time buys more when cheap, fewer when expensive, reducing timing risk.' },
       { q: 'Trying to time short-term moves is…', options: ['Easy and reliable', 'Guaranteed to beat the market', 'Very hard; missing top days hurts'], correct: 2, why: 'Timing is notoriously hard, and missing the best days disproportionately lowers returns.' },
       { q: 'Missing the market\'s ten best days over a long period tends to…', options: ['Barely matter', 'Cut long-run returns substantially', 'Improve returns by avoiding volatility'], correct: 1, why: 'The strongest days cluster near the worst ones, so sitting out the bad periods usually means missing the rebound too. Time in the market beats timing it.' },
-      { q: 'Why does compounding favour starting early more than investing more?', options: ['Early money has more years to double', 'Brokers reward loyalty', 'Older investors pay higher fees'], correct: 0, why: 'Each doubling builds on the last, so the earliest contributions pass through the most doublings. Years matter more than amounts.' },
+      { q: 'Why does compounding favor starting early more than investing more?', options: ['Early money has more years to double', 'Brokers reward loyalty', 'Older investors pay higher fees'], correct: 0, why: 'Each doubling builds on the last, so the earliest contributions pass through the most doublings. Years matter more than amounts.' },
     ],
   },
   {
@@ -199,8 +199,8 @@ window.LESSONS = [
     ],
     quiz: [
       { q: 'A market order guarantees…', options: ['That the order fills', 'The price you saw', 'Both price and fill'], correct: 0, why: 'It guarantees execution, not price. A limit order is the reverse.' },
-      { q: 'Your stop-loss sits at $50 and the stock gaps overnight from $52 to $41. Where do you most likely fill?', options: ['$50', 'Near $41', 'The trade is cancelled'], correct: 1, why: 'A stop becomes a market order when triggered. If price gaps straight through it, you fill at the next available price. A stop is not a floor.' },
-      { q: 'You buy at the ask and sell at the bid. This means…', options: ['Spreads are refunded', 'You always profit', 'Every trade starts slightly negative'], correct: 2, why: 'You pay the spread on entry. A trade must move in your favour by at least the spread before it breaks even.' },
+      { q: 'Your stop-loss sits at $50 and the stock gaps overnight from $52 to $41. Where do you most likely fill?', options: ['$50', 'Near $41', 'The trade is canceled'], correct: 1, why: 'A stop becomes a market order when triggered. If price gaps straight through it, you fill at the next available price. A stop is not a floor.' },
+      { q: 'You buy at the ask and sell at the bid. This means…', options: ['Spreads are refunded', 'You always profit', 'Every trade starts slightly negative'], correct: 2, why: 'You pay the spread on entry. A trade must move in your favor by at least the spread before it breaks even.' },
       { q: 'A limit order to buy at $20 when the stock is $23 will…', options: ['Wait until price falls to $20 or better', 'Fill immediately at $23', 'Be rejected'], correct: 0, why: 'A buy limit is the maximum you will pay. It rests until the market comes to it, and may never fill.' },
       { q: 'Spreads are usually widest…', options: ['In heavily traded large companies', 'At the market open only', 'In thin, low-volume stocks and outside regular hours'], correct: 2, why: 'Fewer participants means a bigger gap between bid and ask. Thin names and extended hours are where spreads cost the most.' },
     ],
@@ -278,16 +278,16 @@ window.LESSONS = [
     intro: 'The predictable ways people misjudge their own decisions with money on the line.',
     sections: [
       { h: 'Loss aversion', p: 'Losses feel roughly twice as bad as equivalent gains feel good. The practical result is that people sell winners early to lock in a good feeling and hold losers indefinitely to avoid a bad one, which is exactly backwards from what the position sizes call for.' },
-      { h: 'Confirmation bias', p: 'Once you hold a position you start reading news differently. Supporting evidence feels solid, contradicting evidence feels like noise. The strongest defence is deciding in advance what would prove you wrong, and writing it down before you enter.' },
+      { h: 'Confirmation bias', p: 'Once you hold a position you start reading news differently. Supporting evidence feels solid, contradicting evidence feels like noise. The strongest defense is deciding in advance what would prove you wrong, and writing it down before you enter.' },
       { h: 'Recency and hindsight', p: 'Recent events feel more likely to repeat than they are, and past events feel more predictable than they were. After a crash, every warning sign looks obvious. That clarity was not available beforehand.' },
-      { h: 'Revenge trading', p: 'The urge to win money back immediately after a loss is the most expensive impulse in trading. It raises position size exactly when judgement is worst. Pre-set limits are the only defence that works reliably, because they are set before the feeling arrives.' },
+      { h: 'Revenge trading', p: 'The urge to win money back immediately after a loss is the most expensive impulse in trading. It raises position size exactly when judgment is worst. Pre-set limits are the only defense that works reliably, because they are set before the feeling arrives.' },
     ],
     quiz: [
-      { q: 'Loss aversion typically causes investors to…', options: ['Sell winners too early and hold losers too long', 'Sell losers quickly', 'Trade less often'], correct: 0, why: 'Realising a loss feels much worse than realising a gain, so losers get held in hope.' },
-      { q: 'The most practical defence against confirmation bias is…', options: ['Reading more news', 'Writing down in advance what would prove you wrong', 'Trading larger'], correct: 1, why: 'A pre-committed invalidation point is judged before you are invested in the outcome.' },
+      { q: 'Loss aversion typically causes investors to…', options: ['Sell winners too early and hold losers too long', 'Sell losers quickly', 'Trade less often'], correct: 0, why: 'Realizing a loss feels much worse than realizing a gain, so losers get held in hope.' },
+      { q: 'The most practical defense against confirmation bias is…', options: ['Reading more news', 'Writing down in advance what would prove you wrong', 'Trading larger'], correct: 1, why: 'A pre-committed invalidation point is judged before you are invested in the outcome.' },
       { q: 'Hindsight bias means…', options: ['Old data is unreliable', 'Charts repeat', 'Past events feel more predictable than they actually were'], correct: 2, why: 'Knowing the outcome makes the path to it look obvious. It was not obvious in advance.' },
-      { q: 'Why is revenge trading so costly?', options: ['Brokers penalise it', 'It increases position size exactly when judgement is worst', 'It is against exchange rules'], correct: 1, why: 'The impulse to recover a loss immediately pushes size up at the worst possible moment.' },
-      { q: 'Pre-set rules work mainly because…', options: ['They are optimised', 'Brokers enforce them', 'They are decided before the emotion arrives'], correct: 2, why: 'The decision is made by a calmer version of you than the one who will be under pressure.' },
+      { q: 'Why is revenge trading so costly?', options: ['Brokers penalize it', 'It increases position size exactly when judgment is worst', 'It is against exchange rules'], correct: 1, why: 'The impulse to recover a loss immediately pushes size up at the worst possible moment.' },
+      { q: 'Pre-set rules work mainly because…', options: ['They are optimized', 'Brokers enforce them', 'They are decided before the emotion arrives'], correct: 2, why: 'The decision is made by a calmer version of you than the one who will be under pressure.' },
     ],
   },
   {
@@ -296,7 +296,7 @@ window.LESSONS = [
     sections: [
       { h: 'Commission is not the only fee', p: 'Zero-commission brokers still earn from your order flow, and you still pay the spread on every trade. "Free" refers to the visible fee, not the total cost of transacting.' },
       { h: 'Frequency multiplies everything', p: 'A round trip costing a fifth of a percent is trivial once a year and ruinous several times a day. The same cost structure can be irrelevant to one strategy and fatal to another purely because of how often it is paid.' },
-      { h: 'Tax treatment differs by holding period', p: 'In many jurisdictions, including the United States, gains on positions held longer than a year are taxed at a lower rate than short-term gains. Frequent trading therefore tends to be taxed less favourably as well as costing more to execute. Rules vary by country and situation, so check yours.' },
+      { h: 'Tax treatment differs by holding period', p: 'In many jurisdictions, including the United States, gains on positions held longer than a year are taxed at a lower rate than short-term gains. Frequent trading therefore tends to be taxed less favorably as well as costing more to execute. Rules vary by country and situation, so check yours.' },
       { h: 'Fees inside funds', p: 'Funds charge an ongoing expense ratio. The difference between 0.05% and 1% a year sounds trivial and is not: compounded across decades it can consume a meaningful share of the final balance.' },
     ],
     quiz: [

@@ -1893,7 +1893,7 @@ const googleFail = (res, why) => { res.writeHead(302, { Location: '/?google_erro
 async function handleGoogleCallback(req, res) {
   if (!googleEnabled()) return json(res, 404, { error: 'Google sign-in is not configured.' });
   const q = new URLSearchParams(req.url.split('?')[1] || '');
-  if (q.get('error')) return googleFail(res, 'cancelled');
+  if (q.get('error')) return googleFail(res, 'canceled');
   const st = takeGoogleState(q.get('state') || '');
   if (!st) return googleFail(res, 'expired');
   const code = q.get('code');
@@ -3218,7 +3218,7 @@ const VIEW_SEO = {
   'compare': { view: 'compare', title: 'Compare stocks side by side | ChartGauge',
     desc: 'Put two or more stocks next to each other on market cap, revenue, P/E, PEG, margins, ROE, debt to equity, dividend yield and beta.' },
   'screener': { view: 'screener', title: 'Stock screener: filter by sector, market cap and price | ChartGauge',
-    desc: 'Filter a curated universe of stocks by sector, market capitalisation and price range to find candidates worth a closer look.' },
+    desc: 'Filter a curated universe of stocks by sector, market capitalization and price range to find candidates worth a closer look.' },
   'alerts': { view: 'alerts', title: 'Price alerts | ChartGauge',
     desc: 'Set a target above or below the current price and get flagged when a stock crosses it.' },
   'watchlist': { view: 'watchlist', title: 'Your watchlist | ChartGauge',
