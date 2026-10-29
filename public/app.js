@@ -2104,7 +2104,7 @@
     try {
       const j = await (await fetch('/api/quotes?symbols=' + encodeURIComponent(chartSym))).json();
       const q = (j.quotes || [])[0];
-      if (!q || !Number.isFinite(Number(q.price))) return;
+      if (!q || q.price == null || !Number.isFinite(Number(q.price))) return;
       chartQuote = q;
       setLive('cLast', pMoney(q.price), Number(q.price));
       const up = Number(q.changePct) >= 0;
@@ -2862,6 +2862,8 @@
     } catch { return []; }
   }
   function quoteCard(q) {
+    // No real price yet: a dash, never a zero.
+    if (q.price == null) return `<div class="quote-card" data-s="${esc(q.symbol)}"><div class="quote-sym">${esc(q.symbol)}</div><div class="quote-name">${esc(nameOf[q.symbol] || '')}</div><div class="quote-price quote-na">—</div><div class="quote-chg">Price not in yet</div></div>`;
     const up = q.changePct >= 0;
     return `<div class="quote-card" data-s="${esc(q.symbol)}"><div class="quote-sym">${esc(q.symbol)}</div><div class="quote-name">${esc(nameOf[q.symbol] || '')}</div><div class="quote-price">${(+q.price).toFixed(2)}</div><div class="quote-chg ${up ? 'up' : 'down'}">${up ? '▲' : '▼'} ${Math.abs(q.changePct).toFixed(2)}%</div></div>`;
   }
@@ -2873,7 +2875,10 @@
     $('indicesGrid').innerHTML = idx.length ? idx.map(quoteCard).join('') : '<div class="quote-loading">Unavailable right now.</div>';
     $('trendingGrid').innerHTML = trend.length ? trend.map(quoteCard).join('') : '<div class="quote-loading">Unavailable right now.</div>';
     bindQuoteCards($('indicesGrid')); bindQuoteCards($('trendingGrid'));
-    if (idx.length) marketsLoaded = true;
+    // Prices arrive per symbol as the minute budget allows. Fill the gaps once.
+    const gaps = idx.concat(trend).some(q => q.price == null);
+    if (idx.length && !gaps) marketsLoaded = true;
+    else if (gaps && !loadMarkets.retried) { loadMarkets.retried = true; setTimeout(() => { if (currentView === 'markets') loadMarkets(); }, 20000); }
   }
   // ---- Ranked panel on the home screen ----
   // The labels are this app\u2019s own score, the same one shown on every chart.
@@ -2999,7 +3004,7 @@
     try {
       const j = await (await fetch('/api/quotes?symbols=' + encodeURIComponent(wlSym))).json();
       const q = (j.quotes || [])[0];
-      if (q && Number.isFinite(Number(q.price))) {
+      if (q && q.price != null && Number.isFinite(Number(q.price))) {
         wlQuote = q;
         $('wlLast').textContent = pMoney(q.price);
         const up = Number(q.changePct) >= 0;

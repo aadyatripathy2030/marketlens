@@ -1226,7 +1226,7 @@ async function handlePaperTrade(req, res, user, body) {
   if (!(await symbolResolves(symbol))) return json(res, 404, noSuchTicker(symbol));
 
   let quotes = [];
-  try { quotes = await fetchQuotes([symbol]); } catch (e) { logError(e); }
+  try { quotes = await fetchQuotes([symbol], { maxAge: 120000 }); } catch (e) { logError(e); }
   const q = quotes && quotes[0];
   const price = q && Number(q.price);
   if (!Number.isFinite(price) || price <= 0) {
@@ -2534,8 +2534,8 @@ async function handleWatchlist(req, res) {
     // since. Best effort: no quote just means no entry yet.
     let entryPx = null;
     try {
-      const qs = await fetchQuotes([symbol]);
-      const p = qs && qs[0] && Number(qs[0].price);
+      const qs = await fetchQuotes([symbol], { maxAge: 120000 });
+      const p = qs && qs[0] && qs[0].price != null && Number(qs[0].price);
       if (Number.isFinite(p) && p > 0) entryPx = p;
     } catch (e) { logError(e); }
     await db.addWatch(user.id, symbol, entryPx);
@@ -2710,61 +2710,87 @@ async function fetchQuoteFinnhub(symbol) {
   };
 }
 
-async function fetchQuotesFinnhub(symbols) {
-  if (finnhubUsed() + symbols.length > FINNHUB_PER_MIN) return null;   // fall through
-  finnhubSpend(symbols.length);
-  const rows = await Promise.all(symbols.map(s => fetchQuoteFinnhub(s).catch(() => null)));
-  // A partial answer is not worth having here: the caller would silently show
-  // some real prices beside demo ones. Either Finnhub covered the set or it did
-  // not, and the Twelve Data path takes over.
-  return rows.every(Boolean) ? rows : null;
+// One store of real quotes, per symbol, shared by every page. Asking for a set
+// used to be all or nothing: past Finnhub's minute budget the whole set went to
+// Twelve Data, whose 8 a minute could not cover it either, and every miss came
+// back as a generated price. Those reached the Markets page, price alerts,
+// watchlist entry prices and practice-trade fills. Now each symbol is fetched
+// on its own, as budget allows, and a symbol with no real price comes back
+// with price null. Generated prices appear only when no data key is set.
+const quoteStore = new Map();            // symbol -> { q, at, tryAt }
+const quoteInflight = new Map();         // symbol -> promise, so a burst asks once
+const QUOTE_STALE_MAX = 30 * 60000;      // the oldest price still worth showing
+const QUOTE_LIST_RESERVE = 10;           // Finnhub calls a list leaves for single charts
+const TD_QUOTE_MAX = 2;                  // Twelve Data covers at most this many misses
+
+function noQuote(symbol) { return { symbol, price: null, change: null, changePct: null, unavailable: true }; }
+
+async function quoteOne(symbol, viaTwelve) {
+  if (quoteInflight.has(symbol)) return quoteInflight.get(symbol);
+  const p = (async () => {
+    let q = null;
+    try {
+      if (viaTwelve) {
+        spendCredits(1);
+        const path = `/quote?symbol=${encodeURIComponent(symbol)}&apikey=${STOCK_API_KEY}`;
+        const { json: j } = await httpsJson({ method: 'GET', hostname: 'api.twelvedata.com', path });
+        if (j && j.status !== 'error' && j.close != null) {
+          const price = Number(j.close), prev = Number(j.previous_close);
+          if (price > 0) q = { symbol, price, change: prev ? price - prev : 0,
+            changePct: j.percent_change != null ? Number(j.percent_change) : (prev ? ((price - prev) / prev) * 100 : 0) };
+        }
+      } else {
+        finnhubSpend(1);
+        q = await fetchQuoteFinnhub(symbol);
+      }
+    } catch (e) { q = null; }
+    const e = quoteStore.get(symbol) || {};
+    if (q) { e.q = q; e.at = Date.now(); e.tryAt = 0; } else e.tryAt = Date.now();
+    quoteStore.set(symbol, e);
+    return q;
+  })();
+  quoteInflight.set(symbol, p);
+  try { return await p; } finally { quoteInflight.delete(symbol); }
 }
 
-function fetchQuotes(symbols) {
-  if (!STOCK_API_KEY && !FINNHUB_API_KEY) return Promise.resolve(symbols.map(demoQuote));
-  // Matches the client's live-quote poll, so polling costs one upstream call
-  // per symbol set per interval no matter how many tabs are open.
-  //
-  // One symbol is the chart someone is actually watching, and it is worth
-  // three seconds of freshness: at one upstream call each that is 20 a
-  // minute against a budget of 55. A list of symbols costs one call each, so
-  // a ten-name watchlist at the same rate would be 200 a minute and blow
-  // through the budget for everybody; those keep the slower window.
-  const ttl = symbols.length === 1 ? 3000 : 10000;
-  const key = `quotes:${symbols.join(',')}`;
-  return cached(key, ttl, async () => {
-    if (FINNHUB_API_KEY) {
-      try { const r = await fetchQuotesFinnhub(symbols); if (r) return r; }
-      catch (e) { logError(e); }
-    }
-    if (!STOCK_API_KEY) return symbols.map(demoQuote);
-    // Finnhub said no -- usually its own per-minute budget. Falling straight
-    // through to Twelve Data spends a daily credit to refresh a price that is
-    // seconds old, and there are only 800 of those a day against 60 Finnhub
-    // calls a minute. That is how a faster poll emptied the day's quota and
-    // took the charts down with it: the scarce allowance paid for the
-    // plentiful one's overflow. A price a few seconds stale is the better
-    // trade, so reuse what is already in hand and only pay when there is
-    // nothing at all.
-    const stale = dataCache.get(key);
-    if (stale && Date.now() - stale.at < 120000) return stale.value;
-    if (dailyQuotaOut()) return stale ? stale.value : symbols.map(demoQuote);
-    return fetchQuotesUncached(symbols);
+// opts.maxAge: how old a stored price may be and still be returned. A trade
+// fill wants a recent one; a list of cards can show one a few minutes old.
+async function fetchQuotes(symbols, opts) {
+  if (!STOCK_API_KEY && !FINNHUB_API_KEY) return symbols.map(demoQuote);
+  const one = symbols.length === 1;
+  // Matches the client's live-quote poll: three seconds for the chart someone
+  // is watching, ten for a list, so open tabs cost one call per interval.
+  const fresh = one ? 3000 : 10000;
+  const maxAge = (opts && opts.maxAge) || QUOTE_STALE_MAX;
+  const now = Date.now();
+  const need = symbols.filter(s => {
+    const e = quoteStore.get(s);
+    if (e && e.q && now - e.at < fresh) return false;
+    return !(e && e.tryAt && now - e.tryAt < 30000);   // a miss waits before a retry
   });
-}
-async function fetchQuotesUncached(symbols) {
-  try {
-    spendCredits(symbols.length);   // a batch costs one credit per symbol
-    const path = `/quote?symbol=${encodeURIComponent(symbols.join(','))}&apikey=${STOCK_API_KEY}`;
-    const { json: j } = await httpsJson({ method: 'GET', hostname: 'api.twelvedata.com', path });
-    return symbols.map(s => {
-      const q = symbols.length === 1 ? j : (j && j[s]);
-      if (!q || q.status === 'error' || q.close == null) return demoQuote(s);
-      const price = Number(q.close), prev = Number(q.previous_close);
-      const pct = q.percent_change != null ? Number(q.percent_change) : (prev ? ((price - prev) / prev) * 100 : 0);
-      return { symbol: s, price, change: price - prev, changePct: pct };
-    });
-  } catch { return symbols.map(demoQuote); }
+  if (need.length) {
+    const jobs = [];
+    let fh = FINNHUB_API_KEY ? FINNHUB_PER_MIN - finnhubUsed() - (one ? 0 : QUOTE_LIST_RESERVE) : 0;
+    const rest = [];
+    // Crypto pairs are not on Finnhub's free quote endpoint.
+    for (const s of need) {
+      if (fh > 0 && !s.includes('/')) { fh--; jobs.push(quoteOne(s, false)); } else rest.push(s);
+    }
+    await Promise.all(jobs);
+    // What Finnhub could not cover, Twelve Data may, a couple at a time and
+    // only from credits the charts are not using. A stored price, however old,
+    // is enough to skip it.
+    if (STOCK_API_KEY && !dailyQuotaOut()) {
+      const miss = need.filter(s => { const e = quoteStore.get(s); return !(e && e.q && Date.now() - e.at < maxAge); });
+      const allowed = Math.min(TD_QUOTE_MAX, CREDITS_PER_MIN - USER_RESERVE - creditsUsed() + (one ? USER_RESERVE : 0));
+      await Promise.all(miss.slice(0, Math.max(0, allowed)).map(s => quoteOne(s, true)));
+    }
+  }
+  const at = Date.now();
+  return symbols.map(s => {
+    const e = quoteStore.get(s);
+    return e && e.q && at - e.at < maxAge ? e.q : noQuote(s);
+  });
 }
 // ---- Ranked panel (home) ----
 // Runs the same overallRating() the analyze page shows, across a small set of
@@ -2998,7 +3024,7 @@ async function handleAlerts(req, res) {
     const alerts = await db.listAlerts(user.id);
     const syms = [...new Set(alerts.map(a => a.symbol))];
     const quotes = syms.length ? await fetchQuotes(syms) : [];
-    const qmap = {}; quotes.forEach(q => { qmap[q.symbol] = q.price; });
+    const qmap = {}; quotes.forEach(q => { if (q.price != null) qmap[q.symbol] = q.price; });
     const now = Date.now();
     for (const a of alerts) {
       if (!a.triggered) {
@@ -3058,9 +3084,8 @@ const capBand = (v) => v == null ? null : v >= 200e9 ? 'mega' : v >= 10e9 ? 'lar
 // So the screener keeps its own store and tops it up a few names at a time,
 // always leaving room for the charts and the other pages. A name with no real
 // price yet shows a dash, never a made-up number.
-const screenStore = new Map();           // symbol -> { q, qAt, qTry, cap, capAt, capTry }
+const screenStore = new Map();           // symbol -> { cap, capAt, capTry }; prices live in quoteStore
 const SCREEN_QUOTE_TTL = 5 * 60000;      // refresh a price after this
-const SCREEN_QUOTE_MAX = 30 * 60000;     // and stop showing it after this
 const SCREEN_CAP_TTL = 24 * 3600000;     // market value moves slowly
 const SCREEN_HEADROOM = 20;              // Finnhub calls a minute kept for everything else
 let screenSeenAt = 0;                    // the warmer only spends while someone is looking
@@ -3078,27 +3103,23 @@ async function topUpScreen(max) {
   if (room <= 0) return;
   const now = Date.now(), jobs = [];
   for (const [s] of SCREEN_UNIVERSE) {
-    const e = screenStore.get(s) || {};
+    const e = screenStore.get(s) || {}, qe = quoteStore.get(s) || {};
     // A failed fetch waits a minute before it is tried again.
-    if ((!e.qAt || now - e.qAt > SCREEN_QUOTE_TTL) && !(e.qTry && now - e.qTry < 60000)) jobs.push({ s, kind: 'q', at: e.qAt || 0 });
+    if ((!qe.at || now - qe.at > SCREEN_QUOTE_TTL) && !(qe.tryAt && now - qe.tryAt < 60000)) jobs.push({ s, kind: 'q', at: qe.at || 0 });
     if ((!e.capAt || now - e.capAt > SCREEN_CAP_TTL) && !(e.capTry && now - e.capTry < 60000)) jobs.push({ s, kind: 'cap', at: e.capAt || 0 });
   }
   // Oldest first, and a price before a market value: a row needs its price more.
   jobs.sort((a, b) => (a.at - b.at) || ((a.kind === 'q' ? 0 : 1) - (b.kind === 'q' ? 0 : 1)));
   const batch = jobs.slice(0, room);
-  finnhubSpend(batch.length);
   await Promise.all(batch.map(async (j) => {
+    if (j.kind === 'q') return quoteOne(j.s, false);   // spends and stores on its own
     const e = screenStore.get(j.s) || {};
     screenStore.set(j.s, e);
+    finnhubSpend(1);
     try {
-      if (j.kind === 'q') {
-        const q = await fetchQuoteFinnhub(j.s);
-        if (q) { e.q = q; e.qAt = Date.now(); } else e.qTry = Date.now();
-      } else {
-        const cap = await fetchCapFinnhub(j.s);
-        if (cap) { e.cap = cap; e.capAt = Date.now(); } else e.capTry = Date.now();
-      }
-    } catch (err) { if (j.kind === 'q') e.qTry = Date.now(); else e.capTry = Date.now(); }
+      const cap = await fetchCapFinnhub(j.s);
+      if (cap) { e.cap = cap; e.capAt = Date.now(); } else e.capTry = Date.now();
+    } catch (err) { e.capTry = Date.now(); }
   }));
 }
 
@@ -3124,13 +3145,13 @@ async function handleScreen(req, res, qs) {
   let demo = false, quoteOf;
   if (FINNHUB_API_KEY) {
     await topUpScreen(30);
-    quoteOf = (s) => { const e = screenStore.get(s); return e && e.q && now - e.qAt < SCREEN_QUOTE_MAX ? e.q : null; };
+    quoteOf = (s) => { const e = quoteStore.get(s); return e && e.q && now - e.at < QUOTE_STALE_MAX ? e.q : null; };
   } else {
-    // No Finnhub key: one batch through fetchQuotes. Generated prices are shown
-    // only when there is no market-data key at all, and the page says so.
+    // No Finnhub key: through fetchQuotes, which fills what it can. Generated
+    // prices appear only when there is no data key at all, and the page says so.
     demo = !STOCK_API_KEY;
     const quotes = await fetchQuotes(SCREEN_UNIVERSE.map(u => u[0]));
-    const qmap = {}; quotes.forEach(x => { if (demo || !x.demo) qmap[x.symbol] = x; });
+    const qmap = {}; quotes.forEach(x => { if (x.price != null) qmap[x.symbol] = x; });
     quoteOf = (s) => qmap[s] || null;
   }
   let results = SCREEN_UNIVERSE.map(([symbol, name, sec]) => {

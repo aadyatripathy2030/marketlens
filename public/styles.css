@@ -1470,3 +1470,4 @@ body:not([data-view="analyze"]) .disclaimer { display: none; }
   .sc-price { flex: 1 1 100%; min-width: 0; }
   .sc-bar .input.sc-in { flex: 1 1 0; width: auto; min-width: 0; }
 }
+.quote-price.quote-na { color: var(--neutral); }
