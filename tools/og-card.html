@@ -1,104 +1,86 @@
 <!-- Source for public/og.png, the 1200x630 social share card.
 
-     Regenerate after editing:
+     Regenerate after editing (from the repo root):
 
        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' \
          --headless --disable-gpu --hide-scrollbars --force-device-scale-factor=1 \
          --window-size=1200,630 --screenshot=public/og.png tools/og-card.html
 
      Then re-scrape the URL in each platform's debugger, or the old image
-     stays cached for days. -->
+     stays cached for days.
+
+     The chart on the right is a drawing, not a real reading: it has no
+     prices on it, only where the stop and targets sit relative to entry. -->
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 <style>
+  @font-face { font-family: "Space Grotesk"; src: url("../public/fonts/space-grotesk-latin.woff2") format("woff2"); font-weight: 300 700; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
+  /* Same tokens as the site (public/styles.css). */
   :root {
-    --bg: #0e1014; --card: #171b22; --text: #edf0f4; --muted: #8a94a3;
-    --border: #29313d; --border-strong: #3a4353; --accent: #4c9eff;
-    --good: #3ddc84; --bad: #ff5f56;
+    --bg: #121211; --card: #1d1d1a; --text: #f0efec; --muted: #b5b0a7;
+    --border: #2e2d28; --accent: #6ea2ff; --good: #44a85a; --bad: #e0564d;
   }
   html, body { width: 1200px; height: 630px; }
   body {
-    background:
-      radial-gradient(900px 500px at 88% -12%, rgba(76,158,255,.16), transparent 60%),
-      var(--bg);
-    color: var(--text);
+    background: var(--bg); color: var(--text);
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-    display: flex; flex-direction: column; justify-content: space-between;
-    padding: 68px 72px;
+    display: grid; grid-template-columns: 1fr 420px; gap: 56px;
+    padding: 64px 72px;
     -webkit-font-smoothing: antialiased;
   }
-  .brand { display: flex; align-items: center; gap: 15px; }
-  .brand-name { font-size: 28px; font-weight: 700; letter-spacing: -.3px; }
+  .left { display: flex; flex-direction: column; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 14px; font-size: 28px; font-weight: 700; letter-spacing: -.3px; font-family: "Space Grotesk", sans-serif; }
   h1 {
-    font-size: 78px; line-height: 1.02; font-weight: 700; letter-spacing: -2.4px;
-    margin-bottom: 26px; max-width: 16ch;
+    font-family: "Space Grotesk", sans-serif;
+    font-size: 64px; line-height: 1.06; font-weight: 700; letter-spacing: -1.6px;
+    margin-bottom: 24px;
   }
-  .sub { font-size: 27px; line-height: 1.45; color: var(--muted); max-width: 30ch; font-weight: 450; }
-  .sub b { color: var(--text); font-weight: 650; }
-  .foot { display: flex; align-items: center; justify-content: space-between; }
-  .url { font-size: 25px; font-weight: 650; color: var(--accent); }
-  .pills { display: flex; gap: 10px; }
-  .pill {
-    font-size: 18px; font-weight: 600; color: var(--muted);
-    border: 1px solid var(--border-strong); border-radius: 999px; padding: 9px 17px;
-  }
-  /* the score dial, echoing the one on the analyze page */
-  .art { position: absolute; right: 84px; top: 214px; width: 310px; height: 310px; }
-  .art .lbl {
-    position: absolute; inset: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 4px;
-  }
-  .art .n { font-size: 66px; font-weight: 700; letter-spacing: -1.5px; }
-  .art .t { font-size: 19px; font-weight: 600; color: var(--muted); }
+  .sub { font-size: 25px; line-height: 1.45; color: var(--muted); max-width: 30ch; }
+  .foot { display: flex; align-items: baseline; gap: 22px; font-size: 20px; color: var(--muted); }
+  .url { font-size: 24px; font-weight: 650; color: var(--accent); }
+
+  .card { align-self: center; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 26px 28px; }
+  .call { display: flex; align-items: center; gap: 12px; font-size: 18px; color: var(--muted); margin-bottom: 14px; }
+  .chip { font-size: 18px; font-weight: 700; color: #fff; background: var(--good); border-radius: 6px; padding: 4px 12px; }
+  .lv { display: grid; grid-template-columns: auto 1fr; row-gap: 10px; column-gap: 18px; margin-top: 16px; font-size: 18px; }
+  .lv dt { color: var(--muted); }
+  .lv dd { text-align: right; font-weight: 600; }
+  .g { color: var(--good); } .r { color: var(--bad); }
 </style>
 </head>
 <body>
 
-  <div class="brand">
-    <svg width="46" height="46" viewBox="0 0 512 512" aria-hidden="true">
-      <circle cx="256" cy="256" r="236" fill="none" stroke="#29313d" stroke-width="18"/>
-      <line x1="84" y1="320" x2="428" y2="196" stroke="#4c9eff" stroke-width="26" stroke-linecap="round"/>
-      <g stroke-linecap="round">
-        <line x1="150" y1="212" x2="150" y2="378" stroke="#ff5f56" stroke-width="20"/>
-        <rect x="122" y="242" width="56" height="116" rx="17" fill="#ff5f56"/>
-        <line x1="256" y1="170" x2="256" y2="348" stroke="#3ddc84" stroke-width="20"/>
-        <rect x="228" y="200" width="56" height="124" rx="17" fill="#3ddc84"/>
-        <line x1="362" y1="132" x2="362" y2="318" stroke="#3ddc84" stroke-width="20"/>
-        <rect x="334" y="160" width="56" height="128" rx="17" fill="#3ddc84"/>
-      </g>
-    </svg>
-    <div class="brand-name">ChartGauge</div>
-  </div>
-
-  <div class="art">
-    <svg width="310" height="310" viewBox="0 0 120 120">
-      <circle cx="60" cy="60" r="52" fill="none" stroke="#29313d" stroke-width="11"/>
-      <circle cx="60" cy="60" r="52" fill="none" stroke="#4c9eff" stroke-width="11"
-              stroke-linecap="round" stroke-dasharray="326.7"
-              stroke-dashoffset="150" transform="rotate(-90 60 60)"/>
-    </svg>
-    <div class="lbl"><div class="n">54</div><div class="t">/ 100</div></div>
-  </div>
-
-  <div>
-    <h1>Charts that show their work.</h1>
-    <p class="sub">
-      Thirteen indicators, read in plain English &mdash; and a
-      <b>public record of how often the reading was right</b>,
-      including when it did worse than doing nothing.
-    </p>
-  </div>
-
-  <div class="foot">
-    <div class="url">chartgauge.com</div>
-    <div class="pills">
-      <div class="pill">Stocks &amp; crypto</div>
-      <div class="pill">19 lessons</div>
-      <div class="pill">Not financial advice</div>
+  <div class="left">
+    <div class="brand">
+      <svg width="44" height="44" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#1d1d1a"/><rect x="19.75" y="15" width="4.5" height="34" rx="1" fill="#e0564d"/><rect x="14" y="23" width="16" height="18" rx="2" fill="#e0564d"/><rect x="39.75" y="11" width="4.5" height="40" rx="1" fill="#44a85a"/><rect x="34" y="17" width="16" height="28" rx="2" fill="#44a85a"/></svg>
+      ChartGauge
     </div>
+    <div>
+      <h1>Buy, sell or hold, with the stop and target already set.</h1>
+      <p class="sub">For any stock or crypto pair. Every call is saved and graded in public.</p>
+    </div>
+    <div class="foot"><span class="url">chartgauge.com</span><span>Not financial advice</span></div>
+  </div>
+
+  <div class="card">
+    <div class="call"><span class="chip">Buy</span> Example call</div>
+    <svg width="364" height="200" viewBox="0 0 364 200" aria-hidden="true">
+      <line x1="0" y1="14" x2="364" y2="14" stroke="#44a85a" stroke-width="1.5" stroke-dasharray="6 5"/>
+      <line x1="0" y1="64" x2="364" y2="64" stroke="#44a85a" stroke-width="1.5" stroke-dasharray="6 5" opacity=".7"/>
+      <line x1="0" y1="114" x2="364" y2="114" stroke="#b5b0a7" stroke-width="1" opacity=".5"/>
+      <line x1="0" y1="164" x2="364" y2="164" stroke="#e0564d" stroke-width="1.5" stroke-dasharray="6 5"/>
+      <polyline fill="none" stroke="#6ea2ff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"
+        points="0,156 28,148 52,152 80,140 104,146 132,138 156,146 182,124 206,132 232,112 258,124 284,104 310,118 336,108 364,114"/>
+      <circle cx="364" cy="114" r="5" fill="#6ea2ff"/>
+    </svg>
+    <dl class="lv">
+      <dt>Second target</dt><dd class="g">2R</dd>
+      <dt>First target</dt><dd class="g">1R</dd>
+      <dt>Stop</dt><dd class="r">1.5 × ATR</dd>
+    </dl>
   </div>
 
 </body>
