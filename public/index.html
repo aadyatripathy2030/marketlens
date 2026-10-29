@@ -453,25 +453,28 @@
 
   <!-- SCREENER -->
   <section class="view hidden" id="view-screener">
-    <h1 class="view-h">Stock screener</h1>
-    <form class="screen-filters" id="screenForm">
+    <h1 class="view-h sc-h">Stock screener</h1>
+    <p class="sc-sub">Large US stocks, narrowed by sector, size and price. Pick one to get its reading.</p>
+    <form class="sc-bar" id="screenForm">
       <select id="scSector" class="sel" aria-label="Sector">
-        <option value="">Any sector</option>
-        <option>Technology</option><option>Healthcare</option><option>Financial Services</option>
-        <option>Consumer Cyclical</option><option>Consumer Defensive</option><option>Energy</option>
-        <option>Industrials</option><option>Basic Materials</option><option>Communication Services</option>
+        <option value="">All sectors</option>
+        <option>Technology</option><option>Communication Services</option><option>Consumer Cyclical</option>
+        <option>Consumer Defensive</option><option>Financial Services</option><option>Healthcare</option>
+        <option>Energy</option><option>Industrials</option><option>Basic Materials</option>
         <option>Utilities</option><option>Real Estate</option>
       </select>
-      <select id="scCap" class="sel" aria-label="Market cap">
-        <option value="">Any market cap</option>
-        <option value="small">Small (&lt;$2B)</option>
-        <option value="mid">Mid ($2–10B)</option>
-        <option value="large">Large ($10–200B)</option>
-        <option value="mega">Mega (&gt;$200B)</option>
+      <select id="scCap" class="sel" aria-label="Company size">
+        <option value="">Any size</option>
+        <option value="mega">Over $200B</option>
+        <option value="large">$10B to $200B</option>
+        <option value="mid">$2B to $10B</option>
       </select>
-      <input id="scPriceMin" class="input sc-in" placeholder="Min $" inputmode="decimal" />
-      <input id="scPriceMax" class="input sc-in" placeholder="Max $" inputmode="decimal" />
-      <button class="btn btn-primary" type="submit">Screen</button>
+      <div class="sc-price">
+        <input id="scPriceMin" class="input sc-in" placeholder="Min price" inputmode="decimal" aria-label="Minimum price" />
+        <span class="sc-dash" aria-hidden="true">to</span>
+        <input id="scPriceMax" class="input sc-in" placeholder="Max price" inputmode="decimal" aria-label="Maximum price" />
+      </div>
+      <button class="sc-clear hidden" type="reset" id="scClear">Clear</button>
     </form>
     <div id="screenResult"></div>
   </section>

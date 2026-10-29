@@ -3029,40 +3029,123 @@ async function handleAlerts(req, res) {
 }
 
 // ---- Screener over a curated universe (works on the free tier; live prices) ----
-// [symbol, name, sector, capBand]. FMP's full-market screener is a paid endpoint,
-// so we screen popular US stocks by sector/cap/price with live quotes.
+// [symbol, name, sector]. FMP's full-market screener is a paid endpoint, so we
+// screen a fixed list of large US stocks. Size comes from each company's live
+// market value, not a label typed in here: hand-set bands went stale (Ford and
+// GM were filed as mid caps).
 const SCREEN_UNIVERSE = [
-  ['AAPL', 'Apple', 'Technology', 'mega'], ['MSFT', 'Microsoft', 'Technology', 'mega'], ['NVDA', 'NVIDIA', 'Technology', 'mega'], ['AVGO', 'Broadcom', 'Technology', 'mega'],
-  ['ORCL', 'Oracle', 'Technology', 'large'], ['CRM', 'Salesforce', 'Technology', 'large'], ['AMD', 'Advanced Micro Devices', 'Technology', 'large'], ['ADBE', 'Adobe', 'Technology', 'large'],
-  ['CSCO', 'Cisco', 'Technology', 'large'], ['INTC', 'Intel', 'Technology', 'large'], ['QCOM', 'Qualcomm', 'Technology', 'large'], ['TXN', 'Texas Instruments', 'Technology', 'large'],
-  ['IBM', 'IBM', 'Technology', 'large'], ['NOW', 'ServiceNow', 'Technology', 'large'], ['PLTR', 'Palantir', 'Technology', 'large'], ['SMCI', 'Super Micro', 'Technology', 'mid'],
-  ['GOOGL', 'Alphabet', 'Communication Services', 'mega'], ['META', 'Meta Platforms', 'Communication Services', 'mega'], ['NFLX', 'Netflix', 'Communication Services', 'large'],
-  ['DIS', 'Walt Disney', 'Communication Services', 'large'], ['CMCSA', 'Comcast', 'Communication Services', 'large'], ['T', 'AT&T', 'Communication Services', 'large'], ['VZ', 'Verizon', 'Communication Services', 'large'],
-  ['AMZN', 'Amazon', 'Consumer Cyclical', 'mega'], ['TSLA', 'Tesla', 'Consumer Cyclical', 'mega'], ['HD', 'Home Depot', 'Consumer Cyclical', 'large'], ['NKE', 'Nike', 'Consumer Cyclical', 'large'],
-  ['MCD', "McDonald's", 'Consumer Cyclical', 'large'], ['SBUX', 'Starbucks', 'Consumer Cyclical', 'large'], ['ABNB', 'Airbnb', 'Consumer Cyclical', 'large'], ['F', 'Ford', 'Consumer Cyclical', 'mid'], ['GM', 'General Motors', 'Consumer Cyclical', 'mid'],
-  ['WMT', 'Walmart', 'Consumer Defensive', 'mega'], ['COST', 'Costco', 'Consumer Defensive', 'mega'], ['PG', 'Procter & Gamble', 'Consumer Defensive', 'large'], ['KO', 'Coca-Cola', 'Consumer Defensive', 'large'], ['PEP', 'PepsiCo', 'Consumer Defensive', 'large'],
-  ['BRK.B', 'Berkshire Hathaway', 'Financial Services', 'mega'], ['JPM', 'JPMorgan Chase', 'Financial Services', 'mega'], ['V', 'Visa', 'Financial Services', 'mega'], ['MA', 'Mastercard', 'Financial Services', 'mega'],
-  ['BAC', 'Bank of America', 'Financial Services', 'large'], ['WFC', 'Wells Fargo', 'Financial Services', 'large'], ['GS', 'Goldman Sachs', 'Financial Services', 'large'], ['MS', 'Morgan Stanley', 'Financial Services', 'large'], ['AXP', 'American Express', 'Financial Services', 'large'],
-  ['LLY', 'Eli Lilly', 'Healthcare', 'mega'], ['UNH', 'UnitedHealth', 'Healthcare', 'large'], ['JNJ', 'Johnson & Johnson', 'Healthcare', 'large'], ['MRK', 'Merck', 'Healthcare', 'large'], ['PFE', 'Pfizer', 'Healthcare', 'large'], ['ABT', 'Abbott', 'Healthcare', 'large'], ['TMO', 'Thermo Fisher', 'Healthcare', 'large'],
-  ['XOM', 'Exxon Mobil', 'Energy', 'mega'], ['CVX', 'Chevron', 'Energy', 'large'], ['COP', 'ConocoPhillips', 'Energy', 'large'],
-  ['CAT', 'Caterpillar', 'Industrials', 'large'], ['BA', 'Boeing', 'Industrials', 'large'], ['GE', 'GE Aerospace', 'Industrials', 'large'], ['HON', 'Honeywell', 'Industrials', 'large'], ['UPS', 'United Parcel Service', 'Industrials', 'large'], ['RTX', 'RTX', 'Industrials', 'large'], ['LMT', 'Lockheed Martin', 'Industrials', 'large'],
+  ['AAPL', 'Apple', 'Technology'], ['MSFT', 'Microsoft', 'Technology'], ['NVDA', 'NVIDIA', 'Technology'], ['AVGO', 'Broadcom', 'Technology'],
+  ['ORCL', 'Oracle', 'Technology'], ['CRM', 'Salesforce', 'Technology'], ['AMD', 'Advanced Micro Devices', 'Technology'], ['ADBE', 'Adobe', 'Technology'],
+  ['CSCO', 'Cisco', 'Technology'], ['INTC', 'Intel', 'Technology'], ['QCOM', 'Qualcomm', 'Technology'], ['TXN', 'Texas Instruments', 'Technology'],
+  ['IBM', 'IBM', 'Technology'], ['NOW', 'ServiceNow', 'Technology'], ['PLTR', 'Palantir', 'Technology'], ['SMCI', 'Super Micro', 'Technology'],
+  ['GOOGL', 'Alphabet', 'Communication Services'], ['META', 'Meta Platforms', 'Communication Services'], ['NFLX', 'Netflix', 'Communication Services'],
+  ['DIS', 'Walt Disney', 'Communication Services'], ['CMCSA', 'Comcast', 'Communication Services'], ['T', 'AT&T', 'Communication Services'], ['VZ', 'Verizon', 'Communication Services'],
+  ['AMZN', 'Amazon', 'Consumer Cyclical'], ['TSLA', 'Tesla', 'Consumer Cyclical'], ['HD', 'Home Depot', 'Consumer Cyclical'], ['NKE', 'Nike', 'Consumer Cyclical'],
+  ['MCD', "McDonald's", 'Consumer Cyclical'], ['SBUX', 'Starbucks', 'Consumer Cyclical'], ['ABNB', 'Airbnb', 'Consumer Cyclical'], ['F', 'Ford', 'Consumer Cyclical'], ['GM', 'General Motors', 'Consumer Cyclical'],
+  ['WMT', 'Walmart', 'Consumer Defensive'], ['COST', 'Costco', 'Consumer Defensive'], ['PG', 'Procter & Gamble', 'Consumer Defensive'], ['KO', 'Coca-Cola', 'Consumer Defensive'], ['PEP', 'PepsiCo', 'Consumer Defensive'],
+  ['BRK.B', 'Berkshire Hathaway', 'Financial Services'], ['JPM', 'JPMorgan Chase', 'Financial Services'], ['V', 'Visa', 'Financial Services'], ['MA', 'Mastercard', 'Financial Services'],
+  ['BAC', 'Bank of America', 'Financial Services'], ['WFC', 'Wells Fargo', 'Financial Services'], ['GS', 'Goldman Sachs', 'Financial Services'], ['MS', 'Morgan Stanley', 'Financial Services'], ['AXP', 'American Express', 'Financial Services'],
+  ['LLY', 'Eli Lilly', 'Healthcare'], ['UNH', 'UnitedHealth', 'Healthcare'], ['JNJ', 'Johnson & Johnson', 'Healthcare'], ['MRK', 'Merck', 'Healthcare'], ['PFE', 'Pfizer', 'Healthcare'], ['ABT', 'Abbott', 'Healthcare'], ['TMO', 'Thermo Fisher', 'Healthcare'],
+  ['XOM', 'Exxon Mobil', 'Energy'], ['CVX', 'Chevron', 'Energy'], ['COP', 'ConocoPhillips', 'Energy'],
+  ['CAT', 'Caterpillar', 'Industrials'], ['BA', 'Boeing', 'Industrials'], ['GE', 'GE Aerospace', 'Industrials'], ['HON', 'Honeywell', 'Industrials'], ['UPS', 'United Parcel Service', 'Industrials'], ['RTX', 'RTX', 'Industrials'], ['LMT', 'Lockheed Martin', 'Industrials'],
+  ['LIN', 'Linde', 'Basic Materials'], ['SHW', 'Sherwin-Williams', 'Basic Materials'], ['NEE', 'NextEra Energy', 'Utilities'], ['DUK', 'Duke Energy', 'Utilities'],
+  ['PLD', 'Prologis', 'Real Estate'], ['AMT', 'American Tower', 'Real Estate'],
 ];
-const CAP_RANK = { mega: 4, large: 3, mid: 2, small: 1 };
+const capBand = (v) => v == null ? null : v >= 200e9 ? 'mega' : v >= 10e9 ? 'large' : v >= 2e9 ? 'mid' : 'small';
+
+// Seventy quotes at once do not fit Finnhub's 55 a minute, and the batch
+// fallback filled the gap with generated prices under a "Live prices" badge.
+// So the screener keeps its own store and tops it up a few names at a time,
+// always leaving room for the charts and the other pages. A name with no real
+// price yet shows a dash, never a made-up number.
+const screenStore = new Map();           // symbol -> { q, qAt, qTry, cap, capAt, capTry }
+const SCREEN_QUOTE_TTL = 5 * 60000;      // refresh a price after this
+const SCREEN_QUOTE_MAX = 30 * 60000;     // and stop showing it after this
+const SCREEN_CAP_TTL = 24 * 3600000;     // market value moves slowly
+const SCREEN_HEADROOM = 20;              // Finnhub calls a minute kept for everything else
+let screenSeenAt = 0;                    // the warmer only spends while someone is looking
+
+async function fetchCapFinnhub(symbol) {
+  const path = `/api/v1/stock/profile2?symbol=${encodeURIComponent(symbol)}&token=${FINNHUB_API_KEY}`;
+  const { json: j } = await httpsJson({ method: 'GET', hostname: 'finnhub.io', path });
+  const m = j && Number(j.marketCapitalization);   // millions of dollars
+  return m > 0 ? m * 1e6 : null;
+}
+
+async function topUpScreen(max) {
+  if (!FINNHUB_API_KEY) return;
+  const room = Math.min(max, FINNHUB_PER_MIN - SCREEN_HEADROOM - finnhubUsed());
+  if (room <= 0) return;
+  const now = Date.now(), jobs = [];
+  for (const [s] of SCREEN_UNIVERSE) {
+    const e = screenStore.get(s) || {};
+    // A failed fetch waits a minute before it is tried again.
+    if ((!e.qAt || now - e.qAt > SCREEN_QUOTE_TTL) && !(e.qTry && now - e.qTry < 60000)) jobs.push({ s, kind: 'q', at: e.qAt || 0 });
+    if ((!e.capAt || now - e.capAt > SCREEN_CAP_TTL) && !(e.capTry && now - e.capTry < 60000)) jobs.push({ s, kind: 'cap', at: e.capAt || 0 });
+  }
+  // Oldest first, and a price before a market value: a row needs its price more.
+  jobs.sort((a, b) => (a.at - b.at) || ((a.kind === 'q' ? 0 : 1) - (b.kind === 'q' ? 0 : 1)));
+  const batch = jobs.slice(0, room);
+  finnhubSpend(batch.length);
+  await Promise.all(batch.map(async (j) => {
+    const e = screenStore.get(j.s) || {};
+    screenStore.set(j.s, e);
+    try {
+      if (j.kind === 'q') {
+        const q = await fetchQuoteFinnhub(j.s);
+        if (q) { e.q = q; e.qAt = Date.now(); } else e.qTry = Date.now();
+      } else {
+        const cap = await fetchCapFinnhub(j.s);
+        if (cap) { e.cap = cap; e.capAt = Date.now(); } else e.capTry = Date.now();
+      }
+    } catch (err) { if (j.kind === 'q') e.qTry = Date.now(); else e.capTry = Date.now(); }
+  }));
+}
+
+function startScreenLoop() {
+  if (!FINNHUB_API_KEY) return;
+  const tick = () => {
+    if (Date.now() - screenSeenAt > 10 * 60000 && screenStore.size) return;
+    topUpScreen(12).catch(logError);
+  };
+  tick();
+  const t = setInterval(tick, 20000);
+  if (t.unref) t.unref();
+}
+
 async function handleScreen(req, res, qs) {
   const { pro } = await plan(req);
   if (!pro) return json(res, 402, PRO_ONLY('The screener'));
+  screenSeenAt = Date.now();
   const q = new URLSearchParams(qs || '');
   const sector = q.get('sector'), cap = q.get('cap');
   const pmin = Number(q.get('priceMin')), pmax = Number(q.get('priceMax'));
-  let uni = SCREEN_UNIVERSE.filter(u => (!sector || u[2] === sector) && (!cap || u[3] === cap));
-  if (!uni.length) return json(res, 200, { available: true, universe: true, results: [] });
-  const quotes = await fetchQuotes(uni.map(u => u[0]));
-  const qmap = {}; quotes.forEach(x => { qmap[x.symbol] = x; });
-  let results = uni.map(u => { const x = qmap[u[0]] || {}; return { symbol: u[0], name: u[1], sector: u[2], cap: u[3], price: x.price, changePct: x.changePct }; }).filter(r => r.price != null);
-  if (pmin > 0) results = results.filter(r => r.price >= pmin);
-  if (pmax > 0) results = results.filter(r => r.price <= pmax);
-  results.sort((a, b) => (CAP_RANK[b.cap] - CAP_RANK[a.cap]) || (b.price - a.price));
-  return json(res, 200, { available: true, universe: true, results });
+  const now = Date.now();
+  let demo = false, quoteOf;
+  if (FINNHUB_API_KEY) {
+    await topUpScreen(30);
+    quoteOf = (s) => { const e = screenStore.get(s); return e && e.q && now - e.qAt < SCREEN_QUOTE_MAX ? e.q : null; };
+  } else {
+    // No Finnhub key: one batch through fetchQuotes. Generated prices are shown
+    // only when there is no market-data key at all, and the page says so.
+    demo = !STOCK_API_KEY;
+    const quotes = await fetchQuotes(SCREEN_UNIVERSE.map(u => u[0]));
+    const qmap = {}; quotes.forEach(x => { if (demo || !x.demo) qmap[x.symbol] = x; });
+    quoteOf = (s) => qmap[s] || null;
+  }
+  let results = SCREEN_UNIVERSE.map(([symbol, name, sec]) => {
+    const x = quoteOf(symbol), e = screenStore.get(symbol);
+    const mcap = e && e.cap ? e.cap : null;
+    return { symbol, name, sector: sec, marketCap: mcap, cap: capBand(mcap),
+      price: x ? x.price : null, changePct: x ? x.changePct : null };
+  });
+  const pending = results.filter(r => r.price == null).length;
+  if (sector) results = results.filter(r => r.sector === sector);
+  if (cap) results = results.filter(r => r.cap === cap);
+  if (pmin > 0) results = results.filter(r => r.price != null && r.price >= pmin);
+  if (pmax > 0) results = results.filter(r => r.price != null && r.price <= pmax);
+  results.sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0));
+  return json(res, 200, { available: true, universe: SCREEN_UNIVERSE.length, demo, pending, results });
 }
 
 // ---- Stripe billing (raw API + manual webhook verification, no SDK) ----
@@ -3772,6 +3855,7 @@ db.init().then((storeMode) => {
     console.log(`ChartGauge running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'}, fundamentals: ${FMP_API_KEY ? 'on' : 'off'}, news: ${FINNHUB_API_KEY ? 'on' : 'off'}, accounts: ${storeMode})`);
     // Started after listen so a slow first pass never delays accepting traffic.
     startRankedLoop();
+    startScreenLoop();
     startSessionPurge();
     // Affiliate commissions are reconciled against Stripe a minute after boot
     // and then daily, so a missed webhook never leaves an affiliate short.
@@ -3807,5 +3891,5 @@ db.init().then((storeMode) => {
   // something unexpected. Serve anyway rather than leaving the site dark.
   logError(e);
   console.error('db.init failed outright, serving without it:', e);
-  server.listen(PORT, () => { console.log(`ChartGauge running at http://localhost:${PORT} (degraded)`); startRankedLoop(); });
+  server.listen(PORT, () => { console.log(`ChartGauge running at http://localhost:${PORT} (degraded)`); startRankedLoop(); startScreenLoop(); });
 });

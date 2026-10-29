@@ -3125,27 +3125,86 @@
   }
 
   // ---- Screener ----
-  const CAP_LABEL = { mega: 'Mega cap', large: 'Large cap', mid: 'Mid cap', small: 'Small cap' };
-  function screenCard(x) {
-    const up = (x.changePct || 0) >= 0;
-    return `<div class="quote-card" data-s="${esc(x.symbol)}"><div class="quote-sym">${esc(x.symbol)}</div><div class="quote-name">${esc(x.name || '')}</div><div class="quote-price">$${(+x.price).toFixed(2)}</div><div class="quote-chg ${up ? 'up' : 'down'}">${up ? '▲' : '▼'} ${Math.abs(x.changePct || 0).toFixed(2)}%</div><div class="quote-name" style="margin-top:5px">${esc(x.sector || '')} · ${esc(CAP_LABEL[x.cap] || '')}</div></div>`;
+  // The server sends the whole list once. Filtering and sorting happen here,
+  // so each change shows at once without another round trip.
+  let screenRows = null, screenMeta = {}, screenTries = 0, screenTimer = null;
+  const screenSort = { k: 'marketCap', dir: -1 };
+  const SC_COLS = [
+    { k: 'symbol', t: 'Stock' },
+    { k: 'sector', t: 'Sector', cls: 'sc-sec' },
+    { k: 'marketCap', t: 'Market value', num: true, cls: 'sc-mcap' },
+    { k: 'price', t: 'Price', num: true },
+    { k: 'changePct', t: 'Today', num: true },
+  ];
+  const fmtCap = (v) => v == null ? '—' : v >= 1e12 ? '$' + (v / 1e12).toFixed(2) + 'T' : '$' + Math.round(v / 1e9) + 'B';
+  function screenFiltered() {
+    const sec = $('scSector').value, cap = $('scCap').value;
+    const lo = parseFloat($('scPriceMin').value), hi = parseFloat($('scPriceMax').value);
+    return screenRows.filter(r => (!sec || r.sector === sec) && (!cap || r.cap === cap)
+      && (!(lo > 0) || (r.price != null && r.price >= lo))
+      && (!(hi > 0) || (r.price != null && r.price <= hi)));
   }
-  async function loadScreen() {
-    $('screenResult').innerHTML = `<p class="compare-note">Screening…</p>`;
-    const p = new URLSearchParams();
-    if ($('scSector').value) p.set('sector', $('scSector').value);
-    if ($('scCap').value) p.set('cap', $('scCap').value);
-    if ($('scPriceMin').value) p.set('priceMin', $('scPriceMin').value);
-    if ($('scPriceMax').value) p.set('priceMax', $('scPriceMax').value);
+  function screenRow(x) {
+    const has = x.price != null, up = (x.changePct || 0) >= 0;
+    const chg = has ? `<td class="num ${up ? 'up' : 'down'}">${up ? '+' : '−'}${Math.abs(x.changePct || 0).toFixed(2)}%</td>` : `<td class="num sc-na">—</td>`;
+    return `<tr data-s="${esc(x.symbol)}" tabindex="0"><td><span class="sc-sym">${esc(x.symbol)}</span><span class="sc-name">${esc(x.name || '')}</span></td>`
+      + `<td class="sc-sec">${esc(x.sector || '')}</td><td class="num sc-mcap">${fmtCap(x.marketCap)}</td>`
+      + `<td class="num">${has ? '$' + (+x.price).toFixed(2) : '<span class="sc-na">—</span>'}</td>${chg}</tr>`;
+  }
+  function drawScreen() {
+    const rows = screenFiltered(), { k, dir } = screenSort;
+    const text = !SC_COLS.find(c => c.k === k).num;
+    // A missing value sorts last whichever way the column runs.
+    rows.sort((a, b) => {
+      const x = a[k], y = b[k];
+      if (x == null || y == null) return (x == null) - (y == null);
+      return (text ? String(x).localeCompare(String(y)) : x - y) * dir;
+    });
+    const filtered = $('scSector').value || $('scCap').value || $('scPriceMin').value || $('scPriceMax').value;
+    $('scClear').classList.toggle('hidden', !filtered);
+    const head = SC_COLS.map(c => {
+      const on = c.k === k;
+      return `<th class="${c.num ? 'num' : ''} ${c.cls || ''}" aria-sort="${on ? (dir > 0 ? 'ascending' : 'descending') : 'none'}"><button type="button" data-k="${c.k}">${c.t}<span class="sc-arr">${on ? (dir > 0 ? '↑' : '↓') : ''}</span></button></th>`;
+    }).join('');
+    const body = rows.length ? rows.map(screenRow).join('')
+      : `<tr><td colspan="${SC_COLS.length}" class="sc-empty">No stocks match these filters.</td></tr>`;
+    const m = screenMeta;
+    const note = m.demo ? 'These are demo prices, generated for testing. They are not real.'
+      : m.pending ? `Still fetching prices for ${m.pending} of ${m.universe}. They fill in on their own.`
+      : 'Prices refresh every few minutes. This is a fixed list of large US stocks, not the whole market.';
+    $('screenResult').innerHTML = `<div class="sc-count">${filtered ? `${rows.length} of ${screenRows.length}` : screenRows.length} stocks</div>`
+      + `<div class="sc-wrap"><table class="sc-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`
+      + `<p class="compare-note">${note}</p>`;
+    $('screenResult').querySelectorAll('thead button').forEach(btn => btn.addEventListener('click', () => {
+      const c = SC_COLS.find(x => x.k === btn.dataset.k);
+      if (screenSort.k === c.k) screenSort.dir = -screenSort.dir;
+      else { screenSort.k = c.k; screenSort.dir = c.num ? -1 : 1; }
+      drawScreen();
+    }));
+    $('screenResult').querySelectorAll('tbody tr[data-s]').forEach(tr => {
+      tr.addEventListener('click', () => goAnalyze(tr.dataset.s));
+      tr.addEventListener('keydown', (e) => { if (e.key === 'Enter') goAnalyze(tr.dataset.s); });
+    });
+  }
+  async function loadScreen(quiet) {
+    clearTimeout(screenTimer);
+    if (!quiet) { screenTries = 0; if (!screenRows) $('screenResult').innerHTML = `<p class="compare-note">Loading…</p>`; }
     let d;
-    try { d = await (await fetch('/api/screen?' + p.toString())).json(); } catch { $('screenResult').innerHTML = `<p class="compare-note">Couldn’t run the screen.</p>`; return; }
+    try { d = await (await fetch('/api/screen')).json(); }
+    catch { if (!screenRows) $('screenResult').innerHTML = `<p class="compare-note">Couldn’t load the screener.</p>`; return; }
     if (isProGate(d)) { $('screenResult').innerHTML = proGateHtml(d); return; }
     if (!d.available) { $('screenResult').innerHTML = `<p class="compare-note">${esc(d.message || 'Screener unavailable.')}</p>`; return; }
-    if (!d.results.length) { $('screenResult').innerHTML = `<p class="compare-note">No matches. Try loosening the filters.</p>`; return; }
-    $('screenResult').innerHTML = `<div class="mkt-h">${d.results.length} matches</div><div class="quote-grid">` + d.results.map(screenCard).join('') + `</div><p class="compare-note">Screening a curated list of popular US stocks with live prices. Full-market screening needs a paid data plan.</p>`;
-    $('screenResult').querySelectorAll('.quote-card').forEach(c => c.addEventListener('click', () => goAnalyze(c.dataset.s)));
+    screenRows = d.results;
+    screenMeta = { demo: d.demo, pending: d.pending, universe: d.universe };
+    drawScreen();
+    // Prices arrive a few names at a time. Ask again while some are missing
+    // and the page is still open.
+    if (d.pending && screenTries++ < 8) screenTimer = setTimeout(() => { if (currentView === 'screener') loadScreen(true); }, 15000);
   }
-  $('screenForm').addEventListener('submit', (e) => { e.preventDefault(); loadScreen(); });
+  ['scSector', 'scCap'].forEach(id => $(id).addEventListener('change', () => { if (screenRows) drawScreen(); }));
+  ['scPriceMin', 'scPriceMax'].forEach(id => $(id).addEventListener('input', () => { if (screenRows) drawScreen(); }));
+  $('screenForm').addEventListener('reset', () => setTimeout(() => { if (screenRows) drawScreen(); }, 0));
+  $('screenForm').addEventListener('submit', (e) => e.preventDefault());
 
   // ---- Price alerts ----
   let lastAlertCount = 0;
