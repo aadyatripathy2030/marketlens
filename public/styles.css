@@ -2,7 +2,7 @@
   /* Warm neutral ground. The chrome is greyscale on purpose: every hue on the
      page belongs to data, so something coloured always means something. */
   --bg: #121211; --bg2: #191917; --card: #1d1d1a; --card-hi: #252521;
-  --text: #f0efec; --muted: #9a958c;
+  --text: #f0efec; --muted: #b5b0a7;
   --border: #2e2d28; --border-strong: #423f38;
   /* The chrome is monotone: bone on charcoal, no brand hue at all, so every
      colour on the page belongs to data (green up, red down, amber caution,
@@ -10,14 +10,17 @@
      gauge when a reading leans neither way, and the model-written block are
      all bone. (This was the original scheme; violet, orange and blue were
      tried in October 2026 and dropped.) 13:1 on --card. */
-  --accent: #e8d5d9; --accent-hi: #f3e6e9; --accent-soft: #2e2224;
-  --ai: #e8d5d9; --ai-2: #d6c3c7; --ai-soft: #2a2022;
+  --accent: #6ea2ff; --accent-hi: #8ab4ff; --accent-soft: #16233d;
+  --ai: #6ea2ff; --ai-2: #8ab4ff; --ai-soft: #141f36;
+  /* The fill behind the one primary button: deeper than the link blue so
+     white text on it clears 5:1. */
+  --btn: #2563eb; --btn-hi: #1d4ed8;
   /* Direction, reserved: green up, red down, amber caution — never decoration.
      Red/green cannot be told apart by a deuteranope and is unavoidable here,
      so direction is always carried by a sign, an arrow or position as well as
      by hue. Both sit >= 4.5:1 on --card (AA) and inside the lightness band. */
   --good: #44a85a; --good-soft: #152a1a; --bad: #e0564d; --bad-soft: #2c1816;
-  --warn: #c9a15a; --neutral: #7a756b;
+  --warn: #c9a15a; --neutral: #9a958c;
   /* Chart overlays, validated as a categorical pair against --card:
      dE 22.9 protan / 23.1 tritan, both inside the lightness band 0.48-0.67.
      The projection stays deliberately neutral and is drawn dashed, so it
@@ -30,9 +33,9 @@
      the same handful of distances and sizes. */
   /* Sans for everything structural, with tabular figures so columns line up. */
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  /* One family for everything: headlines, figures and the model-written read.
-     Size and weight make the hierarchy. */
-  --font-head: var(--font);
+  /* Two families: Space Grotesk for headlines, served from this site so no
+     request leaves for a font, and the system sans for everything else. */
+  --font-head: 'Space Grotesk', var(--font);
   --font-read: var(--font);
   --font-num: var(--font);
 }
@@ -426,8 +429,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .input::placeholder { text-transform: none; color: var(--muted); }
 .input:focus { outline: none; border-color: var(--accent); }
 .btn { font-family: var(--font); font-weight: 600; font-size: 16px; border-radius: var(--radius-sm); padding: 12px 24px; cursor: pointer; border: 1px solid transparent; transition: background .12s, border-color .12s; }
-.btn-primary { background: var(--accent); color: var(--bg); }
-.btn-primary:hover { background: var(--accent-hi); }
+.btn-primary { background: var(--btn); color: #fff; }
+.btn-primary:hover { background: var(--btn-hi); }
 .btn-primary:disabled { opacity: .55; cursor: default; }
 .btn-ai { background: var(--card-hi); color: var(--text); border-color: var(--border-strong); }
 .btn-ai:hover { border-color: var(--accent); }
@@ -1233,8 +1236,8 @@ body.drawer-open .drawer { transform: translateX(0); }
 .btn:active, .chip:active, .ov:active, .range-btn:active { transform: none; }
 
 /* Buttons: the accent fills the one primary action, and nothing else. */
-.btn-primary { background: var(--accent); color: var(--bg); }
-.btn-primary:hover { background: var(--accent-hi); }
+.btn-primary { background: var(--btn); color: #fff; }
+.btn-primary:hover { background: var(--btn-hi); }
 
 /* Arrival: the chart appears; it does not perform. */
 #chart.reveal { animation: none; }
@@ -1353,3 +1356,73 @@ body:not([data-view="analyze"]) .disclaimer { display: none; }
 .rv.in { opacity: 1; transform: none;
   transition: opacity .45s ease-out, transform .45s cubic-bezier(.2,.7,.2,1); transition-delay: var(--rd, 0ms); }
 @media (prefers-reduced-motion: reduce) { .rv { opacity: 1; transform: none; transition: none; } }
+
+/* ---- Headline face ---- */
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url(/fonts/space-grotesk-latin.woff2) format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+.brand, .hero-h, .view-h, .home-h, .home-band-h, .home-end-h, .record-h, .step-h, .tool-h, .plan2-h, .plan2-price,
+.home-call-v, .learn-h, .modal-title, .auth-face-h, .wall-h, .legal h1 { font-family: var(--font-head); }
+
+/* ---- Header: one way to navigate per width ---- */
+/* Wide: the four links plus More, which opens the full menu. Narrow: the
+   menu button alone. */
+.nav-more { font: inherit; font-size: 15px; font-weight: 500; color: var(--muted); background: none; border: 0; padding: 8px; cursor: pointer; transition: color .15s; }
+.nav-more:hover { color: var(--text); }
+@media (min-width: 761px) { .nav-toggle { display: none; } }
+/* Data source as a status, not a button: a dot and a word. */
+.tag { background: none; border: 0; padding: 0 8px 0 0; font-size: 13px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.tag::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--good); }
+.tag.demo::before { background: var(--warn); }
+
+/* ---- Hero: the pitch on the left, the live reading on the right ---- */
+.hero-wrap { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 64px; align-items: center; padding: 64px 0 96px; }
+.hero-wrap .hero { padding: 0; }
+.hero-h { font-size: clamp(38px, 4.6vw, 64px); max-width: 14ch; }
+.hero-sub { max-width: 46ch; }
+.hero-search { flex-wrap: wrap; }
+.hero-search .input { flex: 1 1 220px; }
+@media (max-width: 560px) { .hero-search .input { flex: none; } }
+.hero-assure { color: var(--muted); }
+.hero-wrap .home-chart { margin: 0; }
+@media (max-width: 1100px) { .hero-wrap { grid-template-columns: 1fr; gap: 48px; padding: 48px 0 64px; } .hero-h { max-width: 18ch; } }
+#view-home { max-width: 1280px; }
+
+/* The call, set above the chart it was read from. */
+.home-call { display: grid; grid-template-columns: auto 1fr; gap: 8px 24px; align-items: baseline; padding: 16px 0 16px; border-top: 1px solid var(--border); }
+.home-call.hidden { display: none; }
+.home-call-main { display: flex; flex-direction: column; gap: 2px; }
+.home-call-k { font-size: 13px; color: var(--muted); }
+.home-call-v { font-size: 36px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+.home-call-v.bullish { color: var(--good); } .home-call-v.bearish { color: var(--bad); } .home-call-v.neutral { color: var(--text); }
+.home-call-lv { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 15px; color: var(--muted); }
+.home-call-lv b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.lv-dot { display: inline-block; width: 8px; height: 2px; vertical-align: middle; margin-right: 6px; }
+.lv-dot.bad { background: var(--bad); } .lv-dot.good { background: var(--good); }
+.home-call-why { grid-column: 1 / -1; font-size: 15px; line-height: 1.55; color: var(--muted); margin: 0; max-width: 70ch; }
+.home-full { font: inherit; font-size: 15px; font-weight: 600; color: var(--accent); background: none; border: 0; padding: 16px 0 0; cursor: pointer; }
+.home-full:hover { color: var(--accent-hi); text-decoration: underline; text-underline-offset: 3px; }
+
+/* The front-page chart is an example, not the workstation: no layer
+   switches, no interval row, no instructions, three ranges. */
+#chartSlotHome .overlays, #chartSlotHome .tf-interval, #chartSlotHome .tf-label,
+#chartSlotHome .chart-hint, #chartSlotHome .color-panel,
+#chartSlotHome .range-btn[data-days="21"], #chartSlotHome .range-btn[data-days="126"],
+#chartSlotHome .range-btn[data-days="504"], #chartSlotHome .range-btn[data-days="0"] { display: none !important; }
+#chartSlotHome .chart-top { margin-bottom: 8px; }
+#chartSlotHome #chart { touch-action: pan-y; height: 380px; }
+#chartSlotHome { min-height: 0; }
+@media (max-width: 560px) { #chartSlotHome #chart { height: 300px; } }
+
+/* ---- The band: the one change of pace on the page ---- */
+.home-band { margin: 0 0 96px; padding: 64px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); }
+.home-band-h { font-size: clamp(30px, 3.6vw, 48px); font-weight: 700; letter-spacing: -.025em; line-height: 1.12; max-width: 22ch; margin: 0 0 24px; }
+.home-band p { font-size: 19px; line-height: 1.6; color: var(--muted); max-width: 60ch; }
+@media (max-width: 760px) { .home-band { padding: 40px 24px; margin-bottom: 64px; } .home-band p { font-size: 17px; } }
+.home-band + .home-sec { border-top: 0; padding-top: 0; }
+.faq a { color: var(--accent); }

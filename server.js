@@ -471,6 +471,8 @@ async function handleAccuracy(req, res) {
   } catch (e) { logError(e); return json(res, 200, { recorded: 0, graded: 0, labels: [], horizon: ACCURACY_HORIZON }); }
 }
 
+// The one symbol read in full for visitors: the front page's example.
+const SAMPLE_SYMBOL = 'SPY';
 async function handleStock(req, res, symbol, strategy, direction, interval) {
   symbol = String(symbol || '').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
   if (!symbol) return json(res, 400, { error: 'Enter a stock or crypto symbol.' });
@@ -525,8 +527,11 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
     strategy, direction, prices: data.prices,
     latest: last, change: last - prev, changePct: prev ? ((last - prev) / prev) * 100 : 0,
   };
-  // No session: the bars and the last price, and nothing derived from them.
-  if (!user) return json(res, 200, Object.assign({ locked: true }, head));
+  // No session: the bars and the last price, and nothing derived from them,
+  // except for the front page's sample, the index fund on daily bars, which
+  // is read in full for everyone so a visitor can see what a reading is.
+  const sample = symbol === SAMPLE_SYMBOL && interval === '1day';
+  if (!user && !sample) return json(res, 200, Object.assign({ locked: true }, head));
   const a = I.analyze(closes, strategy, direction);
   // Deep-analysis suite (only meaningful on daily-or-longer bars with enough history)
   const candles = data.prices.map(p => ({ open: p.open, high: p.high, low: p.low, close: p.close, volume: p.volume || 0 }));
@@ -544,7 +549,7 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   // for day trading is 5-minute bars, so most visits would not have counted.
   // Fire-and-forget: bumpStreak swallows its own errors, and a streak must
   // never be the reason a chart fails.
-  bumpStreak(user).catch(() => {});
+  if (user) bumpStreak(user).catch(() => {});
   const bands = I.forecastBands(closes);
   const levels = I.tradeLevels(candles, a.direction);
   // What actually happened, historically, at scores like today's. Roughly 50ms
@@ -1445,7 +1450,7 @@ function emailHtml(o) {
   const box = o.box
     ? `<div style="margin:22px 0 4px;padding:14px 16px;border:1px solid #423f38;border-radius:4px;background:#121211;">`
       + `<div style="font-family:${MAIL_FONT};font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:#9a958c;margin-bottom:6px;">${esc(o.box.label)}</div>`
-      + `<a href="${esc(o.box.url || o.box.value)}" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:15px;color:#e8d5d9;text-decoration:none;word-break:break-all;">${esc(o.box.value)}</a></div>`
+      + `<a href="${esc(o.box.url || o.box.value)}" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:15px;color:#6ea2ff;text-decoration:none;word-break:break-all;">${esc(o.box.value)}</a></div>`
     : '';
   const intro2 = o.intro2 ? `<p style="margin:12px 0 0;font-family:${MAIL_FONT};font-size:15px;line-height:1.6;color:#d6d2c8;">${esc(o.intro2)}</p>` : '';
   // Short parallel items, one per line: a report's rows.
@@ -1453,8 +1458,8 @@ function emailHtml(o) {
     ? `<ul style="margin:14px 0 0;padding-left:20px;font-family:${MAIL_FONT};font-size:14px;line-height:1.7;color:#d6d2c8;">` + o.lines.map(l => `<li>${esc(l)}</li>`).join('') + `</ul>`
     : '';
   const button = o.button
-    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 14px;"><tr><td style="background:#e8d5d9;border-radius:3px;">`
-      + `<a href="${esc(o.button.url)}" style="display:inline-block;padding:13px 26px;font-family:${MAIL_FONT};font-size:15px;font-weight:700;color:#121211;text-decoration:none;">${esc(o.button.label)}</a></td></tr></table>`
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:22px 0 14px;"><tr><td style="background:#2563eb;border-radius:3px;">`
+      + `<a href="${esc(o.button.url)}" style="display:inline-block;padding:13px 26px;font-family:${MAIL_FONT};font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;">${esc(o.button.label)}</a></td></tr></table>`
       + `<p style="margin:0;font-family:${MAIL_FONT};font-size:12px;line-height:1.6;color:#9a958c;word-break:break-all;">Or paste this link into your browser:<br><a href="${esc(o.button.url)}" style="color:#9a958c;">${esc(o.button.url)}</a></p>`
     : '';
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${esc(o.title)}</title></head>`
@@ -3204,8 +3209,8 @@ const LEGAL = require('./legal');
 const siteOrigin = (req) => (req.headers['x-forwarded-proto'] || 'http') + '://' + (req.headers.host || 'chartgauge.com');
 
 const VIEW_SEO = {
-  '': { view: 'home', title: 'ChartGauge | find, size and time stock and crypto trades',
-    desc: 'Look up any stock or crypto pair and get a buy, sell or hold call with a stop and a target, graded in public against what the price did next. Trading can lose money; not financial advice.' },
+  '': { view: 'home', title: 'ChartGauge | Buy, Sell or Hold Calls for Stocks and Crypto',
+    desc: 'A buy, sell or hold call on any stock or crypto pair, with the stop and target already set, and every call graded in public. Trading can lose money; not financial advice.' },
   'analyze': { view: 'analyze', title: 'Analyze a stock or crypto pair | ChartGauge',
     desc: 'Enter a stock or crypto pair for a candlestick chart, 13 technical indicators, an indicator score, and stop-loss and take-profit levels derived from ATR and recent swing highs and lows.' },
   'markets': { view: 'markets', title: 'Market snapshot: indices and trending stocks | ChartGauge',
@@ -3474,6 +3479,7 @@ function serveDocument(req, res, urlPath) {
       .replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${esc(seo.desc)}" />`)
       .replace('<!--SEO-->', seoHead(seo, origin))
       .replace('<!--GA-->', GA_SNIPPET)
+      .replace(/<!--CONTACT_EMAIL-->/g, CONTACT_EMAIL)
       .replace('<span id="footYear">2026</span>', `<span id="footYear">${new Date().getFullYear()}</span>`);
     // One <h1> per rendered page: the active view keeps it, the rest step down.
     out = out.replace(/<h1 class="(hero-h|view-h)"/g, '<h2 class="$1"');

@@ -56,8 +56,8 @@
   // A Global Privacy Control signal counts as a refusal and is said to have
   // been honoured, rather than asking a question the browser already answered.
   const gpcOn = () => !!(navigator.globalPrivacyControl);
-  const CONSENT_ASK = 'ChartGauge uses a cookie to keep you signed in, which is always on. It can also use Google Analytics to count visits, but only if you say yes. See the <a href="/privacy">Privacy Policy</a>.';
-  const CONSENT_GPC = 'Your browser sent a Global Privacy Control signal, so Google Analytics stays off and no analytics cookie is set. You can still turn it on here if you want to. See the <a href="/privacy">Privacy Policy</a>.';
+  const CONSENT_ASK = 'May we count your visit with Google Analytics? It stays off unless you allow it. <a href="/privacy">Privacy Policy</a>';
+  const CONSENT_GPC = 'Your browser sent a Global Privacy Control signal, so Google Analytics stays off. You can still allow it here. See the <a href="/privacy">Privacy Policy</a>.';
   function openConsent() {
     const bar = $('consent');
     if (!bar) return;
@@ -804,6 +804,7 @@
     drawer.setAttribute('aria-hidden', 'false');
     scrim.hidden = false;
     $('navToggle').setAttribute('aria-expanded', 'true');
+    if ($('navMore')) $('navMore').setAttribute('aria-expanded', 'true');
     const first = drawer.querySelector('.drawer-close');
     if (first) first.focus();
   }
@@ -814,9 +815,11 @@
     drawer.setAttribute('aria-hidden', 'true');
     scrim.hidden = true;
     $('navToggle').setAttribute('aria-expanded', 'false');
+    if ($('navMore')) $('navMore').setAttribute('aria-expanded', 'false');
     if (lastFocus && lastFocus.focus) lastFocus.focus();
   }
   if ($('navToggle')) $('navToggle').addEventListener('click', () => drawerOpen ? closeDrawer() : openDrawer());
+  if ($('navMore')) $('navMore').addEventListener('click', () => drawerOpen ? closeDrawer() : openDrawer());
   if ($('drawerClose')) $('drawerClose').addEventListener('click', closeDrawer);
   if (scrim) scrim.addEventListener('click', closeDrawer);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && drawerOpen) closeDrawer(); });
@@ -833,7 +836,7 @@
   // The observer's first report on each element decides: already in sight
   // means it is left alone, so the first view never flickers and live quotes
   // re-rendering in place never replay.
-  const REVEAL_SEL = '.home-chart, .record-h, .record-tile, .record-line, .home-h, .steps > li, .tool, .plan2, .faq, .home-end, .card, .learn-card, .plan-card, .quote-card, .wl-card';
+  const REVEAL_SEL = '.home-chart, .record-h, .record-line, .home-h, .steps > li, .tool, .plan2, .faq, .home-end, .card, .learn-card, .plan-card, .quote-card, .wl-card';
   const revealSeen = new WeakSet();
   const revealIO = ('IntersectionObserver' in window) && !matchMedia('(prefers-reduced-motion: reduce)').matches
     ? new IntersectionObserver((entries) => entries.forEach(e => {
@@ -914,6 +917,12 @@
     bars.forEach(p => { vals.push(p.high, p.low); });
     visFast.concat(visSlow).forEach(v => { if (v != null) vals.push(v); });
     fc.forEach(v => vals.push(v));
+    // On the front page the exits are the point, so the stop and the first
+    // target are always inside the frame.
+    if (currentView === 'home' && show.levels && d.levels) {
+      vals.push(d.levels.stop);
+      const t0 = targetsFor(d.levels)[0]; if (t0) vals.push(t0.price);
+    }
     const min = Math.min(...vals), max = Math.max(...vals);
     const pad = (max - min) * 0.08 || 1;
     // Auto-fit the visible bars unless the user has taken manual control of
@@ -1086,7 +1095,7 @@
       };
       mark(L.stop, col('--bad'), pxFmt(L.stop), false);
       targetsFor(L).forEach(t => mark(t.price, col('--good'), pxFmt(t.price), true));
-      if (L.structureTarget) mark(L.structureTarget.price, col('--sma20'), pxFmt(L.structureTarget.price), true);
+      if (L.structureTarget && currentView !== 'home') mark(L.structureTarget.price, col('--sma20'), pxFmt(L.structureTarget.price), true);
     }
 
     // The latest price in the data, not the last one that happens to be in
@@ -1271,6 +1280,9 @@
     // spikes, and scale exponentially — ~6% per notch instead of the old 15%.
     canvas.addEventListener('wheel', (e) => {
       if (!lastData || !view) return;
+      // On the front page the wheel belongs to the page; a pinch, or the
+      // wheel with Ctrl or Cmd held, still zooms.
+      if (currentView === 'home' && !e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       const raw = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
       const step = Math.max(-60, Math.min(60, raw));
@@ -1395,6 +1407,8 @@
     let touch = null, lastTap = 0;
     canvas.addEventListener('touchstart', (e) => {
       if (!lastData || !view) return;
+      // One finger on the front page scrolls the page; two still pinch.
+      if (currentView === 'home' && e.touches.length === 1) { touch = null; return; }
       if (e.touches.length === 1) {
         const t = e.touches[0], now = Date.now();
         if (now - lastTap < 300) {                       // double-tap
@@ -1679,7 +1693,8 @@
       // The server just extended the streak; pick the new number up so the
       // badge moves on the visit that earned it, not the next page load.
       if (!d.locked) refreshStreak();
-      $('modeTag').textContent = d.source === 'live' ? 'live data' : 'demo data';
+      $('modeTag').textContent = d.source === 'live' ? 'Live prices' : 'Demo data';
+      $('modeTag').classList.toggle('demo', d.source !== 'live');
       $('symName').textContent = d.symbol + (d.name && d.name !== d.symbol ? ' · ' + d.name : '');
       updateWatchBtn(d.symbol);
       $('price').textContent = d.latest.toFixed(2) + ' ' + d.currency;
@@ -1776,6 +1791,9 @@
   const HOME_SYMBOL = 'SPY';
   function loadHomeChart() {
     if (interval !== '1day') { interval = '1day'; viewCandles = null; syncIntervalButtons(); }
+    // The exits are the point of the example, so they are drawn here.
+    show.levels = true;
+    const lvBtn = document.querySelector('.ov[data-k="levels"]'); if (lvBtn) lvBtn.classList.add('active');
     if (lastData && lastData.symbol === HOME_SYMBOL && lastData.interval === '1day') {
       fillHomeHead();
       requestAnimationFrame(() => { try { drawChart(); } catch (e) {} });
@@ -1790,38 +1808,34 @@
     const up = lastData.change >= 0;
     $('homeChg').textContent = (up ? '▲ ' : '▼ ') + Math.abs(lastData.change).toFixed(2) + ' (' + lastData.changePct.toFixed(2) + '%)';
     $('homeChg').className = 'chart-chg ' + (up ? 'up' : 'down');
+    // The call and its exits, from the same reading the chart is drawing.
+    const call = lastData.call, L = lastData.levels;
+    if (lastData.locked || !call || !call.action) { $('homeCall').classList.add('hidden'); return; }
+    $('homeCallV').textContent = call.action;
+    $('homeCallV').className = 'home-call-v ' + (call.tone || 'neutral');
+    const t = L ? targetsFor(L)[0] : null;
+    $('homeCallLv').innerHTML = L
+      ? `<span><i class="lv-dot bad"></i>Stop <b>${esc(pxFmt(L.stop))}</b></span>`
+        + (t ? `<span><i class="lv-dot good"></i>Target <b>${esc(pxFmt(t.price))}</b></span>` : '')
+        + `<span class="muted">for a ${L.direction === 'short' ? 'short' : 'long'} trade</span>`
+      : '';
+    $('homeCallWhy').textContent = call.why || '';
+    $('homeCall').classList.remove('hidden');
   }
   $('homeFull').addEventListener('click', () => goAnalyze(HOME_SYMBOL));
 
+  // How much the tool is used, as a plain count. The graded results live on
+  // the accuracy page, where there is room to say what they mean.
   let homeRecordLoaded = false;
   async function loadHomeRecord() {
-    const grid = $('recordGrid'); if (!grid || homeRecordLoaded) return;
-    const tile = (id, label) => `<div class="record-tile"><div class="record-val" id="${id}">—</div><div class="record-lbl">${label}</div></div>`;
-    const whole = (v) => Math.round(v).toLocaleString('en-US');
-    const pc = (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+    const el = $('heroCount'); if (!el || homeRecordLoaded) return;
     try {
       const d = await fetch('/api/accuracy').then(r => r.json());
       homeRecordLoaded = true;
-      if (!d.graded) {
-        // A young record, not a broken one: readings exist, outcomes do not yet.
-        grid.innerHTML = tile('recRecorded', 'readings written down') + tile('recGraded', 'graded so far');
-        countUp('recRecorded', d.recorded || 0, whole); countUp('recGraded', 0, whole);
-        return;
-      }
-      // How often price was simply higher afterwards, across every reading:
-      // the base rate the full page measures each reading against.
-      let higher = 0, n = 0;
-      (d.labels || []).forEach(l => { if (l.winRate != null && l.n) { higher += l.winRate / 100 * l.n; n += l.n; } });
-      grid.innerHTML = tile('recGraded', 'readings graded')
-        + tile('recBase', `average return ${d.horizon} trading days later`)
-        + tile('recHigher', `price was higher ${d.horizon} days later`)
-        + tile('recPending', 'still waiting for an outcome');
-      countUp('recGraded', d.graded, whole);
-      countUp('recBase', d.baseline, pc);
-      countUp('recHigher', n ? (higher / n) * 100 : null, (v) => Math.round(v) + '%');
-      countUp('recPending', Math.max(0, (d.recorded || 0) - d.graded), whole);
-    } catch (e) { grid.innerHTML = '<div class="record-tile" style="grid-column:1/-1"><div class="record-lbl">The record could not be loaded right now.</div></div>'; }
+      if ((d.recorded || 0) >= 50) el.textContent = `${Math.round(d.recorded).toLocaleString('en-US')} readings made so far, each one graded in public.`;
+    } catch (e) {}
   }
+
 
   // The averages, the projection and the levels are each a reading of the
   // chart, so a visitor's chart draws without them. The buttons are hidden by
@@ -3195,17 +3209,22 @@
   function renderHomePlans() {
     if (!$('homePlans')) return;
     $('homeAiN').textContent = limits.aiPerDay || AI_FALLBACK_N;
-    const order = [['monthly', 'a month'], ['weekly', 'a week'], ['yearly', 'a year']]
+    $('homeWatchN').textContent = limits.watchMax || 10;
+    $('homeAlertN').textContent = limits.alertMax || 3;
+    // Monthly and yearly only here: a week is shorter than the 20 trading
+    // days a call is graded over. The weekly plan stays on the Plans page.
+    const order = [['monthly', 'a month'], ['yearly', 'a year']]
       .filter(([k]) => billingPlans && billingPlans[k] && billingPlans[k].amount != null);
     if (order.length) {
       const [k0, w0] = order[0], p0 = billingPlans[k0];
       $('homeProPrice').innerHTML = `${esc(money(p0.amount, p0.currency))}<small> ${w0}</small>`;
       const others = order.slice(1).map(([k, w]) => `${money(billingPlans[k].amount, billingPlans[k].currency)} ${w}`);
       $('homeTrial').textContent = [others.length ? 'Or ' + others.join(', or ') + '.' : '',
-        trialDays > 0 ? `${trialDays} days free on your first subscription.` : ''].filter(Boolean).join(' ');
+        trialDays > 0 ? `Try it free for ${trialDays} days first.` : '',
+        'Full refund within 14 days of any charge.'].filter(Boolean).join(' ');
     }
     const signedIn = !!currentUser;
-    $('homeEndCta').textContent = signedIn ? 'Analyze a stock' : 'Create a free account';
+    $('homeEndCta').textContent = signedIn ? 'Analyze a stock' : 'Get a free reading';
     $('homeEndTry').classList.toggle('hidden', signedIn);
   }
   if ($('homeEndCta')) $('homeEndCta').addEventListener('click', () => currentUser ? showView('analyze') : openAuth('signup'));

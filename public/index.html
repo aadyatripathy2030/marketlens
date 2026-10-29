@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ChartGauge | find, size and time stock and crypto trades</title>
-<meta name="description" content="Look up any stock or crypto pair and get a buy, sell or hold call with a stop and a target, graded in public against what the price did next. Trading can lose money; not financial advice." />
+<title>ChartGauge | Buy, Sell or Hold Calls for Stocks and Crypto</title>
+<meta name="description" content="A buy, sell or hold call on any stock or crypto pair, with the stop and target already set, and every call graded in public. Trading can lose money; not financial advice." />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <!-- 180px is what iOS asks for. This used to point at avatar.png, the
      4096px original, so every device saving the site pulled 490KB for an icon. -->
@@ -18,6 +18,7 @@
 <meta name="color-scheme" content="dark" />
 <!--SEO-->
 <!--GA-->
+<link rel="preload" href="/fonts/space-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin />
 <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -28,12 +29,14 @@
     <span></span><span></span><span></span>
   </button>
   <a class="brand" href="/" data-view="home"><svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><rect width="64" height="64" rx="14" fill="#0e1014"/><rect x="19.75" y="15" width="4.5" height="34" rx="1" fill="#ff5f56"/><rect x="14" y="23" width="16" height="18" rx="2" fill="#ff5f56"/><rect x="39.75" y="11" width="4.5" height="40" rx="1" fill="#3ddc84"/><rect x="34" y="17" width="16" height="28" rx="2" fill="#3ddc84"/></svg>ChartGauge</a>
-  <!-- Four doors on wide screens; everything else is in the menu. -->
+  <!-- Four doors on wide screens and More for the rest; narrow screens get
+       the menu button instead. -->
   <nav class="nav" id="topNav" aria-label="Main">
     <a class="nav-link" href="/analyze" data-view="analyze">Analyze</a>
     <a class="nav-link" href="/practice" data-view="practice">Practice</a>
     <a class="nav-link" href="/learn" data-view="learn">Learn</a>
     <a class="nav-link" href="/pricing" data-view="pricing">Pricing</a>
+    <button type="button" class="nav-more" id="navMore" aria-expanded="false" aria-controls="drawer">More</button>
   </nav>
   <div class="topbar-right">
     <span class="tag" id="modeTag"></span>
@@ -67,55 +70,65 @@
 <main class="app" id="main" tabindex="-1">
   <!-- HOME -->
   <section class="view" id="view-home">
-    <!-- One message, one action: what this is, who it is for, and the box
-         to start in. Everything else on the page is evidence for it. -->
-    <div class="hero">
-      <h1 class="hero-h">Find, size and time your next trade.</h1>
-      <p class="hero-sub">Search any stock or crypto pair. ChartGauge reads the chart, makes a buy, sell or hold call with a stop and a target, and grades every call in public.</p>
-      <form class="hero-search" id="heroForm">
-        <input id="heroInput" class="input" aria-label="Search for a stock or crypto pair" placeholder="AAPL, Tesla, BTC/USD" autocomplete="off" maxlength="16" />
-        <button type="submit" class="btn btn-primary">Analyze</button>
-      </form>
-      <p class="hero-assure">The chart is free to anyone. The reading needs a free account, no card.</p>
-    </div>
-    <!-- The front page opens on a live chart: the analyze panel, moved in
-         here, on the index fund's daily bars. Anyone can see it; the reading
-         of it is behind the Full analysis link like any other chart. -->
-    <div class="home-chart" id="homeChartWrap">
-      <div class="chart-head">
-        <div class="chart-id">
-          <span class="chart-sym" id="homeSym">SPY</span>
-          <span class="chart-name muted" id="homeName">S&amp;P 500 · daily</span>
-        </div>
-        <div class="chart-px">
-          <span class="chart-last" id="homeLast">&mdash;</span>
-          <span class="chart-chg" id="homeChg"></span>
-          <button type="button" class="wl-full" id="homeFull">Full analysis &rarr;</button>
-        </div>
+    <!-- One message, one action, and beside it the proof: today's real
+         reading of the index fund, with the call and its exits drawn in. -->
+    <div class="hero-wrap">
+      <div class="hero">
+        <h1 class="hero-h">Buy, sell or hold, with the stop and target already set.</h1>
+        <p class="hero-sub">Search any stock or crypto pair. ChartGauge reads the chart, makes the call, sets the exits from how far the price really moves, and grades every call in public.</p>
+        <form class="hero-search" id="heroForm">
+          <input id="heroInput" class="input" aria-label="Search for a stock or crypto pair" placeholder="Apple, NVDA, BTC/USD" autocomplete="off" maxlength="16" />
+          <button type="submit" class="btn btn-primary">Get a free reading</button>
+        </form>
+        <p class="hero-assure">Free account, no card. <span id="heroCount"></span></p>
       </div>
-      <div id="chartSlotHome"></div>
+      <!-- The analyze panel, moved in here, on the index fund's daily bars.
+           This one symbol is read in full for everyone, so the front page
+           shows the product's actual output rather than a bare chart. -->
+      <div class="home-chart" id="homeChartWrap">
+        <div class="chart-head">
+          <div class="chart-id">
+            <span class="chart-sym" id="homeSym">SPY</span>
+            <span class="chart-name muted" id="homeName">S&amp;P 500 · daily</span>
+          </div>
+          <div class="chart-px">
+            <span class="chart-last" id="homeLast">&mdash;</span>
+            <span class="chart-chg" id="homeChg"></span>
+          </div>
+        </div>
+        <div class="home-call hidden" id="homeCall">
+          <div class="home-call-main">
+            <span class="home-call-k">Today&rsquo;s call</span>
+            <span class="home-call-v" id="homeCallV"></span>
+          </div>
+          <div class="home-call-lv" id="homeCallLv"></div>
+          <p class="home-call-why" id="homeCallWhy"></p>
+        </div>
+        <div id="chartSlotHome"></div>
+        <button type="button" class="home-full" id="homeFull">See the full reading &rarr;</button>
+      </div>
     </div>
     <!-- How it works: the three steps, so a first visitor knows what they
          get before they type anything. -->
     <section class="home-sec" id="homeHow">
-      <h2 class="home-h">How it works</h2>
+      <h2 class="home-h">From a symbol to a trade plan in one search</h2>
       <ol class="steps">
-        <li><span class="step-n">1</span><h3 class="step-h">Pick a stock</h3><p>Any US-listed company, or a crypto pair such as BTC/USD. Pick day trading or long-term.</p></li>
-        <li><span class="step-n">2</span><h3 class="step-h">Get the call</h3><p>Buy, sell or hold, worked out from the indicators, with a stop-loss and a take-profit level set from the stock&rsquo;s own recent range.</p></li>
-        <li><span class="step-n">3</span><h3 class="step-h">Check it first</h3><p>See how often readings like this one have paid off on that symbol before. When the history disagrees, the call drops to hold.</p></li>
+        <li><span class="step-n">1</span><h3 class="step-h">Pick a stock</h3><p>Any of nearly four thousand US-listed companies, or a crypto pair such as BTC/USD. Choose day trading or long-term.</p></li>
+        <li><span class="step-n">2</span><h3 class="step-h">Get the call</h3><p>Buy, sell or hold, scored from five groups of indicators: short trend (20- and 50-day averages, MACD), long trend (50 against 200-day), RSI momentum, stretch from the Bollinger bands, and trend quality.</p></li>
+        <li><span class="step-n">3</span><h3 class="step-h">See the exits</h3><p>The stop goes 1.5 times the average daily range (ATR) from the price, or just past the recent swing low when that is within three ATRs. Targets sit at one, two and three times that risk.</p></li>
       </ol>
     </section>
-    <!-- The record, in public. The thing most tools would hide is the thing
-         this one leads with, for everyone, signed in or not. -->
-    <section class="record" id="homeRecord">
-      <h2 class="record-h">Every call, graded in public</h2>
-      <div class="record-grid" id="recordGrid"></div>
-      <p class="record-line">Each reading is saved before the outcome is known, then checked against what the price did. The numbers stay up whether they flatter us or not. <a href="/accuracy">See the full record</a></p>
+    <!-- The difference, in one band: the change of pace on the page. The
+         graded numbers live on the accuracy page, with room to explain them. -->
+    <section class="home-band" id="homeRecord">
+      <h2 class="home-band-h">Most chart tools leave the call to you. This one makes it, and keeps score.</h2>
+      <p>TradingView and Finviz give you excellent charts and screeners, and the conclusion is yours to draw. ChartGauge commits to one: a call, a stop and a target, saved before the outcome is known and checked 20 trading days later against what the price did. Wins and losses stay on the record.</p>
+      <p class="home-more"><a href="/accuracy">Read the record &rarr;</a></p>
     </section>
 
     <!-- What else is here, as a list rather than tiles. -->
     <section class="home-sec">
-      <h2 class="home-h">More than one chart</h2>
+      <h2 class="home-h">Practise, learn, and keep watch</h2>
       <div class="tools">
         <a class="tool" href="/practice" data-view="practice"><h3 class="tool-h">Practice</h3><p>Trade pretend money at live prices, with a risk meter on the whole account. Nothing touches a broker.</p><span class="tool-go">Open practice &rarr;</span></a>
         <a class="tool" href="/learn" data-view="learn"><h3 class="tool-h">Learn</h3><p>Nineteen short lessons with quizzes, on day trading and on long-term investing. Free, no account needed.</p><span class="tool-go">Start a lesson &rarr;</span></a>
@@ -127,7 +140,7 @@
     <!-- Price, stated on the front page. The numbers that can change with
          configuration are filled in from /api/auth/me by app.js. -->
     <section class="home-sec" id="homePlans">
-      <h2 class="home-h">Free to start</h2>
+      <h2 class="home-h">The call is free. Pro removes the limits.</h2>
       <div class="plans-2">
         <div class="plan2">
           <h3 class="plan2-h">Free</h3>
@@ -136,7 +149,7 @@
             <li>Every chart and indicator, stocks and crypto</li>
             <li>The call, a stop-loss and a take-profit level</li>
             <li><span id="homeAiN">3</span> written reports a day</li>
-            <li>A watchlist and price alerts</li>
+            <li>A watchlist of <span id="homeWatchN">10</span> and <span id="homeAlertN">3</span> price alerts</li>
             <li>Every lesson and the practice account</li>
           </ul>
         </div>
@@ -144,11 +157,11 @@
           <h3 class="plan2-h">Pro</h3>
           <div class="plan2-price" id="homeProPrice">See plans</div>
           <ul class="plan2-list">
-            <li>Unlimited written reports</li>
+            <li>A written report on every call, not three a day</li>
+            <li>Second and third take-profit levels on every call</li>
             <li>Read any chart from a screenshot</li>
             <li>The screener and side-by-side compare</li>
-            <li>More take-profit levels, no watchlist or alert limits</li>
-            <li>Cancel any time; full refund within 14 days of a charge</li>
+            <li>No limit on the watchlist or alerts</li>
           </ul>
           <p class="plan2-note" id="homeTrial"></p>
         </div>
@@ -158,21 +171,21 @@
 
     <!-- The questions a careful visitor asks before signing up. -->
     <section class="home-sec" id="homeFaq">
-      <h2 class="home-h">Questions</h2>
+      <h2 class="home-h">What people ask before signing up</h2>
       <div class="faq">
-        <details><summary>Do I need to pay?</summary><p>No. The chart is open to anyone, and a free account, with no card, gets the call, the levels and a few written reports a day. Pro removes the limits.</p></details>
-        <details><summary>What can I look up?</summary><p>US-listed stocks and the major crypto pairs. The search suggests nearly four thousand companies, and any symbol you type still works.</p></details>
-        <details><summary>How is the call made?</summary><p>Mechanically. Trend, momentum and a short projection are scored together, and the score sets buy, sell or hold. The call is held back to hold when bars like today&rsquo;s have done clearly worse, or better, than usual on that symbol. A written report then explains the reasoning.</p></details>
-        <details><summary>Where do the prices come from?</summary><p>From Twelve Data. Market data can be delayed or wrong. If live prices are unavailable, the site says so and shows labelled demo data instead.</p></details>
-        <details><summary>Is this financial advice?</summary><p>No. ChartGauge is a tool for finding and timing trades, and trading can lose money, including everything you put in. The decision is yours.</p></details>
+        <details><summary>Why not just use TradingView?</summary><p>Use it if you like reading charts yourself; it is very good at that. ChartGauge does the reading: it turns the indicators into one call with a stop and a target, and then publishes how those calls did. If you want a conclusion and its track record rather than the tools to draw your own, that is the difference.</p></details>
+        <details><summary>Are the calls any good?</summary><p>Judge from the record, not from us. The <a href="/accuracy">accuracy page</a> lists every graded call, wins and losses, against what simply holding the stock would have done. The sample is still young, so read it before you lean on any single call.</p></details>
+        <details><summary>How is the call made?</summary><p>Mechanically. Five groups of indicators are scored together from 0 to 100: 58 or more is buy, under 42 is sell, and between is hold. and the call is held back to hold when bars like today&rsquo;s have done clearly worse, or better, than usual on that stock. A written report then explains the reasoning.</p></details>
+        <details><summary>What does Pro add, and how do the trial and refund work?</summary><p>Pro adds a written report on every call, extra take-profit levels, screenshot reading, the screener and compare. Your first subscription can start with a free trial, and nothing is charged until it ends. Separately, after any charge you can ask for a full refund within 14 days. Cancel any time from the Plans page.</p></details>
+        <details><summary>Where do the prices come from, and is this advice?</summary><p>Prices come from Twelve Data and can be delayed or wrong; if live prices are unavailable the site says so. Nothing here is financial advice. Trading can lose money, including everything you put in, and the decision is yours.</p></details>
       </div>
     </section>
 
     <!-- The one action, asked again at the end of the page. -->
     <section class="home-end">
-      <h2 class="home-end-h">Start with one stock.</h2>
+      <h2 class="home-end-h">Get your first reading in under a minute.</h2>
       <div class="home-end-btns">
-        <button type="button" class="btn btn-primary" id="homeEndCta">Create a free account</button>
+        <button type="button" class="btn btn-primary" id="homeEndCta">Get a free reading</button>
         <button type="button" class="btn btn-ghost" id="homeEndTry">Search for a stock</button>
       </div>
     </section>
@@ -721,7 +734,7 @@
     <div id="learnHost"></div>
   </section>
 
-  <p class="disclaimer">ChartGauge is built to help you find, size and time trades. <strong>Trading carries real risk</strong>: you can lose money, including everything you put in, and the risk is yours to take. The Buy / Sell / Hold verdict is taken from the indicator score (Strongly up, Leans up, Mixed, Leans down, Strongly down), which describes how far the past-price indicators agree, and it is held back to Hold whenever bars like the current one went on to perform clearly worse, or better, than that symbol&rsquo;s own base rate. Check the <a href="/accuracy">published record</a> before you lean on it; for images the read comes from one picture alone. None of this is financial advice or a personal recommendation. The decision, and its outcome, is yours.</p>
+  <p class="disclaimer">ChartGauge is built to help you find and time trades. <strong>Trading carries real risk</strong>: you can lose money, including everything you put in, and the risk is yours to take. The Buy / Sell / Hold verdict is taken from the indicator score (Strongly up, Leans up, Mixed, Leans down, Strongly down), which describes how far the past-price indicators agree, and it is held back to Hold whenever bars like the current one went on to perform clearly worse, or better, than that symbol&rsquo;s own base rate. Check the <a href="/accuracy">published record</a> before you lean on it; for images the read comes from one picture alone. None of this is financial advice or a personal recommendation. The decision, and its outcome, is yours.</p>
 
   <footer class="site-foot">
     <nav class="foot-links">
@@ -730,13 +743,12 @@
       <a href="/terms">Terms</a>
       <a href="/privacy">Privacy</a>
       <a href="/refunds">Refunds</a>
-      <a href="/affiliate-terms">Affiliates</a>
       <a href="/accessibility">Accessibility</a>
       <a href="/security">Security</a>
       <button type="button" class="foot-btn" id="cookieSettings">Cookie settings</button>
     </nav>
     <p class="foot-note">ChartGauge is a trading tool. Trading can lose money, including everything you put in, and nothing on it is financial advice.</p>
-    <p class="foot-copy">&copy; <span id="footYear">2026</span> ChartGauge · <a href="mailto:chartgauge@gmail.com">chartgauge@gmail.com</a></p>
+    <p class="foot-copy">&copy; <span id="footYear">2026</span> ChartGauge · <a href="mailto:<!--CONTACT_EMAIL-->"><!--CONTACT_EMAIL--></a></p>
   </footer>
 
 </main>
@@ -797,10 +809,10 @@
 <!-- Cookie consent. Hidden until app.js decides the visitor has not chosen
      yet; analytics does not load until Accept is pressed. -->
 <div class="consent hidden" id="consent" role="region" aria-label="Cookie choices">
-  <p class="consent-text" id="consentText">ChartGauge uses a cookie to keep you signed in, which is always on. It can also use Google Analytics to count visits, but only if you say yes. See the <a href="/privacy">Privacy Policy</a>.</p>
+  <p class="consent-text" id="consentText">May we count your visit with Google Analytics? It stays off unless you allow it. <a href="/privacy">Privacy Policy</a></p>
   <div class="consent-btns">
-    <button type="button" class="btn btn-ghost consent-btn" id="consentNo">Decline</button>
-    <button type="button" class="btn btn-primary consent-btn" id="consentYes">Accept</button>
+    <button type="button" class="btn btn-ghost consent-btn" id="consentNo">No thanks</button>
+    <button type="button" class="btn btn-primary consent-btn" id="consentYes">Allow</button>
   </div>
 </div>
 
