@@ -2533,7 +2533,7 @@
     $('affPayout').onclick = () => { location.href = '/affiliate/payout'; };
   }
   async function checkAuth() {
-    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; affiliateInfo = j.affiliate || null; currentStreak = j.streak || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; trialDays = Number(j.trialDays) || 0; trialFirstOnly = !!j.trialFirstOnly; launch = j.launch || launch; showGoogleButtons(!!j.googleAuth); billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; currentStreak = null; }
+    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; affiliateInfo = j.affiliate || null; currentStreak = j.streak || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; trialDays = Number(j.trialDays) || 0; trialFirstOnly = !!j.trialFirstOnly; launch = j.launch || launch; showGoogleButtons(!!j.googleAuth); askAge(!!j.needsAge); billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; currentStreak = null; }
     authResolved = true;
     renderAcct();
     renderAffiliate();
@@ -2569,6 +2569,29 @@
     $('authEmail').focus();
   }
   const closeAuth = () => $('authModal').classList.add('hidden');
+  // Accounts from before sign-up asked for age are asked once, here.
+  function askAge(on) {
+    $('ageModal').classList.toggle('hidden', !on);
+    if (on) { $('ageAsk').classList.remove('hidden'); $('ageUnder').classList.add('hidden'); $('ageYes').focus(); }
+  }
+  $('ageYes').addEventListener('click', async () => {
+    try {
+      const r = await fetch('/api/auth/adult', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ adult: true }) });
+      if (!r.ok) throw new Error((await r.json()).error || 'Could not save that.');
+      askAge(false);
+    } catch (e) { $('ageErr').textContent = e.message; $('ageErr').classList.remove('hidden'); }
+  });
+  $('ageNo').addEventListener('click', () => { $('ageAsk').classList.add('hidden'); $('ageUnder').classList.remove('hidden'); });
+  $('ageBack').addEventListener('click', () => askAge(true));
+  $('ageDelete').addEventListener('click', async () => {
+    if (!window.confirm('Delete your account permanently? This cannot be undone.')) return;
+    try {
+      const r = await fetch('/api/auth/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirm: 'DELETE' }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Could not delete the account.');
+      location.href = '/';
+    } catch (e) { $('ageDelErr').textContent = e.message; $('ageDelErr').classList.remove('hidden'); }
+  });
   function ageMissing() {
     $('authErr').textContent = 'You must be 18 or older to create an account. Tick the box to confirm.';
     $('authErr').classList.remove('hidden');

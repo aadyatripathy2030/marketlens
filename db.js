@@ -52,6 +52,9 @@ async function init() {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_code TEXT');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS affiliate_since BIGINT');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS referred_by TEXT');
+      // When the account holder confirmed they are 18 or older. Null on
+      // accounts made before sign-up asked; they are asked once on next visit.
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS adult_at BIGINT');
       await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS users_affiliate_code_idx ON users (affiliate_code) WHERE affiliate_code IS NOT NULL');
       // How each affiliate asked to be paid. The form fields are stored only as
       // `enc`, which the server encrypts with a key held outside this database;
@@ -331,9 +334,10 @@ async function createGoogleUser(email, gid) {
   email = String(email).toLowerCase().trim();
   const id = crypto.randomUUID();
   const rec = { id, email, pw: '', google_id: String(gid), plan: 'free', created: Date.now(), email_verified: true };
+  rec.adult_at = rec.created;   // only reached from the sign-up form's 18+ box
   if (mode === 'postgres') {
     try {
-      await pool.query('INSERT INTO users (id, email, pw, plan, created, google_id, email_verified) VALUES ($1,$2,$3,$4,$5,$6,TRUE)',
+      await pool.query('INSERT INTO users (id, email, pw, plan, created, google_id, email_verified, adult_at) VALUES ($1,$2,$3,$4,$5,$6,TRUE,$5)',
         [id, email, '', 'free', rec.created, String(gid)]);
     } catch (e) { if (/duplicate|unique/i.test(e.message)) throw new Error('EMAIL_TAKEN'); throw e; }
   } else {
@@ -350,15 +354,21 @@ async function createUser(email, pw, verified) {
   email = String(email).toLowerCase().trim();
   const id = crypto.randomUUID();
   const rec = { id, email, pw: hashPw(pw), plan: 'free', created: Date.now(), email_verified: !!verified };
+  rec.adult_at = rec.created;   // sign-up refuses to get here without the 18+ box
   if (mode === 'postgres') {
     try {
-      await pool.query('INSERT INTO users (id, email, pw, plan, created, email_verified) VALUES ($1,$2,$3,$4,$5,$6)', [id, email, rec.pw, 'free', rec.created, !!verified]);
+      await pool.query('INSERT INTO users (id, email, pw, plan, created, email_verified, adult_at) VALUES ($1,$2,$3,$4,$5,$6,$5)', [id, email, rec.pw, 'free', rec.created, !!verified]);
     } catch (e) { if (/duplicate|unique/i.test(e.message)) throw new Error('EMAIL_TAKEN'); throw e; }
   } else {
     if (mem.byEmail.has(email)) throw new Error('EMAIL_TAKEN');
     mem.users.set(id, rec); mem.byEmail.set(email, rec);
   }
   return pub(rec);
+}
+async function confirmAdult(uid) {
+  const now = Date.now();
+  if (mode === 'postgres') { await pool.query('UPDATE users SET adult_at=$2 WHERE id=$1 AND adult_at IS NULL', [uid, now]); return; }
+  const u = mem.users.get(uid); if (u && !u.adult_at) u.adult_at = now;
 }
 async function getUserByEmail(email) {
   email = String(email).toLowerCase().trim();
@@ -945,7 +955,7 @@ module.exports = {
   createVerifyToken, consumeVerifyToken, peekToken, markVerified, setPassword,
   makeAffiliate, dropAffiliate, getUserByAffiliateCode, setReferrer, countReferrals,
   affiliateInfo, listAffiliates, getPayout, savePayout, payoutSummary,
-  findByStripeCustomer, setFirstPaid, addLedger, ledgerByRef, ledgerGroupSum, ledgerTotals, ledgerRows,
+  confirmAdult, findByStripeCustomer, setFirstPaid, addLedger, ledgerByRef, ledgerGroupSum, ledgerTotals, ledgerRows,
   setConnectAccount, setConnectStatus, getSetting, setSetting,
   createLoginCode, getLoginCode, checkLoginCode, deleteLoginCode,
   getStreak, saveStreak,

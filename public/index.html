@@ -814,6 +814,26 @@
   </div>
 </div>
 
+<!-- Asked once of accounts made before sign-up asked for age. -->
+<div class="modal-overlay hidden" id="ageModal" role="dialog" aria-modal="true" aria-labelledby="ageTitle">
+  <div class="modal">
+    <div id="ageAsk">
+      <h2 class="modal-title" id="ageTitle">One quick check</h2>
+      <p class="modal-sub">ChartGauge accounts are for people 18 and over. Please confirm your age to keep using your account.</p>
+      <div class="auth-err hidden" id="ageErr"></div>
+      <button type="button" class="btn btn-primary btn-block" id="ageYes">I am 18 or older</button>
+      <button type="button" class="btn btn-ghost btn-block" id="ageNo" style="margin-top:8px">I am under 18</button>
+    </div>
+    <div id="ageUnder" class="hidden">
+      <h2 class="modal-title">Sorry, accounts are 18+</h2>
+      <p class="modal-sub">Your account has to be closed. Deleting it removes your email, watchlist, alerts and practice trades for good, and cancels any subscription. The chart and the lessons stay open to you without an account.</p>
+      <div class="auth-err hidden" id="ageDelErr"></div>
+      <button type="button" class="btn btn-primary btn-block" id="ageDelete">Delete my account</button>
+      <button type="button" class="btn btn-ghost btn-block" id="ageBack" style="margin-top:8px">Go back</button>
+    </div>
+  </div>
+</div>
+
 <!-- Cookie consent. Hidden until app.js decides the visitor has not chosen
      yet; analytics does not load until Accept is pressed. -->
 <div class="consent hidden" id="consent" role="region" aria-label="Cookie choices">

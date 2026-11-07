@@ -10,6 +10,10 @@ const CONTACT_EMAIL = (process.env.CONTACT_EMAIL || 'chartgauge@gmail.com').trim
 // the email provider only when one is actually in use.
 const MAIL_ON = !!(process.env.RESEND_API_KEY || '').replace(/\s/g, '');
 const SITE = 'ChartGauge';
+// The designated DMCA agent as registered at copyright.gov, one line per
+// field separated by '|', e.g. "Jane Doe|123 Main St, City, ST 00000|+1 555 0100".
+// Shown on /copyright once set.
+const DMCA_AGENT = (process.env.DMCA_AGENT || '').split('|').map(x => x.trim()).filter(Boolean);
 const esc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -163,9 +167,9 @@ const buildRefunds = () => h('Refunds and Cancellation', [
 
   s('Canceling',
     TRIAL_DAYS > 0
-      ? `If you are in the free trial, canceling before it ends means you are never charged at all. The Plans page shows the trial you would get, and Stripe emails you before the first payment.`
+      ? `If you are in the free trial, canceling before it ends means you are never charged at all. The Plans page shows the trial you would get, and you are emailed a few days before the trial ends.`
       : '',
-    `You can cancel at any time, with no notice period and no cancellation fee, from the <strong>Manage subscription</strong> button on the Plans page. That opens Stripe's billing portal, where cancellation takes effect immediately for future renewals.`,
+    `You can cancel at any time, with no notice period and no cancellation fee, from the <strong>Manage subscription</strong> button on the Plans page. That opens Stripe's billing portal, where cancellation takes effect immediately for future renewals. When you subscribe you are emailed the price, how often it renews and how to cancel, and you get a reminder email before each renewal.`,
     `When you cancel, your subscription runs to the end of the period you have already paid for and then stops. After that the account returns to the free tier: nothing you saved is deleted, but the Pro-only features stop and the free daily limits apply again.`),
 
   s('Refunds',
@@ -314,7 +318,10 @@ const buildCopyright = () => h('Copyright and DMCA Policy', [
     `Very little. Chart screenshots you upload for reading are sent to the analysis provider and are not published or shown to anyone else. Watchlists, alerts and practice trades are private to your account. Even so, only upload images you have the right to use.`),
 
   s('Sending a takedown notice',
-    `Email <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> with the subject "DMCA notice" and include:`,
+    DMCA_AGENT.length
+      ? `Notices go to ${SITE}'s designated agent:<br>${DMCA_AGENT.map(esc).join('<br>')}<br>Email: <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> (subject "DMCA notice").`
+      : '',
+    `${DMCA_AGENT.length ? 'Include' : `Email <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> with the subject "DMCA notice" and include`}:`,
     ul([
       'your name, address, telephone number and email address;',
       'the copyrighted work you say is infringed;',

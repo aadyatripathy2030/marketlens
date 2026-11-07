@@ -134,7 +134,7 @@ const KNOWN_API = new Set([
   '/api/admin/affiliate/pay', '/api/admin/affiliate/sync', '/api/admin/affiliate/ledger',
   '/api/admin/affiliate/transfer', '/api/admin/affiliate/autopay', '/api/affiliate/connect',
   '/api/auth/signup', '/api/auth/login', '/api/auth/logout', '/api/auth/me',
-  '/api/auth/delete', '/api/auth/google', '/api/auth/google/callback',
+  '/api/auth/delete', '/api/auth/adult', '/api/auth/google', '/api/auth/google/callback',
   '/api/auth/verify', '/api/auth/resend',
   '/api/auth/code', '/api/auth/code/resend', '/api/auth/challenge',
   '/api/billing/webhook', '/api/billing/checkout', '/api/billing/portal',
@@ -1441,6 +1441,12 @@ let mailFailedAt = 0;
 const mailHealthy = () => mailEnabled() && Date.now() - mailFailedAt > 2 * 60000;
 // The email, in the site's own colours. Tables and inline styles because
 // that is what mail clients render; no images, so nothing to block or load.
+// Every email ChartGauge sends is about the reader's own account: none is
+// marketing, so there is no list to unsubscribe from. The footer says so.
+// MAIL_POSTAL_ADDRESS is printed under it once set (needed before any
+// promotional email is ever sent).
+const MAIL_WHY = 'You are getting this because of your ChartGauge account. It is an account email, not marketing, and ChartGauge sends no newsletters.';
+const MAIL_POSTAL_ADDRESS = (process.env.MAIL_POSTAL_ADDRESS || '').trim();
 const MAIL_FONT = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
 function emailHtml(o) {
   const code = o.code
@@ -1475,7 +1481,9 @@ function emailHtml(o) {
     + intro2 + lines + code + box + button
     + `<p style="margin:18px 0 0;font-family:${MAIL_FONT};font-size:13px;line-height:1.6;color:#9a958c;">${esc(o.outro)}</p>`
     + `</td></tr>`
-    + `<tr><td style="padding:16px 4px 0;font-family:${MAIL_FONT};font-size:12px;line-height:1.5;color:#7a756b;">ChartGauge is a trading tool. Trading can lose money, and nothing on it is financial advice.<br><a href="https://chartgauge.com" style="color:#9a958c;">chartgauge.com</a></td></tr>`
+    + `<tr><td style="padding:16px 4px 0;font-family:${MAIL_FONT};font-size:12px;line-height:1.5;color:#7a756b;">${esc(o.why || MAIL_WHY)}<br>ChartGauge is a trading tool. Trading can lose money, and nothing on it is financial advice.<br>`
+    + (MAIL_POSTAL_ADDRESS ? `${esc(MAIL_POSTAL_ADDRESS)}<br>` : '')
+    + `<a href="https://chartgauge.com" style="color:#9a958c;">chartgauge.com</a> · <a href="mailto:${esc(CONTACT_EMAIL)}" style="color:#9a958c;">${esc(CONTACT_EMAIL)}</a></td></tr>`
     + `</table></td></tr></table></body></html>`;
 }
 async function sendMail(to, subject, text, html) {
@@ -1944,6 +1952,14 @@ async function handleGoogleCallback(req, res) {
 // Deleting an account cancels its subscription first. Removing the row while
 // Stripe keeps charging the card would be the worst possible failure here, and
 // the user would have no account left to cancel from.
+async function handleConfirmAdult(req, res) {
+  const user = await currentUser(req);
+  if (!user) return json(res, 401, { error: 'Please sign in.' });
+  const b = await readBody(req).catch(() => ({}));
+  if (!b || b.adult !== true) return json(res, 400, { error: 'Accounts are for people 18 and over.' });
+  await db.confirmAdult(user.id);
+  return json(res, 200, { ok: true });
+}
 async function handleDeleteAccount(req, res) {
   const user = await currentUser(req);
   if (!user) return json(res, 401, { error: 'Please sign in.' });
@@ -2006,8 +2022,8 @@ async function handleMe(req, res) {
   // stripe_customer, so testing it for one would answer "never subscribed"
   // for everybody and offer a trial the checkout would then refuse to give.
   // Read the row checkout reads.
-  let everSubscribed = false;
-  if (u) { try { const full = await db.getUserById(u.id); everSubscribed = !!(full && full.stripe_customer); } catch (e) { logError(e); } }
+  let everSubscribed = false, needsAge = false;
+  if (u) { try { const full = await db.getUserById(u.id); everSubscribed = !!(full && full.stripe_customer); needsAge = !!full && !full.adult_at && !isAdmin(u); } catch (e) { logError(e); } }
   return json(res, 200, {
     user: u ? { ...u, plan: isPro(u) ? 'pro' : u.plan, admin: isAdmin(u) } : null,
     // Set for an affiliate: their code, how many accounts came through it,
@@ -2018,6 +2034,8 @@ async function handleMe(req, res) {
     // lastFree is the final free day itself, which is the date to show; `until`
     // is the instant access changes.
     googleAuth: googleEnabled(),
+    // An account from before sign-up asked for age; the page asks once.
+    needsAge,
     streak,
     launch: { free: inLaunchPeriod(),
       until: Number.isFinite(FREE_UNTIL) ? FREE_UNTIL : null,
@@ -3285,6 +3303,54 @@ async function handlePortal(req, res) {
     return json(res, 200, { url: s.url });
   } catch (e) { return json(res, 200, { error: 'Could not open the billing portal (' + e.message + ').' }); }
 }
+// ---- subscription emails ----
+// The auto-renewal notices: a confirmation stating the terms once someone
+// subscribes, a warning before a trial turns into a charge, and a reminder
+// before each renewal. Stripe sends the last two events only if they are
+// ticked on the webhook (customer.subscription.trial_will_end, invoice.upcoming).
+const fmtDay = (sec) => new Date(sec * 1000).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+const everyWord = (iv, n) => (n || 1) > 1 ? `every ${n} ${iv}s` : `every ${iv}`;
+function subTerms(sub) {
+  const item = sub && sub.items && sub.items.data && sub.items.data[0];
+  const pr = item && item.price;
+  if (!pr || pr.unit_amount == null) return null;
+  const rec = pr.recurring || {};
+  return { price: money(pr.unit_amount * (item.quantity || 1), pr.currency), every: everyWord(rec.interval || 'month', rec.interval_count) };
+}
+async function mailSubscriber(user, subject, title, intro, intro2, req) {
+  if (!user || !user.email || !mailEnabled()) return;
+  const plans = (req ? siteOrigin(req) : 'https://chartgauge.com') + '/pricing';
+  const outro = `Cancel any time: open ${plans}, choose Manage subscription, then Cancel. Canceling stops all future charges. Refund terms: ${plans.replace('/pricing', '/refunds')}. Questions: ${CONTACT_EMAIL}.`;
+  await sendMail(user.email, subject, `${intro}\n\n${intro2}\n\n${outro}`,
+    emailHtml({ title, intro, intro2, button: { label: 'Manage subscription', url: plans }, outro }));
+}
+async function sendSubscribedEmail(req, user, subId) {
+  const sub = await stripeGet('subscriptions/' + encodeURIComponent(subId));
+  const t = subTerms(sub); if (!t) return;
+  const trialing = sub.status === 'trialing' && sub.trial_end;
+  const intro = trialing
+    ? `Your Pro free trial has started. Nothing is charged until ${fmtDay(sub.trial_end)}. On that day ${t.price} is charged to the card you gave, and then ${t.price} ${t.every} after that.`
+    : `You are now on Pro. ${t.price} has been charged, and the same amount will be charged ${t.every} after that.`;
+  const intro2 = 'Pro renews automatically until you cancel. ' + (trialing ? 'Cancel before the trial ends and you pay nothing.' : 'You can cancel at any time and keep Pro until the end of the period already paid for.');
+  await mailSubscriber(user, trialing ? 'Your ChartGauge Pro trial has started' : 'You are subscribed to ChartGauge Pro', trialing ? 'Your trial has started' : 'Welcome to Pro', intro, intro2, req);
+}
+async function sendTrialEndingEmail(sub) {
+  const user = await db.findByStripeSub(sub.id); const t = subTerms(sub);
+  if (!user || !t || !sub.trial_end || sub.cancel_at_period_end) return;
+  await mailSubscriber(user, 'Your ChartGauge Pro trial ends soon', 'Your trial ends soon',
+    `Your free trial ends on ${fmtDay(sub.trial_end)}. Unless you cancel before then, ${t.price} will be charged that day and ${t.price} ${t.every} after that.`,
+    'If you want to keep Pro, there is nothing to do.');
+}
+async function sendRenewalReminder(inv) {
+  if (!inv.subscription || !(inv.amount_due > 0)) return;
+  const user = await db.findByStripeSub(inv.subscription) || (inv.customer && await db.findByStripeCustomer(inv.customer));
+  if (!user) return;
+  const when = inv.next_payment_attempt || inv.period_end;
+  await mailSubscriber(user, 'Your ChartGauge Pro subscription renews soon', 'Renewal reminder',
+    `Your Pro subscription renews${when ? ' on ' + fmtDay(when) : ' soon'}, and ${money(inv.amount_due, inv.currency)} will be charged to your card on file.`,
+    'If you want to keep Pro, there is nothing to do. If not, cancel before that date and you will not be charged again.');
+}
+
 async function handleWebhook(req, res) {
   const raw = await readRawBody(req);
   // Fail CLOSED. This used to verify only when a secret happened to be set,
@@ -3300,6 +3366,9 @@ async function handleWebhook(req, res) {
     if (event.type === 'checkout.session.completed') {
       const s = event.data.object;
       if (s.client_reference_id) await db.setPro(s.client_reference_id, s.customer, s.subscription);
+      if (s.client_reference_id && s.subscription) {
+        try { await sendSubscribedEmail(req, await db.getUserById(s.client_reference_id), s.subscription); } catch (e) { logError(e); }
+      }
     } else if (event.type === 'customer.subscription.deleted' ||
       (event.type === 'customer.subscription.updated' && ['canceled', 'unpaid', 'incomplete_expired'].includes(event.data.object.status))) {
       const u = await db.findByStripeSub(event.data.object.id);
@@ -3308,6 +3377,10 @@ async function handleWebhook(req, res) {
       await creditInvoice(event.data.object);
     } else if (event.type === 'charge.refunded') {
       await debitRefund(event.data.object);
+    } else if (event.type === 'customer.subscription.trial_will_end') {
+      await sendTrialEndingEmail(event.data.object);
+    } else if (event.type === 'invoice.upcoming') {
+      await sendRenewalReminder(event.data.object);
     }
   } catch (e) { logError(e); }
   res.writeHead(200); res.end('ok');
@@ -3808,6 +3881,7 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/auth/resend' && req.method === 'POST') return await handleResend(req, res);
     if (url === '/api/auth/logout' && req.method === 'POST') return await handleLogout(req, res);
     if (url === '/api/auth/delete' && req.method === 'POST') return await handleDeleteAccount(req, res);
+    if (url === '/api/auth/adult' && req.method === 'POST') return await handleConfirmAdult(req, res);
     if (url === '/api/auth/me' && req.method === 'GET') return await handleMe(req, res);
     if (url === '/api/watchlist') return await handleWatchlist(req, res);
     if (url === '/api/paper' || url === '/api/paper/open' || url === '/api/paper/trade'
