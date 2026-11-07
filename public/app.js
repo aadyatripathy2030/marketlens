@@ -2562,11 +2562,18 @@
     $('authSubmit').textContent = mode === 'signup' ? 'Create account' : 'Sign in';
     $('authToggleText').textContent = mode === 'signup' ? 'Already have an account?' : 'New to ChartGauge?';
     $('authToggle').textContent = mode === 'signup' ? 'Sign in' : 'Create an account';
+    $('authAgeRow').classList.toggle('hidden', mode !== 'signup');
+    $('authAge').checked = false;
     $('authErr').classList.add('hidden');
     $('authModal').classList.remove('hidden');
     $('authEmail').focus();
   }
   const closeAuth = () => $('authModal').classList.add('hidden');
+  function ageMissing() {
+    $('authErr').textContent = 'You must be 18 or older to create an account. Tick the box to confirm.';
+    $('authErr').classList.remove('hidden');
+    $('authAge').focus();
+  }
   // The modal has two faces: the form, and the note that replaces it once a
   // confirmation link has gone out. Nothing is signed in while the note is up.
   let pendingEmail = '';
@@ -2678,9 +2685,13 @@
   $('authForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = $('authEmail').value.trim(), password = $('authPass').value;
-    $('authErr').classList.add('hidden'); $('authSubmit').disabled = true;
+    $('authErr').classList.add('hidden');
+    if (authMode === 'signup' && !$('authAge').checked) return ageMissing();
+    $('authSubmit').disabled = true;
     try {
-      const r = await fetch('/api/auth/' + authMode, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+      const body = { email, password };
+      if (authMode === 'signup') body.adult = true;
+      const r = await fetch('/api/auth/' + authMode, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const j = await r.json();
       if (j.pending) {
         // The account exists but its inbox has not confirmed it yet. The
@@ -2762,7 +2773,7 @@
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
   let currentView = 'home';
   const VIEWS = ['home', 'analyze', 'compare', 'screener', 'markets', 'movers', 'accuracy', 'watchlist', 'alerts', 'practice', 'learn', 'settings', 'pricing', 'admin', 'legal'];
-  const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact', 'affiliate-terms', 'accessibility', 'security'];
+  const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact', 'affiliate-terms', 'accessibility', 'security', 'copyright'];
   // Each view has a real URL now, so navigation updates the address bar and
   // the back button works. pushUrl is skipped when we are *reacting* to a URL
   // (initial load, popstate) to avoid pushing a duplicate entry.
@@ -3956,11 +3967,13 @@
     });
   }
   function goGoogle() {
+    // Google can create an account too, so the same age box applies to it.
+    if (authMode === 'signup' && !$('authAge').checked) return ageMissing();
     // Leaving the page for Google, so the agreement the modal states has to be
     // recorded first or it is lost on the way out.
     setAgreed();
     const next = location.pathname + location.search;
-    location.href = '/api/auth/google?next=' + encodeURIComponent(next);
+    location.href = '/api/auth/google?next=' + encodeURIComponent(next) + (authMode === 'signup' ? '&adult=1' : '');
   }
   if ($('authGoogle')) $('authGoogle').addEventListener('click', () => goGoogle());
 
@@ -3974,6 +3987,7 @@
       mail: 'Google signed you in, but the sign-in code could not be emailed. Please try again in a minute.',
       expired: 'That sign-in link expired. Please try again.',
       unverified_email: 'That Google account has no verified email address, so it cannot be used to sign in.',
+      age: 'There is no ChartGauge account for that Google address yet. Choose Create an account and confirm you are 18 or older first.',
       no_code: 'Google did not complete the sign-in. Please try again.',
       failed: 'Could not complete Google sign-in. Please try again.',
     };

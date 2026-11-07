@@ -1476,3 +1476,9 @@ body:not([data-view="analyze"]) .disclaimer { display: none; }
    keeps only its reason. */
 .ai-score-card .signal-kicker, .ai-score-card .signal-badge { display: none; }
 .ai-score-card .signal-why { font-size: 14px; color: var(--text); flex-basis: 100%; }
+
+/* Sign-up age confirmation and the auto-renewal line under the plans. */
+.auth-age { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin: 0 0 12px; cursor: pointer; }
+.auth-age input { width: 16px; height: 16px; margin: 0; accent-color: var(--btn); }
+.auth-age.hidden { display: none; }
+.plan-renew { font-size: 13px; color: var(--muted); margin-top: 16px; line-height: 1.5; }

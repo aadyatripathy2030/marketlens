@@ -1738,6 +1738,8 @@ async function handleSignup(req, res) {
   if (throttled(res, [['signup:ip:' + clientIp(req), 5, 60 * 60000]])) return;
   if (!validEmail(email)) return json(res, 400, { error: 'Enter a valid email.' });
   if (String(b.password || '').length < 8) return json(res, 400, { error: 'Password must be at least 8 characters.' });
+  // Accounts are for adults (Terms). The form asks; this makes sure it was asked.
+  if (b.adult !== true) return json(res, 400, { error: 'You must be 18 or older to create an account.' });
   let user, fresh = true;
   try {
     user = await db.createUser(email, b.password, !mailEnabled());
@@ -1836,9 +1838,9 @@ const googleRedirect = (req) => siteOrigin(req) + '/api/auth/google/callback';
 // Short-lived, single-use state values, to stop a forged callback signing
 // someone into an account they did not ask for.
 const googleStates = new Map();
-function newGoogleState(next) {
+function newGoogleState(next, adult) {
   const v = crypto.randomBytes(16).toString('hex');
-  googleStates.set(v, { at: Date.now(), next: next || '/' });
+  googleStates.set(v, { at: Date.now(), next: next || '/', adult: !!adult });
   if (googleStates.size > 500) for (const [k, o] of googleStates) if (Date.now() - o.at > 600000) googleStates.delete(k);
   return v;
 }
@@ -1881,7 +1883,7 @@ async function handleGoogleStart(req, res) {
     redirect_uri: googleRedirect(req),
     response_type: 'code',
     scope: 'openid email',          // nothing beyond identity
-    state: newGoogleState(next),
+    state: newGoogleState(next, q.get('adult') === '1'),
     prompt: 'select_account',
   }).toString();
   res.writeHead(302, { Location: url });
@@ -1913,6 +1915,9 @@ async function handleGoogleCallback(req, res) {
     if (!user) {
       const existing = await db.getUserByEmail(email);
       if (existing) { await db.linkGoogleId(existing.id, claims.sub); user = existing; }
+      // A new account needs the 18+ box from the sign-up form, which "Sign in
+      // with Google" on the sign-in form never showed.
+      else if (!st.adult) return googleFail(res, 'age');
       else { user = await db.createGoogleUser(email, claims.sub); await attributeReferral(req, user); }
     }
     const sep = st.next.includes('?') ? '&' : '?';
@@ -3260,6 +3265,11 @@ async function handleCheckout(req, res) {
     if (TRIAL_DAYS > 0 && firstTime) {
       params['subscription_data[trial_period_days]'] = String(TRIAL_DAYS);
     }
+    // Auto-renewal stated next to the pay button, where the consent is given.
+    params['custom_text[submit][message]'] = (TRIAL_DAYS > 0 && firstTime
+      ? `Nothing is charged during the ${TRIAL_DAYS}-day trial. When it ends, the price above is charged and then renews automatically each period until you cancel.`
+      : 'This subscription renews automatically at the price above each period until you cancel.')
+      + ' Cancel any time from Manage subscription on the ChartGauge Plans page.';
     const s = await stripePost('checkout/sessions', params);
     return json(res, 200, { url: s.url });
   } catch (e) { return json(res, 200, { error: 'Could not start checkout (' + e.message + ').' }); }
@@ -3503,7 +3513,7 @@ const GA_SNIPPET = (GA_ID ? `<meta name="ga-id" content="${esc(GA_ID)}">` : '')
 // 'admin' is routable so the operator can open /admin directly, but it is
 // absent from VIEW_SEO, so it never reaches the sitemap, and robots.txt
 // disallows it. The page itself is guarded server-side regardless.
-const APP_PATH = /^\/(analyze|markets|movers|accuracy|compare|screener|alerts|watchlist|practice|learn|settings|pricing|terms|privacy|refunds|contact|affiliate-terms|accessibility|security|admin)(\/|$)|^\/stock\//;
+const APP_PATH = /^\/(analyze|markets|movers|accuracy|compare|screener|alerts|watchlist|practice|learn|settings|pricing|terms|privacy|refunds|contact|affiliate-terms|accessibility|security|copyright|admin)(\/|$)|^\/stock\//;
 
 // A mistyped URL used to return the two words "Not found" as plain text on a
 // blank white page, with no styling, no way back and no branding. Cheap to do

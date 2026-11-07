@@ -14,7 +14,7 @@ const esc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
-const UPDATED = 'October 2026';
+const UPDATED = 'November 2026';
 
 // Kept in step with FREE_UNTIL in server.js — the terms have to describe the
 // access people actually have, not the split that starts later.
@@ -148,7 +148,7 @@ const buildPrivacy = () => h('Privacy Policy', [
     `Data is kept for as long as the account exists. Subscription records are kept by Stripe for as long as their own retention and tax obligations require.`),
 
   s('Children',
-    `${SITE} is not directed at children and accounts are for people 18 and over.`),
+    `${SITE} is not directed at children and accounts are for people 18 and over. Sign-up asks you to confirm your age. If an account turns out to belong to someone under 18, it is closed and its data deleted; to report one, email <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a>.`),
 
   s('Security and its limits',
     `Passwords are hashed with scrypt, sessions use HttpOnly cookies, and traffic is served over HTTPS. That said, no service is perfectly secure, and this one is a small independent project rather than a financial institution, which is exactly why you should not reuse an important password here.`),
@@ -302,6 +302,36 @@ const buildSecurity = () => h('Security', [
     `If you find a security problem, email <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> with enough detail to reproduce it. The same address is published at <a href="/.well-known/security.txt">/.well-known/security.txt</a>. Please give a reasonable time for a fix before describing it publicly, and do not access other people\'s accounts or data while testing. Reports are answered, and a real finding is credited here if you wish.`),
 ].join(''));
 
+// -------------------------------------------------------------- copyright
+// A DMCA notice-and-takedown policy. The safe harbor also needs an agent
+// registered with the US Copyright Office (copyright.gov/dmca-directory); that
+// registration is done by the site owner, not by this page.
+const buildCopyright = () => h('Copyright and DMCA Policy', [
+  s('The short version',
+    `${SITE} respects copyright and expects its users to. Its own text, code, charts and lessons are \u00a9 ${SITE}. If you believe something on ${SITE} infringes your copyright, send a notice as described below and it will be looked at promptly.`),
+
+  s('What users can put on the site',
+    `Very little. Chart screenshots you upload for reading are sent to the analysis provider and are not published or shown to anyone else. Watchlists, alerts and practice trades are private to your account. Even so, only upload images you have the right to use.`),
+
+  s('Sending a takedown notice',
+    `Email <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> with the subject "DMCA notice" and include:`,
+    ul([
+      'your name, address, telephone number and email address;',
+      'the copyrighted work you say is infringed;',
+      'the address (URL) of the material on ' + SITE + ' and enough detail to find it;',
+      'a statement that you have a good-faith belief the use is not authorized by the copyright owner, its agent, or the law;',
+      'a statement, under penalty of perjury, that the information in the notice is accurate and that you are the owner or authorized to act for the owner;',
+      'your physical or electronic signature.',
+    ]),
+    `A notice that is missing these parts may not be acted on. Knowingly misrepresenting that material is infringing can make you liable for damages (17 U.S.C. \u00a7 512(f)).`),
+
+  s('Counter-notice',
+    `If material you provided was removed and you believe that was a mistake or misidentification, you may send a counter-notice to the same address with your name, address and telephone number; the material removed and where it appeared; a statement under penalty of perjury that you have a good-faith belief it was removed by mistake or misidentification; your consent to the jurisdiction of the federal district court for your address (or, outside the US, any judicial district where ${SITE} may be found) and to accept service from the person who sent the original notice; and your signature. The material may be restored 10 to 14 business days later unless the original sender files a court action.`),
+
+  s('Repeat infringers',
+    `Accounts of people who repeatedly infringe copyright will be closed.`),
+].join(''));
+
 // Rebuilt whenever the launch period flips, so a process that was running
 // before the cutoff stops advertising it the moment it passes rather than at
 // the next deploy. Same content otherwise, so this is one rebuild, not one
@@ -315,6 +345,7 @@ function buildPages() {
     contact: { title: `Contact | ${SITE}`, desc: `How to reach ${SITE} about billing, refunds, account deletion, or a bug.`, html: buildContact(), heading: 'Contact' },
     'affiliate-terms': { title: `Affiliate Terms | ${SITE}`, desc: `What a ${SITE} affiliate earns (${AFF_SHARE}% of referred payments for ${AFF_MONTHS} months), how and when it is paid, what counts as a referral, and the rules for promoting the link.`, html: buildAffiliateTerms(), heading: 'Affiliate Terms' },
     accessibility: { title: `Accessibility Statement | ${SITE}`, desc: `The standard ${SITE} is built to (WCAG 2.2 AA), what is in place, the known gaps, and how to report a problem.`, html: buildAccessibility(), heading: 'Accessibility Statement' },
+    copyright: { title: `Copyright and DMCA Policy | ${SITE}`, desc: `How to report copyright infringement on ${SITE}, what a takedown notice must include, and how to send a counter-notice.`, html: buildCopyright(), heading: 'Copyright and DMCA Policy' },
     security: { title: `Security | ${SITE}`, desc: `How ${SITE} protects accounts and payments, where it runs, what it does not claim, and how to report a weakness.`, html: buildSecurity(), heading: 'Security' },
   };
 }

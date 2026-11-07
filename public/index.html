@@ -508,6 +508,7 @@
     <h1 class="view-h">Plans and billing</h1>
     <p class="learn-lead" id="pricingLead">The chart is open to anyone. Every indicator, the stop-loss and take-profit levels and the measured base rate are free with an account. Pro adds the parts that cost money to run each time: unlimited written reports, chart-image reading, the screener and side-by-side compare, and more take-profit levels.</p>
     <div class="pricing" id="pricingBody"></div>
+    <p class="plan-renew">Pro renews automatically at the price shown, at the end of each period, until you cancel. Cancel any time with <strong>Manage subscription</strong> on this page; canceling stops all future charges. See <a href="/refunds">Refunds and Cancellation</a>.</p>
   </section>
 
   <!-- ACCURACY -->
@@ -749,6 +750,7 @@
       <a href="/refunds">Refunds</a>
       <a href="/accessibility">Accessibility</a>
       <a href="/security">Security</a>
+      <a href="/copyright">Copyright</a>
       <button type="button" class="foot-btn" id="cookieSettings">Cookie settings</button>
     </nav>
     <p class="foot-note">ChartGauge is a trading tool. Trading can lose money, including everything you put in, and nothing on it is financial advice.</p>
@@ -765,6 +767,8 @@
     <form id="authForm">
       <input type="email" id="authEmail" class="input" placeholder="you@email.com" aria-label="Email address" autocomplete="email" />
       <input type="password" id="authPass" class="input" placeholder="Password (8+ characters)" aria-label="Password" autocomplete="current-password" />
+      <!-- Sign-up only. Accounts are for adults (Terms), so it is asked, not assumed. -->
+      <label class="auth-age hidden" id="authAgeRow"><input type="checkbox" id="authAge" /> I am 18 or older</label>
       <div class="auth-err hidden" id="authErr"></div>
       <button type="submit" class="btn btn-primary btn-block" id="authSubmit">Sign in</button>
       <button type="button" class="btn btn-google btn-block hidden" id="authGoogle">
