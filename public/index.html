@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>ChartGauge | Buy, Sell or Hold Calls for Stocks and Crypto</title>
-<meta name="description" content="A buy, sell or hold call on any stock or crypto pair, with the stop and target already set, and every call graded in public. Trading can lose money; not financial advice." />
+<meta name="description" content="A buy, sell or hold call on any stock or crypto pair, with the stop and target already set, and a candlestick chart and 13 indicators. Trading can lose money; not financial advice." />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <!-- 180px is what iOS asks for. This used to point at avatar.png, the
      4096px original, so every device saving the site pulled 490KB for an icon. -->
@@ -36,7 +36,6 @@
     <a class="nav-link" href="/analyze" data-view="analyze">Analyze</a>
     <a class="nav-link" href="/practice" data-view="practice">Practice</a>
     <a class="nav-link" href="/learn" data-view="learn">Learn</a>
-    <a class="nav-link" href="/accuracy" data-view="accuracy">Track record</a>
     <a class="nav-link" href="/pricing" data-view="pricing">Pricing</a>
     <button type="button" class="nav-more" id="navMore" aria-expanded="false" aria-controls="drawer">More</button>
   </nav>
@@ -77,12 +76,12 @@
     <div class="hero-wrap">
       <div class="hero">
         <h1 class="hero-h">Buy, sell or hold, with the stop and target already set.</h1>
-        <p class="hero-sub">Search any stock or crypto pair. ChartGauge reads the chart, makes the call, sets the exits from how far the price really moves, and grades every call in public.</p>
+        <p class="hero-sub">Search any stock or crypto pair. ChartGauge reads the chart, makes the call, and sets the exits from how far the price really moves.</p>
         <form class="hero-search" id="heroForm">
           <input id="heroInput" class="input" aria-label="Search for a stock or crypto pair" placeholder="Apple, NVDA, BTC/USD" autocomplete="off" maxlength="16" />
           <button type="submit" class="btn btn-primary">Get a free reading</button>
         </form>
-        <p class="hero-assure">Free account, no card. <span id="heroCount"></span></p>
+        <p class="hero-assure">Free account, no card.</p>
       </div>
       <!-- The analyze panel, moved in here, on the index fund's daily bars.
            This one symbol is read in full for everyone, so the front page
@@ -94,7 +93,7 @@
             <span class="chart-name muted" id="homeName">S&amp;P 500 · daily</span>
           </div>
           <div class="chart-px">
-            <span class="chart-last" id="homeLast">&mdash;</span>
+            <span class="chart-last" id="homeLast"><span class="skel skel-num" aria-hidden="true"></span></span>
             <span class="chart-chg" id="homeChg"></span>
           </div>
         </div>
@@ -119,13 +118,6 @@
         <li><span class="step-n">2</span><h3 class="step-h">Get the call</h3><p>Buy, sell or hold, scored from five groups of indicators: short trend (20- and 50-day averages, MACD), long trend (50 against 200-day), RSI momentum, stretch from the Bollinger bands, and trend quality.</p></li>
         <li><span class="step-n">3</span><h3 class="step-h">See the exits</h3><p>The stop goes 1.5 times the average daily range (ATR) from the price, or just past the recent swing low when that is within three ATRs. Targets sit at one, two and three times that risk.</p></li>
       </ol>
-    </section>
-    <!-- The difference, in one band: the change of pace on the page. The
-         graded numbers live on the accuracy page, with room to explain them. -->
-    <section class="home-band" id="homeRecord">
-      <h2 class="home-band-h">Most chart tools leave the call to you. <span class="tone-2">This one makes it, and keeps score.</span></h2>
-      <p>TradingView and Finviz give you excellent charts and screeners, and the conclusion is yours to draw. ChartGauge commits to one: a call, a stop and a target, saved before the outcome is known and checked 20 trading days later against what the price did. Wins and losses stay on the record.</p>
-      <p class="home-more"><a href="/accuracy">Read the record &rarr;</a></p>
     </section>
 
     <!-- What else is here, as a list rather than tiles. -->
@@ -175,8 +167,7 @@
     <section class="home-sec" id="homeFaq">
       <h2 class="home-h">What people ask before signing up</h2>
       <div class="faq">
-        <details><summary>Why not just use TradingView?</summary><p>Use it if you like reading charts yourself; it is very good at that. ChartGauge does the reading: it turns the indicators into one call with a stop and a target, and then publishes how those calls did. If you want a conclusion and its track record rather than the tools to draw your own, that is the difference.</p></details>
-        <details><summary>Are the calls any good?</summary><p>Judge from the record, not from us. The <a href="/accuracy">accuracy page</a> lists every graded call, wins and losses, against what simply holding the stock would have done. The sample is still young, so read it before you lean on any single call.</p></details>
+        <details><summary>Why not just use TradingView?</summary><p>Use it if you like reading charts yourself; it is very good at that. ChartGauge does the reading: it turns the indicators into one call with a stop and a target. If you want a conclusion rather than the tools to draw your own, that is the difference.</p></details>
         <details><summary>How is the call made?</summary><p>Mechanically. Five groups of indicators are scored together from 0 to 100: 58 or more is buy, under 42 is sell, and between is hold. and the call is held back to hold when bars like today&rsquo;s have done clearly worse, or better, than usual on that stock. A written report then explains the reasoning.</p></details>
         <details><summary>What does Pro add, and how do the trial and refund work?</summary><p>Pro adds a written report on every call, extra take-profit levels, screenshot reading, the screener and compare. Your first subscription can start with a free trial, and nothing is charged until it ends. Separately, after any charge you can ask for a full refund within 14 days. Cancel any time from the Plans page.</p></details>
         <details><summary>Where do the prices come from, and is this advice?</summary><p>Prices come from Twelve Data and can be delayed or wrong; if live prices are unavailable the site says so. Nothing here is financial advice. Trading can lose money, including everything you put in, and the decision is yours.</p></details>
@@ -513,14 +504,6 @@
     <p class="plan-renew">Pro renews automatically at the price shown, at the end of each period, until you cancel. Cancel any time with <strong>Manage subscription</strong> on this page; canceling stops all future charges. See <a href="/refunds">Refunds and Cancellation</a>.</p>
   </section>
 
-  <!-- ACCURACY -->
-  <section class="view hidden" id="view-accuracy">
-    <h1 class="view-h">How accurate is ChartGauge?</h1>
-    <p class="learn-lead">Every reading this site shows is written down when it is shown, before anyone knows what happens next, and graded against what the price actually did afterwards. The record below is published whether it flatters the tool or not.</p>
-    <div id="accuracySsr"></div>
-    <p class="acc-note">This is not a backtest. A backtest can be adjusted until the past looks good; these are timestamped readings recorded in advance and never revised. The comparison column is every graded reading taken together: the return you would have had without consulting the score at all.</p>
-    <p class="acc-note"><strong>Why publish this?</strong> So you can see how much weight the score deserves before you put money behind it. A tool that shows its record, good months and bad, is worth more than one that asks for faith.</p>
-  </section>
 
   <!-- MOVERS -->
   <section class="view hidden" id="view-movers">
@@ -552,6 +535,7 @@
       <span class="prac-tag">Simulated</span>
     </div>
 
+    <div id="paperSkel" class="hidden" aria-hidden="true"><div class="quote-grid"><div class="skel skel-card"></div><div class="skel skel-card"></div><div class="skel skel-card"></div><div class="skel skel-card"></div></div><div class="skel skel-block"></div></div>
     <div id="paperSetup" class="hidden">
       <div class="setup-wrap">
         <div class="prac-setup">
@@ -741,11 +725,10 @@
     <div id="learnHost"></div>
   </section>
 
-  <p class="disclaimer">ChartGauge is built to help you find and time trades. <strong>Trading carries real risk</strong>: you can lose money, including everything you put in, and the risk is yours to take. The Buy / Sell / Hold verdict is taken from the indicator score (Strongly up, Leans up, Mixed, Leans down, Strongly down), which describes how far the past-price indicators agree, and it is held back to Hold whenever bars like the current one went on to perform clearly worse, or better, than that symbol&rsquo;s own base rate. Check the <a href="/accuracy">published record</a> before you lean on it; for images the read comes from one picture alone. None of this is financial advice or a personal recommendation. The decision, and its outcome, is yours.</p>
+  <p class="disclaimer">ChartGauge is built to help you find and time trades. <strong>Trading carries real risk</strong>: you can lose money, including everything you put in, and the risk is yours to take. The Buy / Sell / Hold verdict is taken from the indicator score (Strongly up, Leans up, Mixed, Leans down, Strongly down), which describes how far the past-price indicators agree, and it is held back to Hold whenever bars like the current one went on to perform clearly worse, or better, than that symbol&rsquo;s own base rate. For images the read comes from one picture alone. None of this is financial advice or a personal recommendation. The decision, and its outcome, is yours.</p>
 
   <footer class="site-foot">
     <nav class="foot-links">
-      <a href="/accuracy">Accuracy record</a>
       <a href="/contact">Contact</a>
       <a href="/terms">Terms</a>
       <a href="/privacy">Privacy</a>
@@ -793,20 +776,23 @@
       </div>
       <p class="auth-status" id="authPendingStatus" role="status"></p>
     </div>
-    <!-- The second step of every sign-in: the code that was emailed. -->
+    <!-- The second step of every sign-in: the code that was emailed. One
+         real input (so paste and the phone's one-time-code fill still work)
+         lies over six tiles that only draw what it holds. -->
     <div class="auth-face hidden" id="authCode">
-      <svg class="auth-icon" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="12" width="36" height="26" rx="3"/><path d="M6 15l18 12 18-12"/></svg>
-      <h2 class="auth-face-h">Check your email</h2>
-      <p class="auth-face-p">We sent a 6-digit code to</p>
-      <p class="auth-face-email" id="authCodeEmail"></p>
+      <h2 class="auth-face-h">Enter the code</h2>
+      <p class="auth-face-p">Sent to <span class="auth-face-email" id="authCodeEmail"></span></p>
       <form id="authCodeForm">
-        <input type="text" id="authCodeInput" class="input auth-code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="······" aria-label="Sign-in code" />
+        <div class="otp" id="otp" data-state="idle">
+          <input type="text" id="authCodeInput" class="otp-input" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" maxlength="6" aria-label="6-digit sign-in code" aria-describedby="authCodeErr" />
+          <div class="otp-tiles" aria-hidden="true"><span class="otp-tile"></span><span class="otp-tile"></span><span class="otp-tile"></span><span class="otp-tile"></span><span class="otp-tile"></span><span class="otp-tile"></span></div>
+        </div>
         <div class="auth-err hidden" id="authCodeErr" role="alert"></div>
         <button type="submit" class="btn btn-primary btn-block" id="authCodeSubmit">Sign in</button>
       </form>
-      <p class="auth-face-p small">The code expires in 10 minutes.</p>
-      <div class="auth-face-links">
-        <button type="button" class="link-btn" id="authCodeResend">Didn’t get it? Send a new code</button>
+      <div class="auth-face-links otp-links">
+        <button type="button" class="link-btn" id="authCodeResend">Resend code</button>
+        <span class="otp-dot" aria-hidden="true">·</span>
         <button type="button" class="link-btn quiet" id="authCodeBack">Start over</button>
       </div>
       <p class="auth-status" id="authCodeStatus" role="status"></p>

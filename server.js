@@ -136,7 +136,7 @@ const usage = { total: 0 };            // per-endpoint request counters (reset o
 const KNOWN_API = new Set([
   '/api/stock', '/api/quotes', '/api/fundamentals', '/api/analyze', '/api/analyze-stream',
   '/api/analyze-image', '/api/compare', '/api/screen', '/api/watchlist', '/api/alerts',
-  '/api/movers', '/api/ranked', '/api/accuracy', '/api/admin', '/api/admin/plan', '/api/stream',
+  '/api/movers', '/api/ranked', '/api/admin', '/api/admin/plan', '/api/stream',
   '/api/admin/affiliate', '/api/admin/payout', '/api/affiliate/payout',
   '/api/admin/affiliate/pay', '/api/admin/affiliate/sync', '/api/admin/affiliate/ledger',
   '/api/admin/affiliate/transfer', '/api/admin/affiliate/autopay', '/api/affiliate/connect',
@@ -423,8 +423,10 @@ async function symbolResolves(sym) {
   }
 }
 
-// ---- Public accuracy record ----
+// ---- Reading record (kept privately) ----
 // Readings are written down when shown and graded once the outcome exists.
+// The public track record page was removed on Nov 8 2026; the data is still
+// kept so the page can return.
 // Grading rides on bars that were fetched anyway — when anyone opens a symbol
 // we already hold its whole daily history, so settling its outstanding
 // readings costs no extra upstream call. Symbols nobody opens are settled by
@@ -477,17 +479,6 @@ function dueDay(day) {
   return left === 0 ? d : null;
 }
 
-async function handleAccuracy(req, res) {
-  try {
-    const st = await db.accuracyStats();
-    // A record with nothing graded yet is not a broken record, it is a young
-    // one. Saying when the first outcome is due is the difference between
-    // those two, and the page had no way to tell them apart.
-    const firstDue = dueDay(st.oldestPending);
-    return json(res, 200, { ...st, horizon: ACCURACY_HORIZON, firstDue,
-      firstDuePassed: !!(firstDue && MKT.etDay() >= firstDue) });
-  } catch (e) { logError(e); return json(res, 200, { recorded: 0, graded: 0, labels: [], horizon: ACCURACY_HORIZON }); }
-}
 
 // The one symbol read in full for visitors: the front page's example.
 const SAMPLE_SYMBOL = 'SPY';
@@ -770,12 +761,12 @@ async function handleAnalyzeStream(req, res) {
   const { pro, key } = await plan(req);
   let streamModel = AI_MODEL;
   if (!pro) {
-    if (await db.peekUsage(key, 'ai') >= AI_FREE_DAILY) {
+    if (!(await aiSlot(res, key, 'ai', AI_FREE_DAILY))) {
       send({ t: 'done', ...ruleBasedReport(p), source: 'rule', limited: true, note: aiLimitNote() });
       return res.end();
     }
     streamModel = AI_MODEL_FREE;
-  } else if (await db.peekUsage(key, 'ai_pro') >= PRO_AI_DAILY) {
+  } else if (!(await aiSlot(res, key, 'ai_pro', PRO_AI_DAILY))) {
     send({ t: 'done', ...ruleBasedReport(p), source: 'rule', limited: true, note: proCapNote() });
     return res.end();
   }
@@ -840,6 +831,21 @@ function aiFallbackNote(e, where) {
     : 'Claude was unreachable (' + (e && e.message ? e.message : 'unknown') + '); this is the rule-based report.';
 }
 
+// Requests already running count against the day's allowance, so firing ten
+// at once cannot spend more than the limit (usage is only charged once a
+// report succeeds). Single process, so a Map is the whole story.
+const aiInflight = new Map();
+async function aiSlot(res, key, kind, limit) {
+  const k = key + '|' + kind;
+  aiInflight.set(k, (aiInflight.get(k) || 0) + 1);   // taken before the await: no gap to race through
+  let released = false;
+  const release = () => { if (released) return; released = true; const v = (aiInflight.get(k) || 1) - 1; if (v > 0) aiInflight.set(k, v); else aiInflight.delete(k); };
+  const used = await db.peekUsage(key, kind).catch(() => 0);
+  if (used + aiInflight.get(k) > limit) { release(); return false; }
+  res.on('close', release);
+  return true;
+}
+
 async function handleAnalyze(req, res) {
   const p = cleanReportInput(await readBody(req));
   if (!p) return json(res, 400, { error: 'Missing data.' });
@@ -849,11 +855,11 @@ async function handleAnalyze(req, res) {
     if (!pro) {
       // Checked before the call and counted only after it succeeds, so a
       // failed request does not spend one of the day's reports.
-      if (await db.peekUsage(key, 'ai') >= AI_FREE_DAILY) {
+      if (!(await aiSlot(res, key, 'ai', AI_FREE_DAILY))) {
         return json(res, 200, { ...ruleBasedReport(p), source: 'rule', limited: true, note: aiLimitNote() });
       }
       model = AI_MODEL_FREE;
-    } else if (await db.peekUsage(key, 'ai_pro') >= PRO_AI_DAILY) {
+    } else if (!(await aiSlot(res, key, 'ai_pro', PRO_AI_DAILY))) {
       return json(res, 200, { ...ruleBasedReport(p), source: 'rule', limited: true, note: proCapNote() });
     }
     try {
@@ -886,7 +892,7 @@ async function callClaudeVision(base64, mediaType) {
 async function handleAnalyzeImage(req, res) {
   const { pro, key } = await plan(req);
   if (!pro) return json(res, 402, PRO_ONLY('Reading a chart image'));
-  if (await db.peekUsage(key, 'image').catch(() => 0) >= PRO_IMAGE_DAILY) {
+  if (!(await aiSlot(res, key, 'image', PRO_IMAGE_DAILY))) {
     return json(res, 429, { error: `That is today's ${PRO_IMAGE_DAILY} chart images, the daily ceiling. The count resets tomorrow.` });
   }
   const p = await readBody(req, 8e6); // allow up to ~8MB base64 payloads
@@ -908,7 +914,7 @@ async function handleAnalyzeImage(req, res) {
     await db.bumpUsage(key, 'image', PRO_IMAGE_DAILY).catch(() => {});
     return json(res, 200, { summary, source: 'ai' });
   }
-  catch (e) { return json(res, 200, { source: 'error', summary: 'Could not analyze the image (' + e.message + ').' }); }
+  catch (e) { logError(e); return json(res, 200, { source: 'error', summary: 'Could not analyze the image. Try again in a minute.' }); }
 }
 
 // ---- Streak ----
@@ -1474,6 +1480,43 @@ function throttled(res, keys) {
   return false;
 }
 
+// ---- Rate limit on every request (Nov 8 2026) ----
+// One per-IP limit checked before routing, so no endpoint is unmetered. The
+// tighter per-route limits above (sign-in, codes, sign-up, payouts, quotes)
+// still apply on top. Tiers, per IP per minute, each overridable by env:
+//  - heavy: endpoints that call the AI or fetch many symbols upstream
+//  - api:   every other /api/ call
+//  - page:  documents and static files (a page load pulls ~15 files)
+// The Stripe webhook is exempt: Stripe retries from shared addresses, and
+// each call is checked against its signature anyway.
+const RL_WINDOW = 60000;
+const RL_HEAVY = Number(process.env.RL_HEAVY_PER_MIN || 20);
+const RL_API = Number(process.env.RL_API_PER_MIN || 180);
+const RL_PAGE = Number(process.env.RL_PAGE_PER_MIN || 600);
+const RL_HEAVY_PATHS = new Set(['/api/analyze', '/api/analyze-stream', '/api/analyze-image', '/api/compare', '/api/screen']);
+const RL_EXEMPT = new Set(['/api/billing/webhook']);
+// A flood from many addresses must not grow the table without bound: past
+// this many live keys, new addresses share one overflow bucket per tier.
+const RL_MAX_KEYS = 50000;
+function globalLimited(req, res, url) {
+  if (RL_EXEMPT.has(url)) return false;
+  const tier = RL_HEAVY_PATHS.has(url) ? 'heavy' : url.startsWith('/api/') ? 'api' : 'page';
+  const limit = tier === 'heavy' ? RL_HEAVY : tier === 'api' ? RL_API : RL_PAGE;
+  let key = 'rl:' + tier + ':' + clientIp(req);
+  if (!hits.has(key) && hits.size >= RL_MAX_KEYS) key = 'rl:' + tier + ':overflow';
+  const retry = tooMany(key, key.endsWith(':overflow') ? limit * 50 : limit, RL_WINDOW);
+  if (!retry) return false;
+  usage.rateLimited = (usage.rateLimited || 0) + 1;
+  res.setHeader('Retry-After', String(retry));
+  if (tier === 'page') {
+    res.writeHead(429, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end(`Too many requests. Try again in ${retry} seconds.`);
+  } else {
+    json(res, 429, { error: 'rate_limited', message: `Too many requests. Try again in ${retry} seconds.` });
+  }
+  return true;
+}
+
 // ---- Accounts + watchlist ----
 function parseCookies(req) {
   // A malformed value (a stray % from another site's cookie) is skipped, not
@@ -1531,7 +1574,9 @@ async function requireAccount(req, res) {
 const PRO_ONLY = (what) => ({ error: 'pro_required', feature: what,
   message: `${what} is part of Pro. Everything else on ChartGauge (the chart, the indicators, the levels and the measured base rate) stays free.` });
 
-const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || ''));
+const validEmail = (e) => typeof e === 'string' && e.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+// Strings only, and of sane length, before anything is hashed or stored.
+const authStr = (v, max) => (typeof v === 'string' && v.length <= max) ? v : '';
 
 // ---- Email confirmation ----
 // Once mail is configured, the email IS the lock: a sign-up is not usable
@@ -1876,11 +1921,12 @@ function accountsDown(res) {
 }
 async function handleSignup(req, res) {
   if (accountsDown(res)) return;
-  const b = await readBody(req);
-  const email = String(b.email || '').toLowerCase().trim();
+  const b = (await readBody(req)) || {};
+  const email = authStr(b.email, 254).toLowerCase().trim();
   if (throttled(res, [['signup:ip:' + clientIp(req), 5, 60 * 60000]])) return;
   if (!validEmail(email)) return json(res, 400, { error: 'Enter a valid email.' });
-  if (String(b.password || '').length < 8) return json(res, 400, { error: 'Password must be at least 8 characters.' });
+  if (typeof b.password !== 'string' || b.password.length > 1024) return json(res, 400, { error: 'Password must be at most 1024 characters.' });
+  if (b.password.length < 8) return json(res, 400, { error: 'Password must be at least 8 characters.' });
   // Accounts are for adults (Terms). The form asks; this makes sure it was asked.
   if (b.adult !== true) return json(res, 400, { error: 'You must be 18 or older to create an account.' });
   let user, fresh = true;
@@ -1949,14 +1995,15 @@ async function handleResend(req, res) {
 }
 async function handleLogin(req, res) {
   if (accountsDown(res)) return;
-  const b = await readBody(req);
-  const email = String(b.email || '').toLowerCase().trim();
+  const b = (await readBody(req)) || {};
+  const email = authStr(b.email, 254).toLowerCase().trim();
+  b.password = authStr(b.password, 1024);
   // Checked before any hashing happens, so a flood costs no CPU.
   if (throttled(res, [
     ['login:ip:' + clientIp(req), 20, 15 * 60000],
     ['login:acct:' + email, 8, 15 * 60000],
   ])) return;
-  const user = await db.getUserByEmail(b.email || '');
+  const user = email ? await db.getUserByEmail(email) : null;
   // A miss still pays for one hash, so the response time does not say
   // whether the address has an account.
   if (!user) { await db.verifyPw(b.password || '', DUMMY_PW); return json(res, 401, { error: 'Wrong email or password.' }); }
@@ -1970,6 +2017,10 @@ async function handleLogin(req, res) {
       message: 'Your email address has not been confirmed yet. ' + (sent ? 'A new link was just sent. ' : '') + VERIFY_MSG(user.email) });
   }
   if (mailEnabled()) {
+    // Each round allows five guesses at a six-digit code. Twenty rounds a day
+    // per account caps a password-holder's guessing at 100 a day. Counted only
+    // after the password matched, so a stranger cannot lock the owner out.
+    if (throttled(res, [['coderounds:acct:' + user.id, 20, 24 * 3600000]])) return;
     try { await startCodeStep(req, res, user); }
     catch (e) { logError(e); return json(res, 503, { error: MAIL_DOWN }); }
     return json(res, 200, { code_required: true, email: user.email, message: CODE_MSG(user.email) });
@@ -2036,15 +2087,18 @@ async function handleGoogleStart(req, res) {
   if (!googleEnabled()) return json(res, 404, { error: 'Google sign-in is not configured.' });
   const q = new URLSearchParams(req.url.split('?')[1] || '');
   const next = /^\/[A-Za-z0-9\/_-]*$/.test(q.get('next') || '') ? q.get('next') : '/';
+  const gState = newGoogleState(next, q.get('adult') === '1');
   const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: googleRedirect(req),
     response_type: 'code',
     scope: 'openid email',          // nothing beyond identity
-    state: newGoogleState(next, q.get('adult') === '1'),
+    state: gState,
     prompt: 'select_account',
   }).toString();
-  res.writeHead(302, { Location: url });
+  // The state is also set in this browser, so a callback link started by
+  // someone else (login CSRF) is refused.
+  res.writeHead(302, { Location: url, 'Set-Cookie': cookieStr(req, 'gstate', gState, 600) });
   res.end();
 }
 
@@ -2055,7 +2109,9 @@ async function handleGoogleCallback(req, res) {
   if (db.hasUrl() && db.storeMode() !== 'postgres') return googleFail(res, 'failed');
   const q = new URLSearchParams(req.url.split('?')[1] || '');
   if (q.get('error')) return googleFail(res, 'canceled');
-  const st = takeGoogleState(q.get('state') || '');
+  const qs = q.get('state') || '';
+  if (!qs || parseCookies(req).gstate !== qs) return googleFail(res, 'expired');
+  const st = takeGoogleState(qs);
   if (!st) return googleFail(res, 'expired');
   const code = q.get('code');
   if (!code) return googleFail(res, 'no_code');
@@ -2127,9 +2183,14 @@ async function handleDeleteAccount(req, res) {
   if (String(b && b.confirm || '').trim().toUpperCase() !== 'DELETE') {
     return json(res, 400, { error: 'Type DELETE to confirm.' });
   }
-  if (user.stripe_sub && STRIPE_SECRET_KEY) {
+  // The session user is the trimmed public shape; the subscription id lives
+  // on the full row. Reading it from the session copy skipped the cancel and
+  // left a deleted account still being charged.
+  const full = await db.getUserById(user.id).catch(() => null);
+  const sub = full && full.stripe_sub;
+  if (sub && STRIPE_SECRET_KEY) {
     try {
-      await stripeDelete('subscriptions/' + encodeURIComponent(user.stripe_sub));
+      await stripeDelete('subscriptions/' + encodeURIComponent(sub));
     } catch (e) {
       logError(e);
       // Refuse rather than delete: an orphaned live subscription is worse than
@@ -2521,6 +2582,10 @@ async function handleAffiliateConnect(req, res) {
   if (!who) return json(res, 403, { error: 'This link has expired. Sign in and open Settings to reach the form.' });
   if (!connectOn) return json(res, 503, { error: 'Stripe payouts are not switched on yet. Enter your details below instead.' });
   const u = who.user;
+  // Once an account is connected it holds the bank details, so changing or
+  // managing it needs a signed-in session, not a link that may have been
+  // forwarded (the same rule the details form follows).
+  if (u.stripe_account && who.viaToken) return json(res, 403, { error: 'Sign in to manage your payout account.' });
   try {
     if (u.stripe_account) {
       const c = await connectRefresh(u, true);
@@ -2540,7 +2605,7 @@ async function handleAffiliateConnect(req, res) {
     return json(res, 200, { url: link.url });
   } catch (e) {
     logError(e);
-    return json(res, 502, { error: 'Stripe could not start the setup (' + e.message + '). Try again in a minute, or enter your details below.' });
+    return json(res, 502, { error: 'Stripe could not start the setup. Try again in a minute, or enter your details below.' });
   }
 }
 // Sends what is owed to the affiliate's connected account. The idempotency
@@ -3524,7 +3589,7 @@ async function handleCheckout(req, res) {
       + ' Cancel any time from Manage subscription on the ChartGauge Plans page.';
     const s = await stripePost('checkout/sessions', params);
     return json(res, 200, { url: s.url });
-  } catch (e) { return json(res, 200, { error: 'Could not start checkout (' + e.message + ').' }); }
+  } catch (e) { logError(e); return json(res, 200, { error: 'Could not start checkout. Try again in a minute.' }); }
 }
 async function handlePortal(req, res) {
   const user = await currentUser(req);
@@ -3535,7 +3600,7 @@ async function handlePortal(req, res) {
   try {
     const s = await stripePost('billing_portal/sessions', { customer, return_url: baseUrl(req) + '/' });
     return json(res, 200, { url: s.url });
-  } catch (e) { return json(res, 200, { error: 'Could not open the billing portal (' + e.message + ').' }); }
+  } catch (e) { logError(e); return json(res, 200, { error: 'Could not open the billing portal. Try again in a minute.' }); }
 }
 // ---- subscription emails ----
 // The auto-renewal notices: a confirmation stating the terms once someone
@@ -3694,7 +3759,7 @@ function siteOrigin(req) {
 
 const VIEW_SEO = {
   '': { view: 'home', title: 'ChartGauge | Buy, Sell or Hold Calls for Stocks and Crypto',
-    desc: 'A buy, sell or hold call on any stock or crypto pair, with the stop and target already set, and every call graded in public. Trading can lose money; not financial advice.' },
+    desc: 'A buy, sell or hold call on any stock or crypto pair, with the stop and target already set, and a candlestick chart and 13 indicators. Trading can lose money; not financial advice.' },
   'analyze': { view: 'analyze', title: 'Analyze a stock or crypto pair | ChartGauge',
     desc: 'Enter a stock or crypto pair for a candlestick chart, 13 technical indicators, an indicator score, and stop-loss and take-profit levels derived from ATR and recent swing highs and lows.' },
   'markets': { view: 'markets', title: 'Market snapshot: indices and trending stocks | ChartGauge',
@@ -3713,8 +3778,6 @@ const VIEW_SEO = {
     desc: 'A practice account with a starting balance you choose. Fills use the live price, positions are valued in real time, and a risk meter measures the book against limits you set. None of it is real money.' },
   'settings': { view: 'settings', noindex: true, title: 'Settings: choose what the analysis shows | ChartGauge',
     desc: 'Turn any part of the analysis on or off: the indicator score, the measured base rate, exit levels, the thirteen technical readings, the projection, fundamentals, news and the written summary.' },
-  'accuracy': { view: 'accuracy', title: 'How accurate is ChartGauge? The measured record',
-    desc: 'Every reading ChartGauge has shown is written down before the outcome is known, then graded against what the price actually did 20 trading days later. The running record is published here, including when the score does worse than doing nothing.' },
   'movers': { view: 'movers', title: 'What is moving right now | ChartGauge',
     desc: 'A live scan of the most active US stocks ranked by unusual volume, the size of the move and where price sits in the day range. A description of what is happening, not a prediction of what happens next.' },
   'pricing': { view: 'pricing', title: 'Plans and billing | ChartGauge',
@@ -3815,14 +3878,6 @@ function jsonLd(seo, origin) {
   // The publisher, on every page, so any page cited on its own says whose it is.
   const org = { '@type': 'Organization', '@id': origin + '/#org', name: SITE_NAME, url: origin + '/', logo: origin + '/icon-512.png', email: CONTACT_EMAIL };
   blocks.push({ '@context': 'https://schema.org', ...org });
-  if (seo.view === 'accuracy') {
-    blocks.push({
-      '@context': 'https://schema.org', '@type': 'Dataset', name: 'ChartGauge graded reading record',
-      description: 'Every reading ChartGauge shows, written down before the outcome is known and graded against the price 20 trading days later, including how it compares with doing nothing.',
-      url: seo.canonical, creator: { '@id': origin + '/#org' }, isAccessibleForFree: true,
-      dateModified: new Date().toISOString().slice(0, 10), measurementTechnique: 'Forward return after a fixed number of trading days',
-    });
-  }
   if (seo.view === 'home') {
     blocks.push({
       '@context': 'https://schema.org', '@type': 'WebSite', name: SITE_NAME, url: origin + '/',
@@ -3906,7 +3961,7 @@ function learnListHtml() {
 function stockHtml(seo, last) {
   const label = seo.symbolName ? `${seo.symbolName} (${seo.symbol})` : seo.symbol;
   const read = last
-    ? `<p>Last recorded reading: <strong>${esc(last.label)}</strong>, score ${esc(last.score)}/100, at ${esc(Number(last.price).toFixed(2))} on <time datetime="${esc(last.day)}">${esc(fmtIsoDay(last.day))}</time>. Every reading is graded in public on the <a href="/accuracy">track record</a>.</p>`
+    ? `<p>Last recorded reading: <strong>${esc(last.label)}</strong>, score ${esc(last.score)}/100, at ${esc(Number(last.price).toFixed(2))} on <time datetime="${esc(last.day)}">${esc(fmtIsoDay(last.day))}</time>.</p>`
     : '';
   const others = FEATURED.filter(x => x !== seo.symbol).slice(0, 12)
     .map(x => `<a href="/stock/${x}">${esc(x)}</a>`).join(' · ');
@@ -3941,7 +3996,7 @@ const GA_SNIPPET = (GA_ID ? `<meta name="ga-id" content="${esc(GA_ID)}">` : '')
 // 'admin' is routable so the operator can open /admin directly, but it is
 // absent from VIEW_SEO, so it never reaches the sitemap, and robots.txt
 // disallows it. The page itself is guarded server-side regardless.
-const APP_PATH = /^\/(analyze|markets|movers|accuracy|compare|screener|alerts|watchlist|practice|learn|settings|pricing|terms|privacy|refunds|contact|affiliate-terms|accessibility|security|copyright|admin)(\/|$)|^\/stock\//;
+const APP_PATH = /^\/(analyze|markets|movers|compare|screener|alerts|watchlist|practice|learn|settings|pricing|terms|privacy|refunds|contact|affiliate-terms|accessibility|security|copyright|admin)(\/|$)|^\/stock\//;
 
 // A mistyped URL used to return the two words "Not found" as plain text on a
 // blank white page, with no styling, no way back and no branding. Cheap to do
@@ -3982,11 +4037,10 @@ function llmsTxt(origin) {
   const L = (p, t, d) => `- [${t}](${origin}${p})${d ? ': ' + d : ''}`;
   return [
     `# ${SITE_NAME}`, '',
-    `> A trading tool for stocks and crypto pairs. Enter a stock and get a mechanical buy, sell or hold call with the stop-loss and take-profit levels already set, a candlestick chart and 13 technical indicators. Every call is written down before the outcome is known and graded in public. Trading can lose money, including everything you put in; nothing on the site is financial advice, and it does not promise or quote returns.`, '',
+    `> A trading tool for stocks and crypto pairs. Enter a stock and get a mechanical buy, sell or hold call with the stop-loss and take-profit levels already set, a candlestick chart and 13 technical indicators. Trading can lose money, including everything you put in; nothing on the site is financial advice, and it does not promise or quote returns.`, '',
     '## Main pages',
     L('/', 'Home', 'what the tool does and a live example reading'),
     L('/analyze', 'Analyze', 'the call, chart, indicators and levels for any stock'),
-    L('/accuracy', 'Track record', 'every graded call, including where the score does worse than doing nothing'),
     L('/practice', 'Practice', 'paper trading with pretend money'),
     L('/pricing', 'Plans', 'what is free and what Pro adds'), '',
     '## Lessons',
@@ -4029,7 +4083,6 @@ function notFound(req, res) {
   <div class="nf-links">
     <a class="nf-primary" href="/">Go to the charts</a>
     <a class="nf-link" href="/learn">Lessons</a>
-    <a class="nf-link" href="/accuracy">Accuracy record</a>
     <a class="nf-link" href="/contact">Contact</a>
   </div>
 </main>
@@ -4044,14 +4097,14 @@ function serveDocument(req, res, urlPath) {
   fs.readFile(path.join(PUBLIC, 'index.html'), 'utf8', (err, html) => {
     if (err) return notFound(req, res);
     let out = html
-      .replace(/<title>[\s\S]*?<\/title>/, `<title>${esc(seo.title)}</title>`)
-      .replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${esc(seo.desc)}" />`)
-      .replace('<!--SEO-->', seoHead(seo, origin))
-      .replace('<!--GA-->', GA_SNIPPET)
-      .replace(/<!--CONTACT_EMAIL-->/g, CONTACT_EMAIL)
+      .replace(/<title>[\s\S]*?<\/title>/, () => `<title>${esc(seo.title)}</title>`)
+      .replace(/<meta name="description" content="[^"]*"\s*\/>/, () => `<meta name="description" content="${esc(seo.desc)}" />`)
+      .replace('<!--SEO-->', () => seoHead(seo, origin))
+      .replace('<!--GA-->', () => GA_SNIPPET)
+      .replace(/<!--CONTACT_EMAIL-->/g, () => CONTACT_EMAIL)
       // Featured stock pages, linked from every page's footer so they are
       // reachable by following links and not only through the sitemap.
-      .replace('<p class="foot-note">', `<nav class="foot-links foot-stocks" aria-label="Popular stocks">${FEATURED.slice(0, 10).map(x => `<a href="/stock/${x}">${esc(x)}</a>`).join('')}</nav><p class="foot-note">`)
+      .replace('<p class="foot-note">', () => `<nav class="foot-links foot-stocks" aria-label="Popular stocks">${FEATURED.slice(0, 10).map(x => `<a href="/stock/${x}">${esc(x)}</a>`).join('')}</nav><p class="foot-note">`)
       .replace('<span id="footYear">2026</span>', `<span id="footYear">${new Date().getFullYear()}</span>`);
     // One <h1> per rendered page: the active view keeps it, the rest step
     // down. Opening and closing tags change together (rewriting only the
@@ -4072,34 +4125,26 @@ function serveDocument(req, res, urlPath) {
     // A stock's page names the stock in its heading.
     if (seo.symbol) {
       const label = seo.symbolName ? `${seo.symbolName} (${seo.symbol})` : seo.symbol;
-      out = out.replace(/(<h1 class="view-h" id="analyzeH">)[\s\S]*?(<\/h1>)/, `$1${esc(label)}: chart and trade levels$2`);
+      out = out.replace(/(<h1 class="view-h" id="analyzeH">)[\s\S]*?(<\/h1>)/, (m, a, b) => `${a}${esc(label)}: chart and trade levels${b}`);
     }
-    if (seo.view === 'learn' && !seo.lesson) out = out.replace('<div id="learnHost"></div>', `<div id="learnHost">${learnListHtml()}</div>`);
+    if (seo.view === 'learn' && !seo.lesson) out = out.replace('<div id="learnHost"></div>', () => `<div id="learnHost">${learnListHtml()}</div>`);
     // Lesson prose goes into the document itself so it indexes without JS.
-    if (seo.lesson) out = out.replace('<div id="learnHost"></div>', `<div id="learnHost"></div>${lessonHtml(seo.lesson)}`);
-    if (seo.legal) out = out.replace('<div id="legalHost"></div>', `<div id="legalHost">${seo.legal.html}</div>`);
+    if (seo.lesson) out = out.replace('<div id="learnHost"></div>', () => `<div id="learnHost"></div>${lessonHtml(seo.lesson)}`);
+    if (seo.legal) out = out.replace('<div id="legalHost"></div>', () => `<div id="legalHost">${seo.legal.html}</div>`);
 
     // Pages with no market data ship with the gate already down, so they do
     // not flash a sign-in wall before app.js reaches the same conclusion.
     // Must stay in step with ON_OPEN_PAGE in app.js.
-    if (seo.legal || seo.lesson || seo.view === 'learn' || seo.view === 'accuracy') {
+    if (seo.legal || seo.lesson || seo.view === 'learn') {
       out = out.replace('<div class="gate" id="gate">', '<div class="gate hidden" id="gate">');
-    }
-    // Rendered into the document rather than fetched afterwards, so a crawler
-    // — or anyone citing the figures — sees them without running JavaScript.
-    // Must come after the gate rewrite above, which this return would skip.
-    if (seo.view === 'accuracy') {
-      return db.accuracyStats()
-        .then(st => finish(out.replace('<div id="accuracySsr"></div>', accuracyHtml(st, ACCURACY_HORIZON))))
-        .catch(() => finish(out));
     }
     if (seo.symbol) {
       return db.latestPrediction(seo.symbol).catch(() => null)
-        .then(last => finish(out.replace(/(<h1 class="view-h" id="analyzeH">[\s\S]*?<\/h1>)/, `$1${stockHtml(seo, last)}`)));
+        .then(last => finish(out.replace(/(<h1 class="view-h" id="analyzeH">[\s\S]*?<\/h1>)/, (m) => `${m}${stockHtml(seo, last)}`)));
     }
     if (seo.view === 'pricing') {
       return billingInfo().catch(() => ({}))
-        .then(b => finish(out.replace('<div class="pricing" id="pricingBody"></div>', `<div class="pricing" id="pricingBody">${pricingHtml(b)}</div>`)));
+        .then(b => finish(out.replace('<div class="pricing" id="pricingBody"></div>', () => `<div class="pricing" id="pricingBody">${pricingHtml(b)}</div>`)));
     }
     return finish(out);
 
@@ -4124,44 +4169,22 @@ function pricingHtml(b) {
     + (TRIAL_DAYS > 0 ? ` A first subscription starts with a ${TRIAL_DAYS}-day free trial.` : '')
     + ` Renews automatically until you cancel; cancel any time from this page.</p></div>`;
 }
-// Server-rendered accuracy figures. Deliberately states the unflattering
-// comparison in words rather than leaving a reader to work it out from a table.
-function accuracyHtml(st, horizon) {
-  const pc = (v) => v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
-  if (!st || !st.graded) {
-    // The lead above already says how grading works; this only says where it stands.
-    return `<div class="acc-ssr"><p>`
-      + `${st && st.recorded ? esc(String(st.recorded)) + ' readings have been recorded so far; none have' : 'No readings have'} `
-      + `reached their ${horizon}-trading-day outcome yet, so there is nothing to grade. This page fills in on its own.</p></div>`;
-  }
-  const rows = ORDERED_LABELS
-    .map(l => st.labels.find(x => x.label === l))
-    .filter(Boolean)
-    .map(x => `<tr><td>${esc(x.label)}</td><td>${x.n}</td><td>${pc(x.mean)}</td>`
-      + `<td>${x.mean == null || st.baseline == null ? '—' : pc(x.mean - st.baseline)}</td>`
-      + `<td>${x.winRate == null ? '—' : x.winRate.toFixed(0) + '%'}</td></tr>`).join('');
-  const best = st.labels.slice().sort((a, b) => (b.mean ?? -1e9) - (a.mean ?? -1e9))[0];
-  return `<div class="acc-ssr">`
-    + `<p><strong>${st.graded}</strong> of ${st.recorded} recorded readings have reached their `
-    + `${horizon}-trading-day outcome. Across all of them the average return was <strong>${pc(st.baseline)}</strong>, `
-    + `which is what you would have had without consulting the score at all.</p>`
-    + `<table class="acc-table"><thead><tr><th>Reading</th><th>Count</th><th>Average return</th><th>vs doing nothing</th><th>Higher after</th></tr></thead>`
-    + `<tbody>${rows}</tbody></table>`
-    + (best ? `<p>Strongest by average return so far: <strong>${esc(best.label)}</strong> at ${pc(best.mean)}. `
-      + `If that is not the strongest buy reading, the score is not ordering outcomes the way its wording implies, `
-      + `which is exactly the sort of thing this page exists to show.</p>` : '')
-    + `</div>`;
-}
 const ORDERED_LABELS = ['Strongly up', 'Leans up', 'Mixed', 'Leans down', 'Strongly down'];
 
 function serveStatic(req, res) {
-  let urlPath = decodeURIComponent(req.url.split('?')[0]);
+  let urlPath;
+  try { urlPath = decodeURIComponent(req.url.split('?')[0]); }
+  catch (e) { res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Bad request'); }
+  // A NUL byte makes fs throw; nothing legitimate contains one.
+  if (urlPath.includes('\0')) { res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' }); return res.end('Bad request'); }
   // A path with a file extension is an asset request, never an app route —
   // otherwise /learn/app.js would be answered with the HTML document.
   const looksLikeFile = /\.[a-z0-9]{2,5}$/i.test(urlPath);
   if (urlPath === '/' || (!looksLikeFile && APP_PATH.test(urlPath))) return serveDocument(req, res, urlPath);
   const filePath = path.join(PUBLIC, urlPath);
-  if (!filePath.startsWith(PUBLIC)) { res.writeHead(403); return res.end('403'); }
+  if (!filePath.startsWith(PUBLIC + path.sep)) { res.writeHead(403); return res.end('403'); }
+  // Dotfiles (.DS_Store, a stray .env) are never served, even if one lands in public/.
+  if (filePath.split(path.sep).some(seg => seg.startsWith('.') && seg !== '.well-known')) return notFound(req, res);
   if (urlPath === '/index.html') return serveDocument(req, res, '/');
   fs.stat(filePath, (err, stat) => {
     if (err || !stat.isFile()) return notFound(req, res);
@@ -4192,7 +4215,7 @@ const CSP = [
   // Styles stay 'unsafe-inline': the markup carries style attributes, and an
   // injected stylesheet is a far smaller problem than an injected script.
   "style-src 'self' 'unsafe-inline'",
-  "script-src 'self' https://www.googletagmanager.com https://www.google-analytics.com",
+  "script-src 'self' https://www.googletagmanager.com/gtag/ https://www.google-analytics.com",
   // Declared rather than left to inherit: worker-src falls back through
   // child-src to script-src, and browsers have disagreed about that chain.
   "worker-src 'self'",
@@ -4229,6 +4252,11 @@ const server = http.createServer(async (req, res) => {
         && (req.method === 'GET' || req.method === 'HEAD')) {
       res.writeHead(301, { Location: SITE_ORIGIN + req.url });
       return res.end();
+    }
+    if (globalLimited(req, res, url)) return;
+    // The track record was taken down (Nov 8 2026); old links land on home.
+    if (/^\/accuracy\/?$/.test(url) && (req.method === 'GET' || req.method === 'HEAD')) {
+      res.writeHead(301, { Location: '/' }); return res.end();
     }
     if (url.startsWith('/api/')) {
       usage.total++;
@@ -4329,7 +4357,6 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/stream' && req.method === 'GET') return await handleStream(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbol'));
     if (url === '/api/movers' && req.method === 'GET') return await handleMovers(req, res);
     if (url === '/api/ranked' && req.method === 'GET') return await handleRanked(req, res);
-    if (url === '/api/accuracy' && req.method === 'GET') return await handleAccuracy(req, res);
     if (url === '/api/fundamentals' && req.method === 'GET') return await handleFundamentals(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbol'));
     if (url === '/api/compare' && req.method === 'GET') return await handleCompare(req, res, new URLSearchParams(req.url.split('?')[1] || '').get('symbols'));
     if (url === '/api/alerts') return await handleAlerts(req, res);

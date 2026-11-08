@@ -110,7 +110,7 @@
   // The views that are nothing but market data. Each one is replaced whole by
   // the wall when there is no session, so a visitor never sees a disabled
   // chart, a blurred one, or a list of the indicators they are missing — just
-  // the one thing they have to do. learn / accuracy / pricing / settings carry
+  // the one thing they have to do. learn / pricing / settings carry
   // no market data and stay open.
   // analyze is not here: its chart is open and only the reading of it is
   // withheld, which run() handles. home is not here either: the landing page
@@ -175,7 +175,7 @@
   // runs on every page including the ones that carry no market data. The
   // chart endpoint is open too, because the server answers a visitor with the
   // bars alone and nothing read from them, and so is the public record.
-  const PRE_AGREEMENT_OK = /^\/api\/(auth|billing|stock|accuracy)\b/;
+  const PRE_AGREEMENT_OK = /^\/api\/(auth|billing|stock)\b/;
   const rawFetch = window.fetch.bind(window);
   const fetch = (input, init) => {
     const url = typeof input === 'string' ? input : (input && input.url) || '';
@@ -260,8 +260,7 @@
       : action === 'Sell'
         ? `<span class="none">did worse than</span> simply being invested: its average return was ${by} points below the base rate, and it was higher less often`
         : `<span class="none">made no difference</span> versus simply being invested: the gap from the base rate is inside the margin of error`;
-    el.innerHTML = `<a class="edge-more" href="/accuracy">What is this?</a>`
-      + `Measured on this symbol's own history: at scores near <b>${rt.score}</b>, it was higher `
+    el.innerHTML = `Measured on this symbol's own history: at scores near <b>${rt.score}</b>, it was higher `
       + `${e.horizon} bars later <b>${e.winRate}%</b> of the time across <b>${e.n}</b> past occurrences. `
       + `On any bar it was higher <b>${e.baseWinRate}%</b> of the time, so this setup ${verdict}.`;
   }
@@ -420,7 +419,7 @@
     if (!sugItems.length) return hideSuggest();
     sugIdx = -1;
     suggestBox.innerHTML = sugItems.map(([sym, name], i) =>
-      `<div class="suggest-item" role="option" data-sym="${sym}" data-i="${i}"><span class="suggest-sym">${sym}</span><span class="suggest-name">${name}</span></div>`).join('');
+      `<div class="suggest-item" role="option" data-sym="${esc(sym)}" data-i="${i}"><span class="suggest-sym">${esc(sym)}</span><span class="suggest-name">${esc(name)}</span></div>`).join('');
     suggestBox.classList.remove('hidden');
     $('symbol').setAttribute('aria-expanded', 'true');
     suggestBox.querySelectorAll('.suggest-item').forEach(el =>
@@ -756,7 +755,7 @@
 
   // The destinations, with a line each saying what they are for. This is now
   // the only navigation, so a label alone is not enough — someone opening
-  // "Movers" or "Accuracy" for the first time should not have to guess.
+  // "Movers" for the first time should not have to guess.
   const DESTINATIONS = [
     { v: 'home', t: 'Home',      d: 'Look up any stock, and see where the major indices sit today.' },
     { v: 'analyze', t: 'Analyze',   d: 'The full read on one symbol: candlestick chart, thirteen indicators, exit levels and the measured base rate.' },
@@ -764,7 +763,6 @@
     { v: 'screener', t: 'Screener',  d: 'Filter a curated list of stocks by sector, market capitalization and price.' },
     { v: 'markets', t: 'Markets',   d: 'Live quotes for the major US indices and the most active stocks.' },
     { v: 'movers', t: 'Movers',    d: 'What is actually moving right now, ranked by how unusual the volume and the day\u2019s range are.' },
-    { v: 'accuracy', t: 'Accuracy',  d: 'The measured record of how this site\u2019s own readings have performed, published whether or not it flatters them.' },
     { v: 'watchlist', t: 'Watchlist', d: 'The stocks you follow, with live prices and one-click analysis.' },
     { v: 'alerts', t: 'Alerts',    d: 'Set a target above or below the current price and get flagged when a stock crosses it.', badge: 'alertBadge' },
     { v: 'practice', t: 'Practice',  d: 'A practice account with pretend money, so you can rehearse position sizing against your own risk limits. Nothing here touches a broker.' },
@@ -1666,6 +1664,7 @@
   // arrive rather than found. Skipped when the visitor asked for less motion.
   // Loading states are the shape of what is coming, not a word.
   const skelCards = (n) => Array.from({ length: n }, () => '<div class="skel skel-card"></div>').join('');
+  const skelRows = (n) => `<div class="skel-rows" aria-hidden="true">${Array.from({ length: n }, () => '<div class="skel-row"><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span></div>').join('')}</div>`;
   const skelLines = (n) => Array.from({ length: n }, (_, i) => `<div class="skel skel-line${i % 2 ? ' short' : ''}"></div>`).join('');
   const lessMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
   function countUp(id, target, fmt, ms) {
@@ -1847,17 +1846,6 @@
   }
   $('homeFull').addEventListener('click', () => goAnalyze(HOME_SYMBOL));
 
-  // How much the tool is used, as a plain count. The graded results live on
-  // the accuracy page, where there is room to say what they mean.
-  let homeRecordLoaded = false;
-  async function loadHomeRecord() {
-    const el = $('heroCount'); if (!el || homeRecordLoaded) return;
-    try {
-      const d = await fetch('/api/accuracy').then(r => r.json());
-      homeRecordLoaded = true;
-      if ((d.recorded || 0) >= 50) el.textContent = `${Math.round(d.recorded).toLocaleString('en-US')} readings made so far, each one graded in public.`;
-    } catch (e) {}
-  }
 
 
   // The averages, the projection and the levels are each a reading of the
@@ -1878,10 +1866,11 @@
   // waited out in full), so say so rather than showing a bare spinner-word
   // that looks identical to a dead request.
   function setAnalysisPending() {
-    $('aiBody').textContent = 'Writing the summary. This usually takes a few seconds.';
+    $('aiBody').innerHTML = `<span class="sr-only">Writing the summary. This usually takes a few seconds.</span>${skelLines(4)}`;
     $('aiTag').textContent = '';
-    $('bullList').innerHTML = '<li>Working…</li>';
-    $('bearList').innerHTML = '<li>Working…</li>';
+    const skelLi = '<li class="skel-li" aria-hidden="true"><span class="skel skel-line"></span></li><li class="skel-li" aria-hidden="true"><span class="skel skel-line short"></span></li><li class="skel-li" aria-hidden="true"><span class="skel skel-line"></span></li>';
+    $('bullList').innerHTML = skelLi;
+    $('bearList').innerHTML = skelLi;
     $('conclusion').textContent = '';
   }
 
@@ -2048,8 +2037,10 @@
     .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const pPct = (n) => (Number(n) || 0).toFixed(1) + '%';
   async function loadPaper() {
+    if (!paperState && $('paperSkel')) { $('paperSkel').classList.remove('hidden'); $('paperSetup').classList.add('hidden'); $('paperBook').classList.add('hidden'); }
     try {
       const j = await (await fetch('/api/paper')).json();
+      if ($('paperSkel')) $('paperSkel').classList.add('hidden');
       paperState = j;
       paperMsg('');          // clear anything left over from an earlier attempt
       renderPaper();
@@ -2065,6 +2056,7 @@
         startPaperLive();
       }
     } catch (e) {
+      if ($('paperSkel')) $('paperSkel').classList.add('hidden');
       // Before sign-in the shared fetch wrapper rejects every /api call and
       // shows the wall instead. routeFromPath runs again once auth lands, so
       // this first rejection is the wall working, not a failure — reporting it
@@ -2660,14 +2652,40 @@
     $('authCodeErr').classList.add('hidden');
     $('authCodeStatus').textContent = ''; $('authCodeStatus').className = 'auth-status';
     $('authCodeInput').value = '';
+    otpState('idle'); paintOtp();
     $('authCode').classList.remove('hidden');
     $('authCodeInput').focus();
   }
+  // The six tiles draw what the one real input holds. States, each with its
+  // own look: idle, typing (the next tile lit, a caret blinking in it),
+  // verifying (a wave of light across the tiles), error (a shake and red),
+  // success (the tiles turn green one after another), sent (a new code).
+  const otpEl = $('otp'), otpTiles = Array.from(document.querySelectorAll('#otp .otp-tile'));
+  let otpPrev = '';
+  function otpState(st) { otpEl.dataset.state = st; }
+  function paintOtp() {
+    const v = $('authCodeInput').value, focused = document.activeElement === $('authCodeInput');
+    otpTiles.forEach((t, i) => {
+      const d = v[i] || '';
+      if (t.textContent !== d) {
+        t.textContent = d;
+        // A digit that just arrived pops in; one taken away just goes.
+        if (d && i >= otpPrev.length) { t.classList.remove('pop'); void t.offsetWidth; t.classList.add('pop'); }
+      }
+      t.classList.toggle('filled', !!d);
+      t.classList.toggle('active', focused && (i === v.length || (v.length === 6 && i === 5)));
+    });
+    otpPrev = v;
+  }
+  ['focus', 'blur'].forEach(ev => $('authCodeInput').addEventListener(ev, paintOtp));
   // Digits only, and six of them is the whole answer, so submit on the sixth.
   $('authCodeInput').addEventListener('input', () => {
     const el = $('authCodeInput');
     const digits = el.value.replace(/\D/g, '').slice(0, 6);
     if (digits !== el.value) el.value = digits;
+    if (otpEl.dataset.state === 'error' || otpEl.dataset.state === 'sent') { otpState('idle'); $('authCodeErr').classList.add('hidden'); }
+    otpState(digits.length ? 'typing' : 'idle');
+    paintOtp();
     if (digits.length === 6 && !$('authCodeSubmit').disabled) $('authCodeForm').requestSubmit();
   });
   // What happens once the server has handed over a session, whichever door
@@ -2682,11 +2700,19 @@
     releasePending();
     resumePlan();
   }
-  const codeErr = (m) => { $('authCodeErr').textContent = m; $('authCodeErr').classList.remove('hidden'); };
+  const codeErr = (m) => {
+    $('authCodeErr').textContent = m; $('authCodeErr').classList.remove('hidden');
+    // Restart the shake even when the same error comes back twice.
+    otpState('idle'); void otpEl.offsetWidth; otpState('error');
+    // The wrong digits go once the shake has played, ready for another try.
+    setTimeout(() => { if (otpEl.dataset.state === 'error') { $('authCodeInput').value = ''; paintOtp(); $('authCodeInput').focus(); } }, 650);
+  };
   $('authCodeForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const code = $('authCodeInput').value.replace(/\D/g, '');
+    if (code.length !== 6) { codeErr('Enter all 6 digits.'); return; }
     $('authCodeErr').classList.add('hidden'); $('authCodeSubmit').disabled = true;
+    otpState('verifying'); $('authCodeSubmit').textContent = 'Checking…';
     try {
       const r = await fetch('/api/auth/code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) });
       const j = await r.json();
@@ -2694,9 +2720,12 @@
         if (j.restart) { openAuth('login'); $('authErr').textContent = j.error; $('authErr').classList.remove('hidden'); return; }
         throw new Error(j.error || 'Something went wrong.');
       }
+      // Let the green land before the modal closes.
+      otpState('success'); $('authCodeSubmit').textContent = 'Signed in';
+      await new Promise(r => setTimeout(r, lessMotion() ? 250 : 750));
       signedIn(j.user, 'login', 'code');
     } catch (err) { codeErr(err.message); }
-    finally { $('authCodeSubmit').disabled = false; }
+    finally { $('authCodeSubmit').disabled = false; if (otpEl.dataset.state !== 'success') $('authCodeSubmit').textContent = 'Sign in'; else setTimeout(() => { $('authCodeSubmit').textContent = 'Sign in'; }, 1000); }
   });
   $('authCodeResend').addEventListener('click', async () => {
     $('authCodeResend').disabled = true; $('authCodeErr').classList.add('hidden');
@@ -2707,8 +2736,10 @@
         if (j.restart) { openAuth('login'); $('authErr').textContent = j.error; $('authErr').classList.remove('hidden'); return; }
         throw new Error(j.error || 'Could not send a new code. Try again in a minute.');
       }
-      status('authCodeStatus', 'Sent again. Check your inbox.', true);
-      $('authCodeInput').value = ''; $('authCodeInput').focus();
+      status('authCodeStatus', 'New code sent.', true);
+      $('authCodeInput').value = ''; paintOtp();
+      otpState('idle'); void otpEl.offsetWidth; otpState('sent');
+      $('authCodeInput').focus();
     } catch (err) { codeErr(err.message); }
     finally { $('authCodeResend').disabled = false; }
   });
@@ -2817,7 +2848,7 @@
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
   let currentView = 'home';
-  const VIEWS = ['home', 'analyze', 'compare', 'screener', 'markets', 'movers', 'accuracy', 'watchlist', 'alerts', 'practice', 'learn', 'settings', 'pricing', 'admin', 'legal'];
+  const VIEWS = ['home', 'analyze', 'compare', 'screener', 'markets', 'movers', 'watchlist', 'alerts', 'practice', 'learn', 'settings', 'pricing', 'admin', 'legal'];
   const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact', 'affiliate-terms', 'accessibility', 'security', 'copyright'];
   // Each view has a real URL now, so navigation updates the address bar and
   // the back button works. pushUrl is skipped when we are *reacting* to a URL
@@ -2866,14 +2897,13 @@
     // because the front page draws its chart for everyone.
     mountChart(name);
     revealScan();
-    if (name === 'home') { loadHomeChart(); loadHomeRecord(); }
+    if (name === 'home') loadHomeChart();
     // Nothing about the data is rendered, and none of the loaders below run,
     // so there is nothing on the page to uncover.
     if (!isSignedIn() && DATA_VIEWS.indexOf(name) !== -1) { showWall(name); return; }
     hideWall(name);
     if (name === 'markets') { loadMarkets(); loadRanked(); }
     if (name === 'movers') loadMovers();
-    if (name === 'accuracy') loadAccuracy();
     if (name === 'settings') renderSettings();
     if (name === 'watchlist') renderWatchView();
     if (name === 'learn') renderLearnGrid();
@@ -3267,7 +3297,7 @@
   }
   async function loadScreen(quiet) {
     clearTimeout(screenTimer);
-    if (!quiet) { screenTries = 0; if (!screenRows) $('screenResult').innerHTML = `<p class="compare-note">Loading…</p>`; }
+    if (!quiet) { screenTries = 0; if (!screenRows) $('screenResult').innerHTML = skelRows(10); }
     let d;
     try { d = await (await fetch('/api/screen')).json(); }
     catch { if (!screenRows) $('screenResult').innerHTML = `<p class="compare-note">Couldn’t load the screener.</p>`; return; }
@@ -3751,45 +3781,6 @@
       + `</div></div>`;
   }
 
-  // The accuracy figures are already in the document, server-rendered. This
-  // only refreshes them when the view is reached by in-app navigation, where
-  // the server-rendered copy belongs to whichever page was loaded first.
-  async function loadAccuracy() {
-    const host = $('accuracySsr');
-    if (!host || host.dataset.loaded) return;
-    try {
-      const d = await fetch('/api/accuracy').then(r => r.json());
-      if (!d.graded) {
-        // An empty record and a stalled one look identical unless the page
-        // says which it is, so it says when the first outcome is due.
-        const due = d.firstDue
-          ? new Date(d.firstDue + 'T00:00:00Z').toLocaleDateString('en-GB',
-              { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
-          : null;
-        const when = !due ? ''
-          : d.firstDuePassed
-            ? ` The earliest reading passed its outcome date on ${esc(due)} and is graded the next time that symbol's daily chart is opened.`
-            : ` The earliest one reaches its outcome on ${esc(due)}.`;
-        host.innerHTML = `<p class="compare-note">`
-          + (d.recorded ? `${d.recorded} readings recorded so far; none have` : 'No readings have')
-          + ` reached their ${d.horizon}-trading-day outcome yet, so there is nothing to report.${when}`
-          + ` This page fills in on its own.</p>`;
-        return;
-      }
-      const pc = (v) => v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
-      const ORDER = ['Strongly up', 'Leans up', 'Mixed', 'Leans down', 'Strongly down'];
-      const rows = ORDER.map(l => d.labels.find(x => x.label === l)).filter(Boolean).map(x =>
-        `<tr><td>${esc(x.label)}</td><td>${x.n}</td><td>${pc(x.mean)}</td>`
-        + `<td>${x.mean == null || d.baseline == null ? '—' : pc(x.mean - d.baseline)}</td>`
-        + `<td>${x.winRate == null ? '—' : x.winRate.toFixed(0) + '%'}</td></tr>`).join('');
-      host.innerHTML = `<p><strong>${d.graded}</strong> of ${d.recorded} recorded readings have reached their `
-        + `${d.horizon}-trading-day outcome. Across all of them the average return was <strong>${pc(d.baseline)}</strong>, `
-        + `which is what you would have had without consulting the score at all.</p>`
-        + `<div class="compare-scroll"><table class="acc-table"><thead><tr><th>Reading</th><th>Count</th>`
-        + `<th>Average return</th><th>vs doing nothing</th><th>Higher after</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-      host.dataset.loaded = '1';
-    } catch (e) { /* the server-rendered copy stays */ }
-  }
 
   // ---- Install as an app ----
   // Two very different platforms. Chrome and Android fire beforeinstallprompt
@@ -3921,7 +3912,7 @@
   let lastMoversAsOf = 0;
   async function loadMovers() {
     const body = $('moversBody'), status = $('moversStatus');
-    body.innerHTML = `<p class="compare-note">Scanning…</p>`;
+    body.innerHTML = `<span class="sr-only">Scanning…</span><div class="movers-grid" aria-hidden="true">${skelCards(6)}</div>`;
     let d;
     try { d = await (await fetch('/api/movers')).json(); }
     catch { body.innerHTML = `<p class="compare-note">Couldn\u2019t run the scan.</p>`; return; }

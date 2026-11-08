@@ -910,6 +910,10 @@ async function deleteUser(uid) {
     await pool.query('DELETE FROM login_codes WHERE uid=$1', [uid]);
     await pool.query('DELETE FROM payouts WHERE uid=$1', [uid]);
     await pool.query('DELETE FROM affiliate_ledger WHERE aff_uid=$1', [uid]);
+    // The practice account has no foreign key either; it goes with the rest.
+    await pool.query('DELETE FROM paper_trades WHERE uid=$1', [uid]);
+    await pool.query('DELETE FROM paper_positions WHERE uid=$1', [uid]);
+    await pool.query('DELETE FROM paper_accounts WHERE uid=$1', [uid]);
     await pool.query('DELETE FROM users WHERE id=$1', [uid]);
     return;
   }
@@ -922,6 +926,7 @@ async function deleteUser(uid) {
   for (const [id, c] of mem.codes) if (c.uid === uid) mem.codes.delete(id);
   mem.watch.delete(uid);
   mem.alerts.delete(uid);
+  mem.paper.delete(uid); mem.pos.delete(uid); mem.fills.delete(uid);
   for (const [t, s] of mem.sessions) if (s && (s.uid === uid || s === uid)) mem.sessions.delete(t);
   for (const k of [...mem.usage.keys()]) if (k.startsWith('u:' + uid + '|')) mem.usage.delete(k);
 }

@@ -228,7 +228,7 @@ const buildAffiliateTerms = () => h('Affiliate Terms', [
 
   s('How you may promote the link',
     ul([
-      `Say what ${SITE} is: a trading tool with a published record. Do not promise profits, quote or imply returns, or call it a signal service or financial advice, and say that trading can lose money.`,
+      `Say what ${SITE} is: a trading tool. Do not promise profits, quote or imply returns, or call it a signal service or financial advice, and say that trading can lose money.`,
       `Do not send unsolicited email or messages, post the link where it is not welcome, or run paid search advertising on the name ${SITE} or chartgauge.com.`,
       `Do not present yourself as ${SITE} or as speaking for it. Say you are an affiliate when asked, and wherever the law where you live requires it.`,
     ]),

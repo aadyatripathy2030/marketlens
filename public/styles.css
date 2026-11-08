@@ -1765,3 +1765,128 @@ a { transition: color .16s var(--ease-out-quad); }
 .acct .signin:hover { color: var(--text); }
 .acct .signin.ghost { background: var(--btn); color: #08090a; border: 1px solid var(--btn); padding: 6px 14px; }
 .acct .signin.ghost:hover { background: var(--btn-hi); color: #08090a; }
+
+/* ---- Skeletons, on the near-black (Nov 8 2026) ----
+   Placeholders the shape of what is coming: a faint block with a soft band
+   of light passing across it. Shown while the AI summary is written, while
+   the screener, movers, markets, watchlist, alerts, compare and practice
+   account load, and for the front-page price. Still under reduced motion. */
+.skel { background-color: rgba(255,255,255,.045);
+  background-image: linear-gradient(100deg, transparent 20%, rgba(255,255,255,.07) 50%, transparent 80%);
+  background-size: 200% 100%; background-repeat: no-repeat; animation: skelSweep 1.4s var(--ease-in-out-quad, ease-in-out) infinite;
+  border: 0; border-radius: 6px; }
+@keyframes skelSweep { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+.skel-card { height: 96px; border-radius: var(--radius); }
+.skel-line { display: block; height: 10px; margin: 12px 0; max-width: 560px; border-radius: 9999px; }
+.skel-line.short { max-width: 340px; }
+.skel-num { display: inline-block; width: 88px; height: 22px; vertical-align: middle; }
+.skel-block { height: 320px; margin-top: 16px; border-radius: var(--radius); }
+.skel-li { list-style: none; }
+.skel-li .skel-line { margin: 10px 0; }
+.skel-rows { display: grid; gap: 0; border-top: 1px solid var(--border); }
+.skel-row { display: grid; grid-template-columns: 1.2fr 2fr 1fr 1fr; gap: 24px; padding: 16px 0; border-bottom: 1px solid var(--border); }
+.skel-row .skel { height: 10px; border-radius: 9999px; }
+.skel-row .skel:nth-child(2) { width: 70%; }
+/* A chart on its way: the panel gets the same sweep over it. */
+.chart-card.loading::after { background: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.05) 50%, transparent 70%);
+  background-size: 200% 100%; animation: skelSweep 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .skel, .chart-card.loading::after { animation: none; } }
+
+/* ===================================================================
+   Sign-in code (Nov 8 2026). Fewer words, no borders, an iridescent
+   ground, high-contrast tiles, typed digits that pop in, and a distinct
+   look for every state. The ground is drawn only while this face shows.
+   Tiles are near-black on the colour, digits white: 17:1 on the tile.
+   =================================================================== */
+.modal:has(#authCode:not(.hidden)) {
+  border: 0; isolation: isolate; overflow: hidden; background: #0d0c12;
+  box-shadow: 0 40px 120px -30px rgba(120,90,255,.35), 0 32px 100px -20px rgba(0,0,0,.9);
+}
+.modal:has(#authCode:not(.hidden))::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background:
+    radial-gradient(60% 55% at 15% 10%, rgba(255,122,198,.7), transparent 70%),
+    radial-gradient(55% 55% at 90% 15%, rgba(94,224,255,.65), transparent 70%),
+    radial-gradient(60% 60% at 85% 95%, rgba(138,255,193,.5), transparent 70%),
+    radial-gradient(65% 60% at 10% 90%, rgba(150,120,255,.7), transparent 70%),
+    radial-gradient(45% 40% at 50% 50%, rgba(255,226,122,.22), transparent 70%);
+  background-size: 180% 180%; animation: irid 14s ease-in-out infinite alternate; filter: saturate(1.15);
+}
+/* A dark veil over the colour so the words on it stay readable. */
+.modal:has(#authCode:not(.hidden))::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: linear-gradient(180deg, rgba(10,10,14,.18), rgba(10,10,14,.42));
+}
+@keyframes irid {
+  0%   { background-position: 0% 0%; filter: hue-rotate(0deg) saturate(1.15); }
+  50%  { background-position: 100% 50%; filter: hue-rotate(40deg) saturate(1.2); }
+  100% { background-position: 50% 100%; filter: hue-rotate(-30deg) saturate(1.15); }
+}
+.modal:has(#authCode:not(.hidden)) .auth-note,
+.modal:has(#authCode:not(.hidden)) .auth-toggle { display: none; }
+.modal:has(#authCode:not(.hidden)) .modal-x { color: rgba(255,255,255,.75); }
+#authCode .auth-face-h { font-size: 26px; margin: 4px 0 8px; color: #fff; }
+#authCode .auth-face-p { color: rgba(255,255,255,.82); margin: 0 0 24px; font-size: 14px; }
+#authCode .auth-face-email { display: inline; font-size: inherit; font-weight: 590; color: #fff; margin: 0; }
+.otp-links { flex-direction: row; justify-content: center; gap: 10px; margin-top: 16px; }
+.otp-links .link-btn { color: #fff; font-size: 13px; }
+.otp-links .link-btn.quiet { color: rgba(255,255,255,.72); }
+.otp-dot { color: rgba(255,255,255,.5); }
+#authCode .auth-status { color: #fff; }
+#authCode .auth-err { background: rgba(20,8,10,.7); border: 0; color: #ff9b93; text-align: center; border-radius: 10px; }
+#authCode .btn-primary { margin-top: 4px; }
+
+/* The real input sits over the tiles, invisible, so taps, paste and
+   one-time-code autofill all land in it. */
+.otp { position: relative; margin: 0 auto 20px; max-width: 320px; }
+.otp-input { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; opacity: 0; font-size: 16px;
+  border: 0; background: transparent; color: transparent; caret-color: transparent; cursor: text; }
+.otp-tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+.otp-tile {
+  height: 58px; display: grid; place-items: center; border-radius: 12px;
+  background: rgba(8,9,12,.82); color: #fff; font-size: 26px; font-weight: 590; font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  transition: background-color .18s var(--ease-out-quad), box-shadow .18s var(--ease-out-quad), transform .18s var(--ease-out-quad), color .18s;
+  position: relative;
+}
+.otp-tile.filled { background: rgba(8,9,12,.92); }
+/* The tile the next digit goes in: lifted and lit, with a blinking caret. */
+.otp-tile.active { transform: translateY(-2px); box-shadow: 0 0 0 2px rgba(255,255,255,.9), 0 8px 24px -6px rgba(255,255,255,.35); }
+.otp-tile.active:empty::after { content: ""; width: 2px; height: 26px; border-radius: 2px; background: #fff; animation: otpCaret 1s steps(1) infinite; }
+@keyframes otpCaret { 50% { opacity: 0; } }
+/* A typed digit pops in out of a blur. */
+.otp-tile.pop { animation: otpPop .32s var(--ease-out-expo, cubic-bezier(.19,1,.22,1)); }
+@keyframes otpPop { 0% { transform: translateY(6px) scale(.7); filter: blur(4px); color: rgba(255,255,255,0); } 100% { transform: none; filter: none; color: #fff; } }
+/* Verifying: a band of light runs along the tiles, one after another. */
+.otp[data-state="verifying"] .otp-tile { animation: otpWave 1s ease-in-out infinite; }
+.otp[data-state="verifying"] .otp-tile:nth-child(2) { animation-delay: .08s; }
+.otp[data-state="verifying"] .otp-tile:nth-child(3) { animation-delay: .16s; }
+.otp[data-state="verifying"] .otp-tile:nth-child(4) { animation-delay: .24s; }
+.otp[data-state="verifying"] .otp-tile:nth-child(5) { animation-delay: .32s; }
+.otp[data-state="verifying"] .otp-tile:nth-child(6) { animation-delay: .40s; }
+@keyframes otpWave { 0%,100% { transform: none; background: rgba(8,9,12,.92); } 40% { transform: translateY(-4px); background: rgba(40,40,56,.95); box-shadow: 0 0 0 1px rgba(255,255,255,.35); } }
+/* Error: the row shakes and goes red. */
+.otp[data-state="error"] .otp-tiles { animation: otpShake .45s cubic-bezier(.36,.07,.19,.97); }
+.otp[data-state="error"] .otp-tile { background: rgba(60,10,14,.92); color: #ffb4ad; box-shadow: 0 0 0 2px #ef7268; }
+@keyframes otpShake { 10%,90% { transform: translateX(-2px); } 20%,80% { transform: translateX(4px); } 30%,50%,70% { transform: translateX(-8px); } 40%,60% { transform: translateX(8px); } }
+/* Success: the tiles turn green one after another, with a small lift. */
+.otp[data-state="success"] .otp-tile { animation: otpOk .5s var(--ease-out-expo, cubic-bezier(.19,1,.22,1)) both; }
+.otp[data-state="success"] .otp-tile:nth-child(2) { animation-delay: .05s; }
+.otp[data-state="success"] .otp-tile:nth-child(3) { animation-delay: .10s; }
+.otp[data-state="success"] .otp-tile:nth-child(4) { animation-delay: .15s; }
+.otp[data-state="success"] .otp-tile:nth-child(5) { animation-delay: .20s; }
+.otp[data-state="success"] .otp-tile:nth-child(6) { animation-delay: .25s; }
+@keyframes otpOk { 0% { transform: none; } 50% { transform: translateY(-6px) scale(1.06); } 100% { transform: none; background: #123d1f; color: #b9f5c8; box-shadow: 0 0 0 2px #4cb262, 0 0 24px -4px rgba(76,178,98,.6); } }
+/* A new code was sent: one soft white flash across the row. */
+.otp[data-state="sent"] .otp-tile { animation: otpSent .7s ease-out; }
+@keyframes otpSent { 0% { box-shadow: 0 0 0 2px rgba(255,255,255,.9); } 100% { box-shadow: inset 0 1px 0 rgba(255,255,255,.06); } }
+@media (max-width: 400px) { .otp-tile { height: 50px; font-size: 22px; } .otp-tiles { gap: 6px; } }
+/* Less motion: every state keeps its colour, nothing moves. */
+@media (prefers-reduced-motion: reduce) {
+  .modal:has(#authCode:not(.hidden))::before { animation: none; }
+  .otp-tile, .otp-tile.pop, .otp[data-state] .otp-tile, .otp[data-state="error"] .otp-tiles { animation: none !important; transform: none !important; }
+  .otp[data-state="success"] .otp-tile { background: #123d1f; color: #b9f5c8; box-shadow: 0 0 0 2px #4cb262; }
+  .otp[data-state="verifying"] .otp-tile { background: rgba(40,40,56,.95); }
+  .otp-tile.active:empty::after { animation: none; }
+}
