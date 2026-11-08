@@ -9,6 +9,7 @@
 const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
+const TG = require('./trialguard');
 const fs = require('fs');
 const path = require('path');
 const I = require('./indicators');
@@ -1531,7 +1532,28 @@ function setSessionCookie(req, res, token, clear) {
   const secure = req.headers['x-forwarded-proto'] === 'https';
   const parts = [`session=${clear ? '' : token}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${clear ? 0 : 30 * 86400}`];
   if (secure) parts.push('Secure');
-  res.setHeader('Set-Cookie', parts.join('; '));
+  appendCookie(res, parts.join('; '));
+}
+// Adds a Set-Cookie without dropping one already queued on this response.
+function appendCookie(res, c) {
+  const prev = res.getHeader('Set-Cookie');
+  res.setHeader('Set-Cookie', [].concat(prev || [], c));
+}
+// The device cookie for the free-trial check: a random id, HttpOnly, two
+// years. Made on sign-up and at checkout if the browser has none yet.
+function deviceId(req, res) {
+  let d = parseCookies(req).cgd;
+  if (!/^[\w-]{16,64}$/.test(d || '')) { d = crypto.randomUUID(); appendCookie(res, cookieStr(req, 'cgd', d, 730 * 86400)); }
+  return d;
+}
+// Notes the signals an account was created with (best effort: a failure
+// here never stops a sign-up).
+async function markSignup(req, res, user, body) {
+  if (!TG.ready() || !user) return;
+  try {
+    const sig = TG.signals(req, clientIp(req), user, body, res ? deviceId(req, res) : parseCookies(req).cgd);
+    await db.addMarks(TG.marksFor(user.id, sig, 'signup'));
+  } catch (e) { logError(e); }
 }
 async function currentUser(req) { return db.getSessionUser(parseCookies(req).session); }
 
@@ -1958,6 +1980,7 @@ async function handleSignup(req, res) {
     user = existing; fresh = false;
   }
   if (fresh) await attributeReferral(req, user);
+  await markSignup(req, res, user, b.device);
   if (mailEnabled()) {
     // No session until the link is opened: the account exists but cannot be
     // used, so typing an address that is not yours gets you nothing.
@@ -2140,7 +2163,7 @@ async function handleGoogleCallback(req, res) {
       // A new account needs the 18+ box from the sign-up form, which "Sign in
       // with Google" on the sign-in form never showed.
       else if (!st.adult) return googleFail(res, 'age');
-      else { user = await db.createGoogleUser(email, claims.sub); await attributeReferral(req, user); }
+      else { user = await db.createGoogleUser(email, claims.sub); await attributeReferral(req, user); await markSignup(req, null, user, null); }
     }
     const sep = st.next.includes('?') ? '&' : '?';
     if (mailEnabled()) {
@@ -2300,7 +2323,9 @@ async function handleAdmin(req, res) {
     comp: isPro(x) && x.plan !== 'pro',
     paying: x.plan === 'pro' && !!stripe_sub,
     admin: isAdmin(x),
-  }));
+    trialRisk: x.trial_risk == null ? null : { score: x.trial_risk, flagged: x.trial_risk >= TG.FLAG_AT, noTrial: x.trial_risk >= TG.NO_TRIAL_AT,
+      why: (() => { try { return JSON.parse(x.trial_risk_why || '[]'); } catch (e) { return []; } })(), at: x.trial_risk_at },
+  })).map(({ trial_risk, trial_risk_why, trial_risk_at, ...x }) => x);
   return json(res, 200, {
     counts: await db.counts(),
     users,
@@ -3556,7 +3581,13 @@ async function handleCheckout(req, res) {
   // hands out another fortnight, forever. A Stripe customer id on the account
   // is the record that they have been through here before.
   const prior = await db.getUserById(user.id);
-  const firstTime = !(prior && prior.stripe_customer);
+  // First subscription = no subscription of any status on the customer. The
+  // customer is made before checkout opens, so "has a customer" also counted
+  // someone who opened checkout once and left without paying.
+  let firstTime = !(prior && prior.stripe_customer);
+  // The free-trial abuse check (trialguard.js). It can withhold the trial,
+  // never the subscription.
+  let risk = null;
   try {
     // One Stripe customer per account, made before the first checkout. With a
     // fresh customer per checkout, paying in two tabs made two subscriptions,
@@ -3569,6 +3600,7 @@ async function handleCheckout(req, res) {
         await db.setPro(user.id, customer, live.id);
         return json(res, 200, { error: 'You already have a subscription. Reload the page to see Pro, or open Manage subscription.' });
       }
+      firstTime = !((subs && subs.data) || []).length;
     } else {
       const c = await stripePost('customers', { email: user.email, 'metadata[uid]': user.id }, { 'Idempotency-Key': 'cust-' + user.id });
       customer = c.id;
@@ -3584,16 +3616,29 @@ async function handleCheckout(req, res) {
       customer,
       allow_promotion_codes: 'true',
     };
-    if (TRIAL_DAYS > 0 && firstTime) {
+    if (TRIAL_DAYS > 0 && firstTime && TG.ready()) {
+      try {
+        const sig = TG.signals(req, clientIp(req), prior || user, b.device, deviceId(req, res));
+        risk = await TG.score(db, prior || user, sig);
+        await db.setTrialRisk(user.id, risk.score, risk.why, sig);
+      } catch (e) { logError(e); risk = null; }
+    }
+    const withheld = !!(risk && !risk.trial);
+    const giveTrial = TRIAL_DAYS > 0 && firstTime && !withheld;
+    if (giveTrial) {
       params['subscription_data[trial_period_days]'] = String(TRIAL_DAYS);
     }
     // Auto-renewal stated next to the pay button, where the consent is given.
-    params['custom_text[submit][message]'] = (TRIAL_DAYS > 0 && firstTime
-      ? `Nothing is charged during the ${TRIAL_DAYS}-day trial. When it ends, the price above is charged and then renews automatically each period until you cancel.`
+    params['custom_text[submit][message]'] = (giveTrial
+      ? `Nothing is charged during the ${TRIAL_DAYS}-day trial (one per person and card). When it ends, the price above is charged and then renews automatically each period until you cancel.`
       : 'This subscription renews automatically at the price above each period until you cancel.')
       + ' Cancel any time from Manage subscription on the ChartGauge Plans page.';
     const s = await stripePost('checkout/sessions', params);
-    return json(res, 200, { url: s.url });
+    // Told plainly before they reach the card form, so nobody expects a
+    // trial and finds a charge. Which signal tripped is not said: that
+    // would be a guide to getting round it.
+    return json(res, 200, { url: s.url, trialWithheld: withheld,
+      notice: withheld ? `A free trial isn’t available for this account, because one looks to have been used already. You can still subscribe; the first payment is charged today.` : undefined });
   } catch (e) { logError(e); return json(res, 200, { error: 'Could not start checkout. Try again in a minute.' }); }
 }
 async function handlePortal(req, res) {
@@ -3682,6 +3727,10 @@ async function handleWebhook(req, res) {
         if (before && before.stripe_sub && s.subscription && before.stripe_sub !== s.subscription) {
           await cancelDuplicateSub(before, s.subscription).catch(logError);
         }
+        // The card check: a card that already had a trial on another account
+        // ends this trial now, which charges it. Throws on a Stripe failure,
+        // so the webhook answers 500 and Stripe sends the event again.
+        if (s.subscription) await trialCardCheck(s.client_reference_id, s.subscription);
         if (s.subscription && event.type === 'checkout.session.completed') {
           try { await sendSubscribedEmail(req, await db.getUserById(s.client_reference_id), s.subscription); } catch (e) { logError(e); }
         }
@@ -3708,6 +3757,31 @@ async function handleWebhook(req, res) {
     res.writeHead(500); return res.end('retry');
   }
   res.writeHead(200); res.end('ok');
+}
+// After checkout, while the subscription is in its trial: the card's Stripe
+// fingerprint is compared with every earlier trial. A match ends the trial
+// at once (Stripe then charges the card); otherwise the trial is recorded
+// under every signal the account checked out with, the card among them.
+async function trialCardCheck(uid, subId) {
+  if (!TG.ready() || !uid) return;
+  const sub = await stripeGet('subscriptions/' + encodeURIComponent(subId) + '?expand[]=default_payment_method');
+  if (!sub || sub.status !== 'trialing') return;
+  const u = await db.getUserById(uid);
+  if (!u) return;
+  let sig = {}; try { sig = JSON.parse(u.trial_sig || '{}') || {}; } catch (e) {}
+  if (!sig.email) sig.email = TG.h('email', TG.normEmail(u.email));
+  const pm = sub.default_payment_method;
+  const card = TG.h('card', pm && pm.card && pm.card.fingerprint);
+  const reused = card ? await db.countMarks('card', card, ['trial', 'blocked'], uid, 0) : 0;
+  if (reused) {
+    await stripePost('subscriptions/' + encodeURIComponent(subId), { trial_end: 'now' }, { 'Idempotency-Key': 'trial-end-' + subId });
+    let why = []; try { why = JSON.parse(u.trial_risk_why || '[]') || []; } catch (e) {}
+    await db.setTrialRisk(uid, 100, why.concat('+100 this card already had a trial on another account; trial ended at checkout'), null);
+    await db.addMarks(TG.marksFor(uid, sig, 'blocked', { card }));
+    logError(new Error(`trial ended at once for ${u.email}: card used for an earlier trial`));
+    return;
+  }
+  await db.addMarks(TG.marksFor(uid, sig, 'trial', { card }));
 }
 // A second subscription for an account that already had one (two checkouts
 // finished close together). The account keeps the one it already had; the
@@ -4411,7 +4485,8 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
   });
 }
 
-db.init().then((storeMode) => {
+db.init().then(async (storeMode) => {
+  await TG.init(db).catch(logError);
   server.listen(PORT, () => {
     console.log(`ChartGauge running at http://localhost:${PORT}  (data: ${STOCK_API_KEY ? 'live' : 'demo'}, AI: ${ANTHROPIC_API_KEY ? 'on' : 'rule-based'}, fundamentals: ${FMP_API_KEY ? 'on' : 'off'}, news: ${FINNHUB_API_KEY ? 'on' : 'off'}, accounts: ${storeMode})`);
     // Started after listen so a slow first pass never delays accepting traffic.
@@ -4427,7 +4502,8 @@ db.init().then((storeMode) => {
       const probe = setInterval(() => { if (!connectOn) detectConnect().catch(logError); }, 3600000);
       if (probe.unref) probe.unref();
       const first = setTimeout(() => { syncAffiliateLedger().catch(logError); syncPlans().catch(logError); }, 60000);
-      const daily = setInterval(() => { syncAffiliateLedger().catch(logError); syncPlans().catch(logError); }, 24 * 3600000);
+      const daily = setInterval(() => { syncAffiliateLedger().catch(logError); syncPlans().catch(logError);
+        db.purgeMarks(Date.now() - TG.KEEP_DAYS * 86400000).catch(logError); }, 24 * 3600000);
       if (first.unref) first.unref();
       if (daily.unref) daily.unref();
       startAutoPay();
@@ -4441,6 +4517,7 @@ db.init().then((storeMode) => {
         const m = await db.init().catch(() => 'memory');
         if (m === 'postgres') {
           console.log('[db] reconnected to Postgres. Anything created while it was unreachable lived in memory and is not carried over.');
+          await TG.init(db).catch(logError);
           clearInterval(t);
         }
       }, 60000);

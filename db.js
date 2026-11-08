@@ -12,7 +12,8 @@ let mode = 'memory';
 let lastErr = null;
 const mem = { users: new Map(), byEmail: new Map(), sessions: new Map(), watch: new Map(),
   alerts: new Map(), usage: new Map(), preds: new Map(), etokens: new Map(), codes: new Map(),
-  paper: new Map(), pos: new Map(), fills: new Map(), payouts: new Map(), ledger: [], settings: new Map() };
+  paper: new Map(), pos: new Map(), fills: new Map(), payouts: new Map(), ledger: [], settings: new Map(),
+  marks: [] };
 
 // Render's INTERNAL Postgres host has no dot (e.g. dpg-xxxx-a) and speaks plain
 // TCP; hosted/external hosts (Neon, Render external) are dotted and need SSL.
@@ -180,6 +181,19 @@ async function init() {
                                 ['Sell', 'Leans down'], ['Strong sell', 'Strongly down']]) {
         await pool.query('UPDATE predictions SET label=$2 WHERE label=$1', [was, now]);
       }
+      // Free-trial abuse checks (Nov 2026). Each row says "this signal was seen
+      // on this account at this event". The signal is a keyed hash (HMAC), never
+      // the raw IP, device id or email, and the row has no foreign key: it
+      // outlives the account on purpose, so deleting an account and signing up
+      // again does not reset the trial. Purged after about 13 months.
+      await pool.query(`CREATE TABLE IF NOT EXISTS risk_marks (
+        kind TEXT NOT NULL, h TEXT NOT NULL, uid TEXT NOT NULL, ev TEXT NOT NULL, ts BIGINT NOT NULL)`);
+      await pool.query('CREATE INDEX IF NOT EXISTS risk_marks_lookup ON risk_marks (kind, h, ev, ts)');
+      await pool.query('CREATE INDEX IF NOT EXISTS risk_marks_ts ON risk_marks (ts)');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_risk INTEGER');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_risk_why TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_risk_at BIGINT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_sig TEXT');
       await pool.query(`CREATE TABLE IF NOT EXISTS usage_daily (
         k TEXT NOT NULL, kind TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (k, kind, day))`);
@@ -867,9 +881,48 @@ async function listAffiliates() {
 // ---- admin ----
 async function listUsers(limit) {
   limit = limit || 200;
-  if (mode === 'postgres') { const r = await pool.query('SELECT id, email, plan, created, stripe_sub, affiliate_code, referred_by FROM users ORDER BY created DESC LIMIT $1', [limit]); return r.rows.map(u => ({ ...u, created: Number(u.created) })); }
-  return [...mem.users.values()].map(u => ({ id: u.id, email: u.email, plan: u.plan, created: u.created, stripe_sub: u.stripe_sub, affiliate_code: u.affiliate_code || null, referred_by: u.referred_by || null })).sort((a, b) => b.created - a.created).slice(0, limit);
+  if (mode === 'postgres') { const r = await pool.query('SELECT id, email, plan, created, stripe_sub, affiliate_code, referred_by, trial_risk, trial_risk_why, trial_risk_at FROM users ORDER BY created DESC LIMIT $1', [limit]); return r.rows.map(u => ({ ...u, created: Number(u.created), trial_risk_at: u.trial_risk_at == null ? null : Number(u.trial_risk_at) })); }
+  return [...mem.users.values()].map(u => ({ id: u.id, email: u.email, plan: u.plan, created: u.created, stripe_sub: u.stripe_sub, affiliate_code: u.affiliate_code || null, referred_by: u.referred_by || null, trial_risk: u.trial_risk == null ? null : u.trial_risk, trial_risk_why: u.trial_risk_why || null, trial_risk_at: u.trial_risk_at || null })).sort((a, b) => b.created - a.created).slice(0, limit);
 }
+// ---- free-trial risk marks ----
+async function addMarks(rows) {
+  rows = (rows || []).filter(r => r && r.kind && r.h && r.uid && r.ev);
+  if (!rows.length) return;
+  const ts = Date.now();
+  if (mode === 'postgres') {
+    const vals = [], args = [];
+    rows.forEach((r, i) => { vals.push(`($${i * 5 + 1},$${i * 5 + 2},$${i * 5 + 3},$${i * 5 + 4},$${i * 5 + 5})`); args.push(r.kind, r.h, r.uid, r.ev, ts); });
+    await pool.query('INSERT INTO risk_marks (kind, h, uid, ev, ts) VALUES ' + vals.join(','), args);
+    return;
+  }
+  for (const r of rows) mem.marks.push({ kind: r.kind, h: r.h, uid: r.uid, ev: r.ev, ts });
+}
+// How many OTHER accounts carry this signal for this event since `since`.
+async function countMarks(kind, h, evs, notUid, since) {
+  if (!h) return 0;
+  evs = [].concat(evs);
+  if (mode === 'postgres') {
+    const r = await pool.query('SELECT count(DISTINCT uid) AS n FROM risk_marks WHERE kind=$1 AND h=$2 AND ev = ANY($3) AND uid<>$4 AND ts>=$5',
+      [kind, h, evs, notUid || '', since || 0]);
+    return Number(r.rows[0].n) || 0;
+  }
+  const set = new Set();
+  for (const m of mem.marks) if (m.kind === kind && m.h === h && evs.includes(m.ev) && m.uid !== notUid && m.ts >= (since || 0)) set.add(m.uid);
+  return set.size;
+}
+async function purgeMarks(before) {
+  if (mode === 'postgres') { const r = await pool.query('DELETE FROM risk_marks WHERE ts < $1', [before]); return r.rowCount; }
+  const n = mem.marks.length; mem.marks = mem.marks.filter(m => m.ts >= before); return n - mem.marks.length;
+}
+// The last score worked out at checkout, its reasons, and the hashed signals
+// it was worked out from (read again by the webhook to record the trial).
+async function setTrialRisk(uid, score, why, sig) {
+  const at = Date.now(), whyS = JSON.stringify(why || []), sigS = sig ? JSON.stringify(sig) : null;
+  if (mode === 'postgres') { await pool.query('UPDATE users SET trial_risk=$2, trial_risk_why=$3, trial_risk_at=$4, trial_sig=COALESCE($5, trial_sig) WHERE id=$1', [uid, score, whyS, at, sigS]); return; }
+  const u = mem.users.get(uid); if (!u) return;
+  u.trial_risk = score; u.trial_risk_why = whyS; u.trial_risk_at = at; if (sigS) u.trial_sig = sigS;
+}
+
 async function counts() {
   if (mode === 'postgres') {
     const [u, w, a] = await Promise.all([pool.query('SELECT count(*) FROM users'), pool.query('SELECT count(*) FROM watchlist'), pool.query('SELECT count(*) FROM alerts')]);
@@ -1075,5 +1128,6 @@ module.exports = {
   listWatch, listWatchFull, addWatch, removeWatch, setWatchLevels,
   listAlerts, addAlert, removeAlert, markTriggered,
   listUsers, counts,
+  addMarks, countMarks, purgeMarks, setTrialRisk,
   setPro, setFree, findByStripeSub, setCustomer, listSubscribers,
 };

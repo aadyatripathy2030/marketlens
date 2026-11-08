@@ -2914,7 +2914,7 @@
     $('authSubmit').disabled = true;
     try {
       const body = { email, password };
-      if (authMode === 'signup') body.adult = true;
+      if (authMode === 'signup') { body.adult = true; body.device = await deviceSignals(); }
       const r = await fetch('/api/auth/' + authMode, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const j = await r.json();
       if (j.pending) {
@@ -3657,10 +3657,52 @@
     try { p = JSON.parse(localStorage.getItem('chartgauge_pending_plan') || 'null'); localStorage.removeItem('chartgauge_pending_plan'); } catch (e) {}
     if (p && p.plan && Date.now() - p.at < 30 * 60000 && currentUser) startCheckout(p.plan);
   }
+  // ---- Device check for the free trial (see trialguard.js on the server) ----
+  // A random id kept in local storage, and a fingerprint: a hash of what this
+  // browser reports about itself (screen, time zone, languages, GPU, how it
+  // draws a short test image). Only the hash leaves the page.
+  async function deviceSignals() {
+    const out = { wd: navigator.webdriver === true };
+    try {
+      let dl = localStorage.getItem('cg_dl');
+      if (!dl) { dl = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()); localStorage.setItem('cg_dl', dl); }
+      out.dl = dl;
+    } catch (e) {}
+    try {
+      const parts = [navigator.userAgent, (navigator.languages || []).join(','), navigator.platform, navigator.hardwareConcurrency, navigator.deviceMemory,
+        screen.width + 'x' + screen.height + 'x' + screen.colorDepth, window.devicePixelRatio, navigator.maxTouchPoints,
+        (Intl.DateTimeFormat().resolvedOptions() || {}).timeZone, new Date().getTimezoneOffset()];
+      try {
+        const c = document.createElement('canvas'); c.width = 220; c.height = 40;
+        const x = c.getContext('2d');
+        x.textBaseline = 'top'; x.font = '15px Arial'; x.fillStyle = '#f60'; x.fillRect(100, 1, 62, 20);
+        x.fillStyle = '#069'; x.fillText('ChartGauge \u2696 1.5\u00d7ATR', 2, 15);
+        x.fillStyle = 'rgba(102,204,0,.7)'; x.fillText('ChartGauge \u2696 1.5\u00d7ATR', 4, 17);
+        parts.push(c.toDataURL());
+      } catch (e) {}
+      try {
+        const g = document.createElement('canvas').getContext('webgl');
+        const ext = g && g.getExtension('WEBGL_debug_renderer_info');
+        if (ext) parts.push(g.getParameter(ext.UNMASKED_VENDOR_WEBGL), g.getParameter(ext.UNMASKED_RENDERER_WEBGL));
+      } catch (e) {}
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(parts.join('|')));
+      out.fp = [...new Uint8Array(buf)].map(v => v.toString(16).padStart(2, '0')).join('');
+    } catch (e) {}
+    return out;
+  }
   async function startCheckout(plan, b) {
     if (b) { b.disabled = true; b.textContent = 'Redirecting…'; }
     track('begin_checkout', { plan });
-    try { const j = await (await fetch('/api/billing/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan }) })).json(); if (j.url) { location.href = j.url; return; } alert(j.error || 'Could not start checkout.'); } catch (e) { alert('Could not start checkout.'); }
+    try {
+      const device = await deviceSignals();
+      const j = await (await fetch('/api/billing/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ plan, device }) })).json();
+      if (j.url) {
+        // No trial for this account: said before the card form, not after.
+        if (j.trialWithheld && !confirm((j.notice || 'A free trial isn\u2019t available for this account.') + '\n\nContinue to checkout?')) { renderPricing(); return; }
+        location.href = j.url; return;
+      }
+      alert(j.error || 'Could not start checkout.');
+    } catch (e) { alert('Could not start checkout.'); }
     renderPricing();
   }
   async function openPortal() {
@@ -3764,10 +3806,15 @@
           + (t.owed > 0 ? ` <button class="btn ${viaStripe && d.connectOn ? 'btn-ghost' : 'btn-primary'} btn-sm aff-pay" data-email="${esc(a.email)}" data-owed="${t.owed}">Mark paid</button>` : '') + `</td></tr>`;
       }).join('') + `</tbody></table></div>`
       : '') + `</div>`;
-    html += `<div class="admin-sec"><div class="mkt-h">Users (${(d.users || []).length})</div><div class="compare-scroll"><table class="admin-table"><thead><tr><th>Email</th><th>Plan</th><th>Joined</th></tr></thead><tbody>` + (d.users || []).map(u => {
+    html += `<div class="admin-sec"><div class="mkt-h">Users (${(d.users || []).length})</div><div class="compare-scroll"><table class="admin-table"><thead><tr><th>Email</th><th>Plan</th><th>Joined</th><th>Trial risk</th></tr></thead><tbody>` + (d.users || []).map(u => {
       const plan = u.comp ? 'pro (comp)' : u.plan !== 'pro' ? 'free' : u.paying ? 'pro (paying)' : u.affiliate_code ? 'pro (affiliate)' : 'pro (granted)';
       const pills = (u.admin ? ' <span class="svc-pill svc-on">admin</span>' : '') + (u.affiliate_code ? ' <span class="svc-pill svc-on">affiliate</span>' : '');
-      return `<tr><td>${esc(u.email)}${pills}</td><td>${esc(plan)}</td><td>${esc(ymd(u.created))}${u.referred_by ? ` <span class="admin-aff-code">via ${esc(u.referred_by)}</span>` : ''}</td></tr>`;
+      // The free-trial check: score, what it decided, and why (hover or tap).
+      const tr = u.trialRisk;
+      const risk = !tr ? '<span class="muted">not checked</span>'
+        : `<details class="risk-cell${tr.flagged ? ' risk-flag-hi' : tr.noTrial ? ' risk-flag-mid' : ''}"><summary>${esc(String(tr.score))} \u00b7 ${tr.noTrial ? 'no trial' : 'trial ok'}</summary>`
+          + `<ul>${(tr.why || []).map(w => `<li>${esc(w)}</li>`).join('') || '<li>No risk signals.</li>'}</ul></details>`;
+      return `<tr><td>${esc(u.email)}${pills}</td><td>${esc(plan)}</td><td>${esc(ymd(u.created))}${u.referred_by ? ` <span class="admin-aff-code">via ${esc(u.referred_by)}</span>` : ''}</td><td>${risk}</td></tr>`;
     }).join('') + `</tbody></table></div></div>`;
     html += `<div class="admin-sec"><div class="mkt-h">Recent errors (${(d.errors || []).length})</div>` + ((d.errors || []).length ? d.errors.map(e => `<div class="err-line">${esc(hms(e.t))}: ${esc(e.msg)}</div>`).join('') : `<p class="compare-note">No errors logged.</p>`) + `</div>`;
     $('adminBody').innerHTML = html;
