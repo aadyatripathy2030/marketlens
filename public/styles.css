@@ -1793,100 +1793,97 @@ a { transition: color .16s var(--ease-out-quad); }
 @media (prefers-reduced-motion: reduce) { .skel, .chart-card.loading::after { animation: none; } }
 
 /* ===================================================================
-   Sign-in code (Nov 8 2026). Fewer words, no borders, an iridescent
-   ground, high-contrast tiles, typed digits that pop in, and a distinct
-   look for every state. The ground is drawn only while this face shows.
-   Tiles are near-black on the colour, digits white: 17:1 on the tile.
+   Sign-in code page, /verify (Nov 8 2026). Its own page: an iridescent
+   ground over the whole screen, few words, no borders, six high-contrast
+   boxes (near-black, white digits, 17:1), digits that pop in as typed, and
+   a distinct look for every state: typing, verifying, error, success, sent.
    =================================================================== */
-.modal:has(#authCode:not(.hidden)) {
-  border: 0; isolation: isolate; overflow: hidden; background: #0d0c12;
-  box-shadow: 0 40px 120px -30px rgba(120,90,255,.35), 0 32px 100px -20px rgba(0,0,0,.9);
-}
-.modal:has(#authCode:not(.hidden))::before {
-  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+body[data-view="verify"] { background: #0b0a10; }
+body[data-view="verify"]::before {
+  content: ""; position: fixed; inset: -10%; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(60% 55% at 15% 10%, rgba(255,122,198,.7), transparent 70%),
-    radial-gradient(55% 55% at 90% 15%, rgba(94,224,255,.65), transparent 70%),
-    radial-gradient(60% 60% at 85% 95%, rgba(138,255,193,.5), transparent 70%),
-    radial-gradient(65% 60% at 10% 90%, rgba(150,120,255,.7), transparent 70%),
-    radial-gradient(45% 40% at 50% 50%, rgba(255,226,122,.22), transparent 70%);
-  background-size: 180% 180%; animation: irid 14s ease-in-out infinite alternate; filter: saturate(1.15);
+    radial-gradient(45% 40% at 18% 22%, rgba(255,122,198,.75), transparent 70%),
+    radial-gradient(42% 42% at 82% 18%, rgba(94,224,255,.7), transparent 70%),
+    radial-gradient(48% 45% at 78% 82%, rgba(138,255,193,.55), transparent 70%),
+    radial-gradient(50% 46% at 20% 80%, rgba(150,120,255,.75), transparent 70%),
+    radial-gradient(35% 32% at 50% 50%, rgba(255,226,122,.3), transparent 70%);
+  filter: blur(30px) saturate(1.2);
+  animation: iridShift 16s ease-in-out infinite alternate;
 }
-/* A dark veil over the colour so the words on it stay readable. */
-.modal:has(#authCode:not(.hidden))::after {
-  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
-  background: linear-gradient(180deg, rgba(10,10,14,.18), rgba(10,10,14,.42));
+/* A veil so the words on the colour stay readable. */
+body[data-view="verify"]::after {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(70% 60% at 50% 45%, rgba(8,8,12,.25), rgba(8,8,12,.6));
 }
-@keyframes irid {
-  0%   { background-position: 0% 0%; filter: hue-rotate(0deg) saturate(1.15); }
-  50%  { background-position: 100% 50%; filter: hue-rotate(40deg) saturate(1.2); }
-  100% { background-position: 50% 100%; filter: hue-rotate(-30deg) saturate(1.15); }
+@keyframes iridShift {
+  0%   { transform: translate3d(0,0,0) rotate(0deg) scale(1); filter: blur(30px) saturate(1.2) hue-rotate(0deg); }
+  50%  { transform: translate3d(3%,-2%,0) rotate(8deg) scale(1.06); filter: blur(30px) saturate(1.3) hue-rotate(35deg); }
+  100% { transform: translate3d(-3%,2%,0) rotate(-6deg) scale(1.03); filter: blur(30px) saturate(1.2) hue-rotate(-30deg); }
 }
-.modal:has(#authCode:not(.hidden)) .auth-note,
-.modal:has(#authCode:not(.hidden)) .auth-toggle { display: none; }
-.modal:has(#authCode:not(.hidden)) .modal-x { color: rgba(255,255,255,.75); }
-#authCode .auth-face-h { font-size: 26px; margin: 4px 0 8px; color: #fff; }
-#authCode .auth-face-p { color: rgba(255,255,255,.82); margin: 0 0 24px; font-size: 14px; }
-#authCode .auth-face-email { display: inline; font-size: inherit; font-weight: 590; color: #fff; margin: 0; }
-.otp-links { flex-direction: row; justify-content: center; gap: 10px; margin-top: 16px; }
-.otp-links .link-btn { color: #fff; font-size: 13px; }
-.otp-links .link-btn.quiet { color: rgba(255,255,255,.72); }
-.otp-dot { color: rgba(255,255,255,.5); }
-#authCode .auth-status { color: #fff; }
-#authCode .auth-err { background: rgba(20,8,10,.7); border: 0; color: #ff9b93; text-align: center; border-radius: 10px; }
-#authCode .btn-primary { margin-top: 4px; }
+body[data-view="verify"] .topbar { background: rgba(8,9,10,.35); border-bottom-color: rgba(255,255,255,.06); }
+body[data-view="verify"] .disclaimer, body[data-view="verify"] .site-foot { display: none; }
 
-/* The real input sits over the tiles, invisible, so taps, paste and
-   one-time-code autofill all land in it. */
-.otp { position: relative; margin: 0 auto 20px; max-width: 320px; }
-.otp-input { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; opacity: 0; font-size: 16px;
-  border: 0; background: transparent; color: transparent; caret-color: transparent; cursor: text; }
-.otp-tiles { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-.otp-tile {
-  height: 58px; display: grid; place-items: center; border-radius: 12px;
-  background: rgba(8,9,12,.82); color: #fff; font-size: 26px; font-weight: 590; font-variant-numeric: tabular-nums;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
-  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+.code-page { min-height: calc(100vh - 160px); display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; max-width: 440px; margin: 0 auto; padding: 48px 0; }
+.code-h { font-size: clamp(32px, 4.4vw, 44px); font-weight: 590; letter-spacing: -.025em; color: #fff; margin: 0 0 10px; outline: none; }
+.code-sub { color: rgba(255,255,255,.85); font-size: 15px; margin: 0 0 36px; }
+#authCodeEmail { color: #fff; font-weight: 590; word-break: break-all; }
+#authCodeForm { width: 100%; }
+#authCode .auth-err { background: rgba(20,8,10,.72); border: 0; color: #ffaba4; text-align: center; border-radius: 10px; margin: 0 0 16px; }
+#authCode .btn-primary { margin-top: 4px; }
+.otp-links { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 20px; }
+.otp-links .link-btn { color: #fff; font-size: 14px; background: none; border: 0; cursor: pointer; }
+.otp-links .link-btn.quiet { color: rgba(255,255,255,.75); }
+.otp-links .link-btn:hover { text-decoration: underline; text-underline-offset: 3px; }
+.otp-dot { color: rgba(255,255,255,.5); }
+#authCode .auth-status { color: #fff; margin-top: 12px; min-height: 1.2em; }
+
+/* Six slots, each its own box. */
+.otp { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin: 0 auto 24px; max-width: 400px; }
+.otp-box {
+  width: 100%; height: 68px; padding: 0; text-align: center; border: 0; outline: none; border-radius: 14px;
+  background: rgba(8,9,12,.84); color: #fff; caret-color: #fff;
+  font-family: var(--font); font-size: 30px; font-weight: 590; font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 6px 18px -8px rgba(0,0,0,.6);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
   transition: background-color .18s var(--ease-out-quad), box-shadow .18s var(--ease-out-quad), transform .18s var(--ease-out-quad), color .18s;
-  position: relative;
 }
-.otp-tile.filled { background: rgba(8,9,12,.92); }
-/* The tile the next digit goes in: lifted and lit, with a blinking caret. */
-.otp-tile.active { transform: translateY(-2px); box-shadow: 0 0 0 2px rgba(255,255,255,.9), 0 8px 24px -6px rgba(255,255,255,.35); }
-.otp-tile.active:empty::after { content: ""; width: 2px; height: 26px; border-radius: 2px; background: #fff; animation: otpCaret 1s steps(1) infinite; }
-@keyframes otpCaret { 50% { opacity: 0; } }
+.otp-box::selection { background: transparent; }
+.otp-box.filled { background: rgba(6,7,10,.94); }
+/* The box taking the next digit: lifted and lit. */
+.otp-box:focus { transform: translateY(-3px); box-shadow: 0 0 0 2px rgba(255,255,255,.95), 0 10px 28px -6px rgba(255,255,255,.35); }
+.otp-box:focus-visible { outline: none; }
 /* A typed digit pops in out of a blur. */
-.otp-tile.pop { animation: otpPop .32s var(--ease-out-expo, cubic-bezier(.19,1,.22,1)); }
-@keyframes otpPop { 0% { transform: translateY(6px) scale(.7); filter: blur(4px); color: rgba(255,255,255,0); } 100% { transform: none; filter: none; color: #fff; } }
-/* Verifying: a band of light runs along the tiles, one after another. */
-.otp[data-state="verifying"] .otp-tile { animation: otpWave 1s ease-in-out infinite; }
-.otp[data-state="verifying"] .otp-tile:nth-child(2) { animation-delay: .08s; }
-.otp[data-state="verifying"] .otp-tile:nth-child(3) { animation-delay: .16s; }
-.otp[data-state="verifying"] .otp-tile:nth-child(4) { animation-delay: .24s; }
-.otp[data-state="verifying"] .otp-tile:nth-child(5) { animation-delay: .32s; }
-.otp[data-state="verifying"] .otp-tile:nth-child(6) { animation-delay: .40s; }
-@keyframes otpWave { 0%,100% { transform: none; background: rgba(8,9,12,.92); } 40% { transform: translateY(-4px); background: rgba(40,40,56,.95); box-shadow: 0 0 0 1px rgba(255,255,255,.35); } }
+.otp-box.pop { animation: otpPop .34s cubic-bezier(.19,1,.22,1); }
+@keyframes otpPop { 0% { transform: translateY(6px) scale(.8); color: rgba(255,255,255,0); text-shadow: 0 0 12px #fff; } 100% { color: #fff; text-shadow: none; } }
+/* Verifying: a wave of light runs along the boxes. */
+.otp[data-state="verifying"] .otp-box { animation: otpWave 1s ease-in-out infinite; }
+.otp[data-state="verifying"] .otp-box:nth-child(2) { animation-delay: .08s; }
+.otp[data-state="verifying"] .otp-box:nth-child(3) { animation-delay: .16s; }
+.otp[data-state="verifying"] .otp-box:nth-child(4) { animation-delay: .24s; }
+.otp[data-state="verifying"] .otp-box:nth-child(5) { animation-delay: .32s; }
+.otp[data-state="verifying"] .otp-box:nth-child(6) { animation-delay: .40s; }
+@keyframes otpWave { 0%,100% { transform: none; } 40% { transform: translateY(-5px); background: rgba(44,44,62,.95); box-shadow: 0 0 0 1px rgba(255,255,255,.4); } }
 /* Error: the row shakes and goes red. */
-.otp[data-state="error"] .otp-tiles { animation: otpShake .45s cubic-bezier(.36,.07,.19,.97); }
-.otp[data-state="error"] .otp-tile { background: rgba(60,10,14,.92); color: #ffb4ad; box-shadow: 0 0 0 2px #ef7268; }
+.otp[data-state="error"] { animation: otpShake .45s cubic-bezier(.36,.07,.19,.97); }
+.otp[data-state="error"] .otp-box { background: rgba(62,10,14,.94); color: #ffb4ad; box-shadow: 0 0 0 2px #ef7268; }
 @keyframes otpShake { 10%,90% { transform: translateX(-2px); } 20%,80% { transform: translateX(4px); } 30%,50%,70% { transform: translateX(-8px); } 40%,60% { transform: translateX(8px); } }
-/* Success: the tiles turn green one after another, with a small lift. */
-.otp[data-state="success"] .otp-tile { animation: otpOk .5s var(--ease-out-expo, cubic-bezier(.19,1,.22,1)) both; }
-.otp[data-state="success"] .otp-tile:nth-child(2) { animation-delay: .05s; }
-.otp[data-state="success"] .otp-tile:nth-child(3) { animation-delay: .10s; }
-.otp[data-state="success"] .otp-tile:nth-child(4) { animation-delay: .15s; }
-.otp[data-state="success"] .otp-tile:nth-child(5) { animation-delay: .20s; }
-.otp[data-state="success"] .otp-tile:nth-child(6) { animation-delay: .25s; }
-@keyframes otpOk { 0% { transform: none; } 50% { transform: translateY(-6px) scale(1.06); } 100% { transform: none; background: #123d1f; color: #b9f5c8; box-shadow: 0 0 0 2px #4cb262, 0 0 24px -4px rgba(76,178,98,.6); } }
-/* A new code was sent: one soft white flash across the row. */
-.otp[data-state="sent"] .otp-tile { animation: otpSent .7s ease-out; }
-@keyframes otpSent { 0% { box-shadow: 0 0 0 2px rgba(255,255,255,.9); } 100% { box-shadow: inset 0 1px 0 rgba(255,255,255,.06); } }
-@media (max-width: 400px) { .otp-tile { height: 50px; font-size: 22px; } .otp-tiles { gap: 6px; } }
-/* Less motion: every state keeps its colour, nothing moves. */
+/* Success: green, box by box, with a small lift. */
+.otp[data-state="success"] .otp-box { animation: otpOk .55s cubic-bezier(.19,1,.22,1) both; }
+.otp[data-state="success"] .otp-box:nth-child(2) { animation-delay: .05s; }
+.otp[data-state="success"] .otp-box:nth-child(3) { animation-delay: .10s; }
+.otp[data-state="success"] .otp-box:nth-child(4) { animation-delay: .15s; }
+.otp[data-state="success"] .otp-box:nth-child(5) { animation-delay: .20s; }
+.otp[data-state="success"] .otp-box:nth-child(6) { animation-delay: .25s; }
+@keyframes otpOk { 0% { transform: none; } 50% { transform: translateY(-7px) scale(1.06); } 100% { transform: none; background: #123d1f; color: #b9f5c8; box-shadow: 0 0 0 2px #4cb262, 0 0 26px -4px rgba(76,178,98,.65); } }
+/* A new code was sent: one soft flash across the row. */
+.otp[data-state="sent"] .otp-box { animation: otpSent .8s ease-out; }
+@keyframes otpSent { 0% { box-shadow: 0 0 0 2px rgba(255,255,255,.95), 0 0 24px rgba(255,255,255,.4); } 100% { box-shadow: inset 0 1px 0 rgba(255,255,255,.07); } }
+@media (max-width: 480px) { .otp { gap: 7px; } .otp-box { height: 56px; font-size: 24px; border-radius: 12px; } .code-page { padding-top: 24px; } }
+/* Less motion: every state keeps its colour; nothing moves. */
 @media (prefers-reduced-motion: reduce) {
-  .modal:has(#authCode:not(.hidden))::before { animation: none; }
-  .otp-tile, .otp-tile.pop, .otp[data-state] .otp-tile, .otp[data-state="error"] .otp-tiles { animation: none !important; transform: none !important; }
-  .otp[data-state="success"] .otp-tile { background: #123d1f; color: #b9f5c8; box-shadow: 0 0 0 2px #4cb262; }
-  .otp[data-state="verifying"] .otp-tile { background: rgba(40,40,56,.95); }
-  .otp-tile.active:empty::after { animation: none; }
+  body[data-view="verify"]::before { animation: none; }
+  .otp-box, .otp-box.pop, .otp[data-state] .otp-box, .otp[data-state="error"] { animation: none !important; transform: none !important; }
+  .otp[data-state="success"] .otp-box { background: #123d1f; color: #b9f5c8; box-shadow: 0 0 0 2px #4cb262; }
+  .otp[data-state="verifying"] .otp-box { background: rgba(44,44,62,.95); }
 }

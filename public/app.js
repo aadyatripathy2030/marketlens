@@ -2615,7 +2615,7 @@
   let pendingEmail = '';
   // Everything but the face itself goes away, so each face owns the modal.
   function hideFormChrome() {
-    ['authTitle', 'authSub', 'authForm', 'authToggleRow', 'authPending', 'authCode'].forEach(id => $(id).classList.add('hidden'));
+    ['authTitle', 'authSub', 'authForm', 'authToggleRow', 'authPending'].forEach(id => $(id).classList.add('hidden'));
   }
   // o.again: the address was already registered but never confirmed, and a
   // new link has just gone out, which is worth saying differently.
@@ -2639,54 +2639,124 @@
   function showAuthForm() {
     ['authTitle', 'authSub', 'authForm', 'authToggleRow'].forEach(id => $(id).classList.remove('hidden'));
     $('authPending').classList.add('hidden');
-    $('authCode').classList.add('hidden');
     // Undo what showConfirmed hid, so the next pending face is whole.
     $('authPendingText').classList.remove('hidden'); $('authPendingEmail').classList.remove('hidden');
     $('authPendingIcon').classList.remove('hidden'); $('authDoneIcon').classList.add('hidden');
   }
-  // The third face: the emailed code. The server already holds the attempt
-  // in a short-lived cookie; this only collects the digits.
-  function showCode(email) {
-    hideFormChrome();
-    $('authCodeEmail').textContent = email || 'your email address';
+  // ---- The sign-in code page (/verify) ----
+  // The second step of a sign-in has its own page: six boxes, one digit each.
+  // The server holds the attempt in a short-lived cookie; this page only
+  // collects the digits. Where the visitor was is remembered, and they are
+  // taken back there once signed in. States, each with its own look: idle,
+  // typing, verifying (a wave across the boxes), error (a shake, red),
+  // success (green, box by box) and sent (a new code went out).
+  const otpEl = $('otp'), otpBoxes = Array.from(document.querySelectorAll('#otp .otp-box'));
+  let codeReturn = '/', codeFresh = false, codeBusy = false;
+  const codeValue = () => otpBoxes.map(b => b.value).join('');
+  function otpState(st) { otpEl.dataset.state = st; }
+  function setBox(b, d) {
+    const had = b.value;
+    b.value = d; b.dataset.v = d;
+    b.classList.toggle('filled', !!d);
+    // A digit that just arrived pops in.
+    if (d && d !== had && !lessMotion()) { b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }
+  }
+  function clearCode() { otpBoxes.forEach(b => { setBox(b, ''); b.classList.remove('pop'); }); }
+  function fillCodePage(email) {
+    $('authCodeEmail').textContent = email || 'your email';
+    $('codeSub').classList.toggle('hidden', email === null);
     $('authCodeErr').classList.add('hidden');
     $('authCodeStatus').textContent = ''; $('authCodeStatus').className = 'auth-status';
-    $('authCodeInput').value = '';
-    otpState('idle'); paintOtp();
-    $('authCode').classList.remove('hidden');
-    $('authCodeInput').focus();
+    clearCode(); otpState('idle');
+    $('authCodeSubmit').textContent = 'Sign in';
+    window.setTimeout(() => otpBoxes[0].focus(), 80);
   }
-  // The six tiles draw what the one real input holds. States, each with its
-  // own look: idle, typing (the next tile lit, a caret blinking in it),
-  // verifying (a wave of light across the tiles), error (a shake and red),
-  // success (the tiles turn green one after another), sent (a new code).
-  const otpEl = $('otp'), otpTiles = Array.from(document.querySelectorAll('#otp .otp-tile'));
-  let otpPrev = '';
-  function otpState(st) { otpEl.dataset.state = st; }
-  function paintOtp() {
-    const v = $('authCodeInput').value, focused = document.activeElement === $('authCodeInput');
-    otpTiles.forEach((t, i) => {
-      const d = v[i] || '';
-      if (t.textContent !== d) {
-        t.textContent = d;
-        // A digit that just arrived pops in; one taken away just goes.
-        if (d && i >= otpPrev.length) { t.classList.remove('pop'); void t.offsetWidth; t.classList.add('pop'); }
-      }
-      t.classList.toggle('filled', !!d);
-      t.classList.toggle('active', focused && (i === v.length || (v.length === 6 && i === 5)));
+  function showCode(email) {
+    const here = location.pathname + location.search;
+    if (!/^\/verify/.test(location.pathname)) codeReturn = here;
+    closeAuth();
+    codeFresh = true;
+    fillCodePage(email);
+    showView('verify');
+  }
+  // Opened by its address (a reload, a bookmark): ask the server which inbox
+  // the code went to. With no sign-in waiting, say so and offer the way back.
+  async function loadCodePage() {
+    if (codeFresh) { codeFresh = false; return; }
+    if (currentUser) return leaveCode();
+    fillCodePage('');
+    try {
+      const r = await fetch('/api/auth/challenge');
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.email) { $('authCodeEmail').textContent = j.email; return; }
+    } catch (e) {}
+    fillCodePage(null);
+    $('authCodeErr').textContent = 'No sign-in is waiting for a code. Start over to get one.';
+    $('authCodeErr').classList.remove('hidden');
+  }
+  // Back to wherever the visitor came from, without leaving this page in the
+  // history (Back should not return to a spent code).
+  function leaveCode() {
+    try { history.replaceState({}, '', codeReturn || '/'); } catch (e) {}
+    routeFromPath(true);
+  }
+  function codeRestart(msg) {
+    leaveCode();
+    openAuth('login');
+    if (msg) { $('authErr').textContent = msg; $('authErr').classList.remove('hidden'); }
+  }
+  function syncCodeState() { otpState(codeValue().length ? 'typing' : 'idle'); }
+  function maybeSubmit() { if (codeValue().length === 6 && !codeBusy) $('authCodeForm').requestSubmit(); }
+  // Several digits at once (paste, or the phone's autofill into one box):
+  // a whole code fills from the first box, a part from where it landed.
+  function spread(digits, from) {
+    digits = digits.replace(/\D/g, '');
+    if (!digits) return;
+    const start = digits.length >= 6 ? 0 : from;
+    digits.slice(0, 6 - start).split('').forEach((d, k) => setBox(otpBoxes[start + k], d));
+    syncCodeState();
+    otpBoxes[Math.min(start + digits.length, 5)].focus();
+    maybeSubmit();
+  }
+  function clearErrorLook() {
+    if (otpEl.dataset.state === 'error' || otpEl.dataset.state === 'sent') { $('authCodeErr').classList.add('hidden'); syncCodeState(); }
+  }
+  otpBoxes.forEach((b, i) => {
+    b.addEventListener('focus', () => { try { b.select(); } catch (e) {} });
+    b.addEventListener('keydown', (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (/^[0-9]$/.test(e.key)) {
+        // Typing replaces whatever the box held, then moves on.
+        e.preventDefault(); clearErrorLook();
+        setBox(b, e.key); syncCodeState();
+        if (i < 5) otpBoxes[i + 1].focus();
+        maybeSubmit();
+      } else if (e.key === 'Backspace') {
+        e.preventDefault(); clearErrorLook();
+        if (b.value) setBox(b, '');
+        else if (i > 0) { setBox(otpBoxes[i - 1], ''); otpBoxes[i - 1].focus(); }
+        syncCodeState();
+      } else if (e.key === 'Delete') { e.preventDefault(); setBox(b, ''); syncCodeState(); }
+      else if (e.key === 'ArrowLeft' && i > 0) { e.preventDefault(); otpBoxes[i - 1].focus(); }
+      else if (e.key === 'ArrowRight' && i < 5) { e.preventDefault(); otpBoxes[i + 1].focus(); }
+      else if (e.key.length === 1 && e.key !== ' ') e.preventDefault();   // letters never land
     });
-    otpPrev = v;
-  }
-  ['focus', 'blur'].forEach(ev => $('authCodeInput').addEventListener(ev, paintOtp));
-  // Digits only, and six of them is the whole answer, so submit on the sixth.
-  $('authCodeInput').addEventListener('input', () => {
-    const el = $('authCodeInput');
-    const digits = el.value.replace(/\D/g, '').slice(0, 6);
-    if (digits !== el.value) el.value = digits;
-    if (otpEl.dataset.state === 'error' || otpEl.dataset.state === 'sent') { otpState('idle'); $('authCodeErr').classList.add('hidden'); }
-    otpState(digits.length ? 'typing' : 'idle');
-    paintOtp();
-    if (digits.length === 6 && !$('authCodeSubmit').disabled) $('authCodeForm').requestSubmit();
+    // Keyboards that do not report keys (many phones), autofill and paste.
+    b.addEventListener('input', () => {
+      clearErrorLook();
+      const prev = b.dataset.v || '';
+      let digits = b.value.replace(/\D/g, '');
+      if (digits.length > 1 && prev && digits.length === 2) digits = digits.replace(prev, '') || digits.slice(-1);
+      if (digits.length > 1) { b.value = prev; spread(digits, i); return; }
+      setBox(b, digits); syncCodeState();
+      if (digits && i < 5) otpBoxes[i + 1].focus();
+      maybeSubmit();
+    });
+    b.addEventListener('paste', (e) => {
+      const t = ((e.clipboardData || window.clipboardData).getData('text') || '').replace(/\D/g, '');
+      e.preventDefault(); clearErrorLook();
+      if (t) spread(t, i);
+    });
   });
   // What happens once the server has handed over a session, whichever door
   // it came through.
@@ -2705,27 +2775,35 @@
     // Restart the shake even when the same error comes back twice.
     otpState('idle'); void otpEl.offsetWidth; otpState('error');
     // The wrong digits go once the shake has played, ready for another try.
-    setTimeout(() => { if (otpEl.dataset.state === 'error') { $('authCodeInput').value = ''; paintOtp(); $('authCodeInput').focus(); } }, 650);
+    window.setTimeout(() => { if (otpEl.dataset.state === 'error') { clearCode(); otpBoxes[0].focus(); } }, 650);
   };
   $('authCodeForm').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const code = $('authCodeInput').value.replace(/\D/g, '');
+    if (codeBusy) return;
+    const code = codeValue();
     if (code.length !== 6) { codeErr('Enter all 6 digits.'); return; }
+    codeBusy = true;
     $('authCodeErr').classList.add('hidden'); $('authCodeSubmit').disabled = true;
     otpState('verifying'); $('authCodeSubmit').textContent = 'Checking…';
+    let ok = false;
     try {
       const r = await fetch('/api/auth/code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code }) });
       const j = await r.json();
       if (!r.ok) {
-        if (j.restart) { openAuth('login'); $('authErr').textContent = j.error; $('authErr').classList.remove('hidden'); return; }
+        if (j.restart) { codeRestart(j.error); return; }
         throw new Error(j.error || 'Something went wrong.');
       }
-      // Let the green land before the modal closes.
+      ok = true;
+      // Let the green land before the page moves on.
       otpState('success'); $('authCodeSubmit').textContent = 'Signed in';
-      await new Promise(r => setTimeout(r, lessMotion() ? 250 : 750));
+      await new Promise(r => setTimeout(r, lessMotion() ? 250 : 800));
       signedIn(j.user, 'login', 'code');
+      leaveCode();
     } catch (err) { codeErr(err.message); }
-    finally { $('authCodeSubmit').disabled = false; if (otpEl.dataset.state !== 'success') $('authCodeSubmit').textContent = 'Sign in'; else setTimeout(() => { $('authCodeSubmit').textContent = 'Sign in'; }, 1000); }
+    finally {
+      codeBusy = false; $('authCodeSubmit').disabled = false;
+      if (!ok) $('authCodeSubmit').textContent = 'Sign in';
+    }
   });
   $('authCodeResend').addEventListener('click', async () => {
     $('authCodeResend').disabled = true; $('authCodeErr').classList.add('hidden');
@@ -2733,17 +2811,17 @@
       const r = await fetch('/api/auth/code/resend', { method: 'POST' });
       const j = await r.json();
       if (!r.ok) {
-        if (j.restart) { openAuth('login'); $('authErr').textContent = j.error; $('authErr').classList.remove('hidden'); return; }
+        if (j.restart) { codeRestart(j.error); return; }
         throw new Error(j.error || 'Could not send a new code. Try again in a minute.');
       }
       status('authCodeStatus', 'New code sent.', true);
-      $('authCodeInput').value = ''; paintOtp();
+      clearCode();
       otpState('idle'); void otpEl.offsetWidth; otpState('sent');
-      $('authCodeInput').focus();
+      otpBoxes[0].focus();
     } catch (err) { codeErr(err.message); }
     finally { $('authCodeResend').disabled = false; }
   });
-  $('authCodeBack').addEventListener('click', () => openAuth('login'));
+  $('authCodeBack').addEventListener('click', () => codeRestart(''));
   const status = (id, text, ok) => { const el = $(id); el.textContent = text; el.className = 'auth-status' + (ok ? ' ok' : ''); };
   $('authResend').addEventListener('click', async () => {
     $('authResend').disabled = true;
@@ -2848,7 +2926,7 @@
 
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
   let currentView = 'home';
-  const VIEWS = ['home', 'analyze', 'compare', 'screener', 'markets', 'movers', 'watchlist', 'alerts', 'practice', 'learn', 'settings', 'pricing', 'admin', 'legal'];
+  const VIEWS = ['home', 'analyze', 'compare', 'screener', 'markets', 'movers', 'watchlist', 'alerts', 'practice', 'learn', 'settings', 'pricing', 'admin', 'legal', 'verify'];
   const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact', 'affiliate-terms', 'accessibility', 'security', 'copyright'];
   // Each view has a real URL now, so navigation updates the address bar and
   // the back button works. pushUrl is skipped when we are *reacting* to a URL
@@ -2898,6 +2976,7 @@
     mountChart(name);
     revealScan();
     if (name === 'home') loadHomeChart();
+    if (name === 'verify') loadCodePage();
     // Nothing about the data is rendered, and none of the loaders below run,
     // so there is nothing on the page to uncover.
     if (!isSignedIn() && DATA_VIEWS.indexOf(name) !== -1) { showWall(name); return; }
@@ -4072,12 +4151,11 @@
     // which address the code went to.
     if (p.get('google') === 'code') {
       window.setTimeout(async () => {
-        openAuth('login');
         try {
           const r = await fetch('/api/auth/challenge');
           const j = await r.json();
           if (r.ok) showCode(j.email);
-          else { $('authErr').textContent = 'That sign-in has expired. Please try again.'; $('authErr').classList.remove('hidden'); }
+          else { openAuth('login'); $('authErr').textContent = 'That sign-in has expired. Please try again.'; $('authErr').classList.remove('hidden'); }
         } catch (e) { showCode(''); }
       }, 50);
     }

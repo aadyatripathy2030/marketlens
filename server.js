@@ -3776,6 +3776,8 @@ const VIEW_SEO = {
     desc: 'Nineteen short lessons covering market basics, technical and fundamental analysis, valuation, financial statements, risk management, order types, candlesticks, volume, trading psychology, costs and index funds, each with a quiz.' },
   'practice': { view: 'practice', title: 'Paper trading: practice with pretend money | ChartGauge',
     desc: 'A practice account with a starting balance you choose. Fills use the live price, positions are valued in real time, and a risk meter measures the book against limits you set. None of it is real money.' },
+  'verify': { view: 'verify', noindex: true, title: 'Enter your sign-in code | ChartGauge',
+    desc: 'Enter the 6-digit code from your email to finish signing in to ChartGauge.' },
   'settings': { view: 'settings', noindex: true, title: 'Settings: choose what the analysis shows | ChartGauge',
     desc: 'Turn any part of the analysis on or off: the indicator score, the measured base rate, exit levels, the thirteen technical readings, the projection, fundamentals, news and the written summary.' },
   'movers': { view: 'movers', title: 'What is moving right now | ChartGauge',
@@ -3996,7 +3998,7 @@ const GA_SNIPPET = (GA_ID ? `<meta name="ga-id" content="${esc(GA_ID)}">` : '')
 // 'admin' is routable so the operator can open /admin directly, but it is
 // absent from VIEW_SEO, so it never reaches the sitemap, and robots.txt
 // disallows it. The page itself is guarded server-side regardless.
-const APP_PATH = /^\/(analyze|markets|movers|compare|screener|alerts|watchlist|practice|learn|settings|pricing|terms|privacy|refunds|contact|affiliate-terms|accessibility|security|copyright|admin)(\/|$)|^\/stock\//;
+const APP_PATH = /^\/(analyze|markets|movers|compare|verify|screener|alerts|watchlist|practice|learn|settings|pricing|terms|privacy|refunds|contact|affiliate-terms|accessibility|security|copyright|admin)(\/|$)|^\/stock\//;
 
 // A mistyped URL used to return the two words "Not found" as plain text on a
 // blank white page, with no styling, no way back and no branding. Cheap to do
@@ -4109,7 +4111,7 @@ function serveDocument(req, res, urlPath) {
     // One <h1> per rendered page: the active view keeps it, the rest step
     // down. Opening and closing tags change together (rewriting only the
     // opening tag left <h2 ...>...</h1> pairs).
-    out = out.replace(/<h1 class="((?:hero-h|view-h)[^"]*)"([^>]*)>([\s\S]*?)<\/h1>/g, '<h2 class="$1"$2>$3</h2>');
+    out = out.replace(/<h1 class="((?:hero-h|view-h|code-h)[^"]*)"([^>]*)>([\s\S]*?)<\/h1>/g, '<h2 class="$1"$2>$3</h2>');
     const promote = (from) => {
       const hAt = out.indexOf('<h2 class="', from);
       const end = hAt >= 0 ? out.indexOf('</h2>', hAt) : -1;

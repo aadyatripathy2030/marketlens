@@ -725,6 +725,34 @@
     <div id="learnHost"></div>
   </section>
 
+  <!-- SIGN-IN CODE: the second step of every sign-in, on its own page.
+       Six boxes, one digit each; the first takes the phone's one-time-code
+       autofill, and a paste anywhere fills all six. -->
+  <section class="view hidden" id="view-verify">
+    <div class="code-page" id="authCode">
+      <h1 class="code-h" id="codeH" tabindex="-1">Enter the code</h1>
+      <p class="code-sub" id="codeSub">Sent to <span id="authCodeEmail"></span></p>
+      <form id="authCodeForm" novalidate>
+        <div class="otp" id="otp" data-state="idle" role="group" aria-label="6-digit sign-in code">
+          <input class="otp-box" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" aria-label="Digit 1 of 6" />
+          <input class="otp-box" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="Digit 2 of 6" />
+          <input class="otp-box" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="Digit 3 of 6" />
+          <input class="otp-box" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="Digit 4 of 6" />
+          <input class="otp-box" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="Digit 5 of 6" />
+          <input class="otp-box" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="Digit 6 of 6" />
+        </div>
+        <div class="auth-err hidden" id="authCodeErr" role="alert"></div>
+        <button type="submit" class="btn btn-primary btn-block" id="authCodeSubmit">Sign in</button>
+      </form>
+      <div class="otp-links">
+        <button type="button" class="link-btn" id="authCodeResend">Resend code</button>
+        <span class="otp-dot" aria-hidden="true">&middot;</span>
+        <button type="button" class="link-btn quiet" id="authCodeBack">Start over</button>
+      </div>
+      <p class="auth-status" id="authCodeStatus" role="status"></p>
+    </div>
+  </section>
+
   <p class="disclaimer">ChartGauge is built to help you find and time trades. <strong>Trading carries real risk</strong>: you can lose money, including everything you put in, and the risk is yours to take. The Buy / Sell / Hold verdict is taken from the indicator score (Strongly up, Leans up, Mixed, Leans down, Strongly down), which describes how far the past-price indicators agree, and it is held back to Hold whenever bars like the current one went on to perform clearly worse, or better, than that symbol&rsquo;s own base rate. For images the read comes from one picture alone. None of this is financial advice or a personal recommendation. The decision, and its outcome, is yours.</p>
 
   <footer class="site-foot">
@@ -775,27 +803,6 @@
         <button type="button" class="link-btn quiet" id="authBack">Use a different email</button>
       </div>
       <p class="auth-status" id="authPendingStatus" role="status"></p>
-    </div>
-    <!-- The second step of every sign-in: the code that was emailed. One
-         real input (so paste and the phone's one-time-code fill still work)
-         lies over six tiles that only draw what it holds. -->
-    <div class="auth-face hidden" id="authCode">
-      <h2 class="auth-face-h">Enter the code</h2>
-      <p class="auth-face-p">Sent to <span class="auth-face-email" id="authCodeEmail"></span></p>
-      <form id="authCodeForm">
-        <div class="otp" id="otp" data-state="idle">
-          <input type="text" id="authCodeInput" class="otp-input" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" maxlength="6" aria-label="6-digit sign-in code" aria-describedby="authCodeErr" />
-          <div class="otp-tiles" aria-hidden="true"><span class="otp-tile"></span><span class="otp-tile"></span><span class="otp-tile"></span><span class="otp-tile"></span><span class="otp-tile"></span><span class="otp-tile"></span></div>
-        </div>
-        <div class="auth-err hidden" id="authCodeErr" role="alert"></div>
-        <button type="submit" class="btn btn-primary btn-block" id="authCodeSubmit">Sign in</button>
-      </form>
-      <div class="auth-face-links otp-links">
-        <button type="button" class="link-btn" id="authCodeResend">Resend code</button>
-        <span class="otp-dot" aria-hidden="true">·</span>
-        <button type="button" class="link-btn quiet" id="authCodeBack">Start over</button>
-      </div>
-      <p class="auth-status" id="authCodeStatus" role="status"></p>
     </div>
     <p class="auth-toggle" id="authToggleRow"><span id="authToggleText">New to ChartGauge?</span> <button type="button" class="link-btn" id="authToggle">Create an account</button></p>
     <p class="auth-note">By continuing you agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>. ChartGauge is a trading tool, not an adviser: trading can lose money, and nothing on it is financial advice.<br /><br />Never enter a real trading or bank password here. This is a demo; passwords are hashed, never stored in plain text.</p>
