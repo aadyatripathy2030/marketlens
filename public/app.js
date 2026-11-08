@@ -833,46 +833,62 @@
   window.addEventListener('resize', drawChart);
 
   // ---- Scroll reveal ----
-  // Sections and cards below the fold rise into place as they scroll in.
-  // The observer's first report on each element decides: already in sight
-  // means it is left alone, so the first view never flickers and live quotes
-  // re-rendering in place never replay.
+  // Sections and cards rise into place every time they scroll into sight,
+  // and are quietly reset once they are fully off screen, so scrolling back
+  // plays them again. The motion follows the scroll: scrolling down, a block
+  // comes up from below on an ease-in (slow, then faster); scrolling up, it
+  // comes down from above on an ease-out (fast, then settling). Whatever is
+  // already in sight when first seen is left alone, so the first view never
+  // flickers and live quotes re-rendering in place never replay.
   const REVEAL_SEL = '.home-chart, .record-h, .record-line, .home-h, .steps > li, .tool, .plan2, .faq, .home-end, .card, .learn-card, .plan-card, .quote-card, .wl-card';
-  const revealSeen = new WeakSet();
-  const revealIO = ('IntersectionObserver' in window) && !matchMedia('(prefers-reduced-motion: reduce)').matches
-    ? new IntersectionObserver((entries) => entries.forEach(e => {
-        const el = e.target;
-        if (!el.classList.contains('rv')) {
-          if (!e.boundingClientRect.height) return;  // in a hidden view; asked again when shown
-          // In sight, or within the pre-trigger zone below it: left alone.
-          if (e.isIntersecting || e.boundingClientRect.top < innerHeight) { revealIO.unobserve(el); return; }
-          const i = el.parentElement ? Array.prototype.indexOf.call(el.parentElement.children, el) % 4 : 0;
-          el.style.setProperty('--rd', (i * 80) + 'ms');
-          el.classList.add('rv');
-          return;
-        }
-        if (!e.isIntersecting) return;
-        // Once it has landed, drop the classes so its own hover transitions
-        // and timing are back in charge.
-        el.addEventListener('transitionend', function done(ev) {
-          if (ev.target !== el || ev.propertyName !== 'opacity') return;
-          el.classList.remove('rv', 'in'); el.style.removeProperty('--rd');
-          el.removeEventListener('transitionend', done);
-        });
-        el.classList.add('in');
-        revealIO.unobserve(el);
-      }), { rootMargin: '0px 0px 25% 0px', threshold: 0 })
-    : null;
+  const canReveal = ('IntersectionObserver' in window) && !matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let scrollUp = false, lastScrollY = 0;
+  const scrollY = () => document.body.scrollTop || document.documentElement.scrollTop || window.scrollY || 0;
+  if (canReveal) document.addEventListener('scroll', () => {
+    const y = scrollY();
+    if (y !== lastScrollY) { scrollUp = y < lastScrollY; lastScrollY = y; }
+  }, { capture: true, passive: true });
+  function revealArm(el) {
+    if (el.classList.contains('rv') && !el.classList.contains('in')) return;
+    const i = el.parentElement ? Array.prototype.indexOf.call(el.parentElement.children, el) % 4 : 0;
+    el.style.setProperty('--rd', (i * 80) + 'ms');
+    el.classList.remove('in', 'rv-up');
+    el.classList.add('rv');
+  }
+  function revealPlay(el) {
+    if (!el.classList.contains('rv') || el.classList.contains('in')) return;
+    el.classList.toggle('rv-up', scrollUp);
+    void el.offsetWidth;  // commit the start position before moving
+    el.addEventListener('transitionend', function done(ev) {
+      if (ev.target !== el || ev.propertyName !== 'opacity') return;
+      el.removeEventListener('transitionend', done);
+      // Landed: drop the classes so its own hover transitions are in charge.
+      if (el.classList.contains('in')) el.classList.remove('rv', 'in', 'rv-up');
+    });
+    el.classList.add('in');
+  }
+  // Out: fully off screen re-arms it (it is out of sight, so no flash).
+  const revealOutIO = canReveal ? new IntersectionObserver((entries) => entries.forEach(e => {
+    if (!e.boundingClientRect.height) return;  // in a hidden view
+    if (!e.isIntersecting) revealArm(e.target);
+  }), { threshold: 0 }) : null;
+  // In: a little way into the screen, it plays.
+  const revealInIO = canReveal ? new IntersectionObserver((entries) => entries.forEach(e => {
+    if (e.isIntersecting && e.boundingClientRect.height) revealPlay(e.target);
+  }), { rootMargin: '-6% 0px -6% 0px', threshold: 0 }) : null;
+  const revealIO = revealOutIO;
   let revealQueued = false;
   function revealScan() {
-    if (!revealIO || revealQueued) return;
+    if (!canReveal || revealQueued) return;
     revealQueued = true;
     requestAnimationFrame(() => {
       revealQueued = false;
       document.querySelectorAll('#main ' + REVEAL_SEL.split(', ').join(', #main ')).forEach(el => {
-        if (revealSeen.has(el) || !el.getClientRects().length) return;
-        revealSeen.add(el);
-        revealIO.observe(el);
+        if (!el.getClientRects().length) return;
+        // Re-observing asks for a fresh first report, which matters after a
+        // view is shown: its blocks below the fold get armed then.
+        revealOutIO.unobserve(el); revealOutIO.observe(el);
+        revealInIO.unobserve(el); revealInIO.observe(el);
       });
     });
   }
