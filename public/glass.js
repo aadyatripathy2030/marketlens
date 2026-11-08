@@ -1,6 +1,6 @@
 // Liquid glass refraction (Nov 8 2026).
 //
-// Every glass surface already gets its frosted fill, bright rim and
+// The glass surfaces (the header and the sign-in code boxes) get their frosted fill, bright rim and
 // reflection from styles.css. This adds the refraction: what sits behind a
 // panel bends near its edges, as it would through a thick piece of glass.
 //
@@ -18,7 +18,7 @@
   if (!chromium || mq('(prefers-reduced-motion: reduce)') || mq('(prefers-reduced-transparency: reduce)')) return;
   document.documentElement.classList.add('lg-refract');
 
-  var SEL = '.topbar, .btn, .chip, .tool, .plan2, .card:not(.chart-card), .learn-card, .plan-card, .wl-card, .consent, .modal';
+  var SEL = '.topbar, .otp-box';
   var SVGNS = 'http://www.w3.org/2000/svg';
   var defs = document.createElementNS(SVGNS, 'svg');
   defs.setAttribute('width', '0'); defs.setAttribute('height', '0'); defs.setAttribute('aria-hidden', 'true');
@@ -43,8 +43,8 @@
   }
 
   function filterFor(w, h, kind) {
-    var band = kind === 'btn' ? Math.min(14, h / 2) : kind === 'bar' ? 22 : 28;
-    var scale = kind === 'btn' ? 18 : kind === 'bar' ? 26 : 34;
+    var band = kind === 'bar' ? 22 : Math.min(18, h / 2);
+    var scale = kind === 'bar' ? 26 : 28;
     var id = 'lg-' + kind + '-' + w + 'x' + h;
     if (made[id]) return id;
     var f = document.createElementNS(SVGNS, 'filter');
@@ -66,7 +66,7 @@
     var r = el.getBoundingClientRect();
     var w = Math.round(r.width / 4) * 4, h = Math.round(r.height / 4) * 4;
     if (w < 8 || h < 8 || w * h > 2600000) { el.style.removeProperty('--lg-url'); return; }
-    var kind = el.classList.contains('topbar') ? 'bar' : (el.classList.contains('btn') || el.classList.contains('chip')) ? 'btn' : 'card';
+    var kind = el.classList.contains('topbar') ? 'bar' : 'btn';
     el.style.setProperty('--lg-url', 'url(#' + filterFor(w, h, kind) + ')');
   }
 
