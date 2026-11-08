@@ -1631,7 +1631,7 @@ function emailHtml(o) {
     + intro2 + lines + code + box + button
     + `<p style="margin:18px 0 0;font-family:${MAIL_FONT};font-size:13px;line-height:1.6;color:#9a958c;">${esc(o.outro)}</p>`
     + `</td></tr>`
-    + `<tr><td style="padding:16px 4px 0;font-family:${MAIL_FONT};font-size:12px;line-height:1.5;color:#7a756b;">${esc(o.why || MAIL_WHY)}<br>ChartGauge is a trading tool. Trading can lose money, and nothing on it is financial advice.<br>`
+    + `<tr><td style="padding:16px 4px 0;font-family:${MAIL_FONT};font-size:12px;line-height:1.5;color:#7a756b;">${esc(o.why || MAIL_WHY)}<br>ChartGauge is for educational purposes only. Trading can lose money, and nothing on it is financial advice.<br>`
     + (MAIL_POSTAL_ADDRESS ? `${esc(MAIL_POSTAL_ADDRESS)}<br>` : '')
     + `<a href="https://chartgauge.com" style="color:#9a958c;">chartgauge.com</a> · <a href="mailto:${esc(CONTACT_EMAIL)}" style="color:#9a958c;">${esc(CONTACT_EMAIL)}</a></td></tr>`
     + `</table></td></tr></table></body></html>`;
@@ -3973,7 +3973,7 @@ function stockHtml(seo, last) {
   const others = FEATURED.filter(x => x !== seo.symbol).slice(0, 12)
     .map(x => `<a href="/stock/${x}">${esc(x)}</a>`).join(' · ');
   return `<div class="ssr-stock" id="ssrStock" data-sym="${esc(seo.symbol)}">`
-    + `<p>A buy, sell or hold call on ${esc(label)}, with the stop-loss and take-profit levels already set, a candlestick chart and 13 technical indicators. Trading can lose money; this is not financial advice.</p>`
+    + `<p>A buy, sell or hold call on ${esc(label)}, with the stop-loss and take-profit levels already set, a candlestick chart and 13 technical indicators. For educational purposes only. Trading can lose money; this is not financial advice.</p>`
     + read
     + `<p class="ssr-more">More stocks: ${others}</p></div>`;
 }
@@ -4044,7 +4044,7 @@ function llmsTxt(origin) {
   const L = (p, t, d) => `- [${t}](${origin}${p})${d ? ': ' + d : ''}`;
   return [
     `# ${SITE_NAME}`, '',
-    `> A trading tool for stocks and crypto pairs. Enter a stock and get a mechanical buy, sell or hold call with the stop-loss and take-profit levels already set, a candlestick chart and 13 technical indicators. Trading can lose money, including everything you put in; nothing on the site is financial advice, and it does not promise or quote returns.`, '',
+    `> A trading tool for stocks and crypto pairs. Enter a stock and get a mechanical buy, sell or hold call with the stop-loss and take-profit levels already set, a candlestick chart and 13 technical indicators. Trading can lose money, including everything you put in; everything on the site is for educational purposes only, nothing on it is financial advice, and it does not promise or quote returns.`, '',
     '## Main pages',
     L('/', 'Home', 'what the tool does and a live example reading'),
     L('/analyze', 'Analyze', 'the call, chart, indicators and levels for any stock'),
