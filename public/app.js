@@ -830,6 +830,36 @@
 
   window.addEventListener('resize', drawChart);
 
+  // ---- Light and dark mode ----
+  // theme.js set the starting theme in <head>. The button flips it and
+  // remembers the choice; the chart is redrawn because canvas colors are
+  // read from the CSS tokens at draw time.
+  const THEME_KEY = 'chartgauge_theme';
+  const themeNow = () => document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  function syncThemeUi() {
+    const t = themeNow(), next = t === 'light' ? 'dark' : 'light';
+    const b = $('themeToggle');
+    if (b) { b.setAttribute('aria-label', `Switch to ${next} mode`); b.title = `Switch to ${next} mode`; }
+    const m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute('content', t === 'light' ? '#fbfbfc' : '#08090a');
+  }
+  function applyTheme(t, remember) {
+    const root = document.documentElement;
+    // A short cross-fade, only while switching (never on page load).
+    if (!lessMotion()) { root.classList.add('theme-anim'); clearTimeout(applyTheme.t); applyTheme.t = setTimeout(() => root.classList.remove('theme-anim'), 400); }
+    root.setAttribute('data-theme', t);
+    if (remember) { try { localStorage.setItem(THEME_KEY, t); } catch (e) {} }
+    syncThemeUi();
+    try { drawChart(); } catch (e) {}
+  }
+  if ($('themeToggle')) $('themeToggle').addEventListener('click', () => {
+    const next = themeNow() === 'light' ? 'dark' : 'light';
+    applyTheme(next, true);
+    announce(`${next === 'light' ? 'Light' : 'Dark'} mode on.`);
+  });
+  window.addEventListener('themechange', () => { syncThemeUi(); try { drawChart(); } catch (e) {} });
+  syncThemeUi();
+
   // ---- Scroll reveal ----
   // Sections and cards rise into place every time they scroll into sight,
   // and are quietly reset once they are fully off screen, so scrolling back
@@ -2663,6 +2693,7 @@
   }
   function clearCode() { otpBoxes.forEach(b => { setBox(b, ''); b.classList.remove('pop'); }); }
   function fillCodePage(email) {
+    $('authCode').classList.remove('done'); $('codeH').textContent = 'Enter the code';
     $('authCodeEmail').textContent = email || 'your email';
     $('codeSub').classList.toggle('hidden', email === null);
     $('authCodeErr').classList.add('hidden');
@@ -2794,11 +2825,19 @@
         throw new Error(j.error || 'Something went wrong.');
       }
       ok = true;
-      // Let the green land before the page moves on.
+      // The boxes go green, fold away into a check mark, and then the visitor
+      // is taken into the site: back where they started, or home.
       otpState('success'); $('authCodeSubmit').textContent = 'Signed in';
-      await new Promise(r => setTimeout(r, lessMotion() ? 250 : 800));
+      const calm = lessMotion();
+      await new Promise(r => setTimeout(r, calm ? 150 : 550));
+      $('codeH').textContent = 'You\u2019re in';
+      $('authCode').classList.add('done');
+      announce('Code accepted. You are signed in.');
+      await new Promise(r => setTimeout(r, calm ? 700 : 1250));
       signedIn(j.user, 'login', 'code');
+      if (/^\/verify/.test(codeReturn || '')) codeReturn = '/';
       leaveCode();
+      $('authCode').classList.remove('done'); $('codeH').textContent = 'Enter the code';
     } catch (err) { codeErr(err.message); }
     finally {
       codeBusy = false; $('authCodeSubmit').disabled = false;

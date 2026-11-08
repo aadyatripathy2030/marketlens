@@ -19,6 +19,7 @@
 <!--SEO-->
 <!--GA-->
 <link rel="preload" href="/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+<script src="/theme.js"></script>
 <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
@@ -41,6 +42,10 @@
   </nav>
   <div class="topbar-right">
     <span class="tag" id="modeTag"></span>
+    <button type="button" class="theme-toggle" id="themeToggle" aria-label="Switch to light mode" title="Switch to light mode">
+      <svg class="ti-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg>
+      <svg class="ti-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1z"/></svg>
+    </button>
     <div class="acct" id="acct"></div>
   </div>
 </header>
@@ -732,6 +737,9 @@
     <div class="code-page" id="authCode">
       <h1 class="code-h" id="codeH" tabindex="-1">Enter the code</h1>
       <p class="code-sub" id="codeSub">Sent to <span id="authCodeEmail"></span></p>
+      <div class="code-done" id="codeDone" aria-hidden="true">
+        <svg viewBox="0 0 96 96" width="96" height="96"><circle class="cd-ring" cx="48" cy="48" r="44"/><path class="cd-tick" d="M30 49.5l12 12 24-26"/></svg>
+      </div>
       <form id="authCodeForm" novalidate>
         <div class="otp" id="otp" data-state="idle" role="group" aria-label="6-digit sign-in code">
           <input class="otp-box" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" aria-label="Digit 1 of 6" />
