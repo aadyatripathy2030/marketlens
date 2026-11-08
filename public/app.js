@@ -2385,7 +2385,7 @@
     const q = Number($('pQty').value);
     const px = chartQuote && Number(chartQuote.price);
     const sym = ($('pSym').value || '').toUpperCase().trim();
-    if (!(q > 0) || !Number.isFinite(px) || sym !== chartSym) { el.innerHTML = '&nbsp;'; return; }
+    if (!(q > 0) || !Number.isFinite(px) || sym !== chartSym) { el.textContent = 'Enter a quantity to see what it costs.'; return; }
     const cash = paperState && paperState.account ? paperState.account.cash : 0;
     const cost = q * px;
     el.innerHTML = 'About <b>' + pMoney(cost) + '</b> at ' + pMoney(px)

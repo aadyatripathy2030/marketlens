@@ -2239,3 +2239,56 @@ html, body { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) trans
 .risk-cell ul { margin: 6px 0 0; padding-left: 16px; font-size: 12px; color: var(--muted); white-space: normal; min-width: 260px; }
 .risk-flag-mid summary { color: var(--warn, #d9a13b); }
 .risk-flag-hi summary { color: var(--bad); font-weight: 600; }
+
+/* ===================================================================
+   Practice tab (Nov 8 2026): room inside every card, a stat row that
+   sizes to its content, a calmer trade ticket, a header that fits a
+   phone when signed in.
+   =================================================================== */
+/* The account total is .pstat.hero, and the home page's .hero rule (96px
+   top, no sides) was landing on it: text on the card's edge and a row
+   three times taller than its figures. Its own padding wins here. */
+.pstat, .pstat.hero { padding: 20px 24px; height: auto; justify-content: flex-start; }
+.paper-top { gap: 16px; margin-bottom: 32px; align-items: stretch; }
+.pstat-k { margin-bottom: 10px; }
+.pstat.hero .pstat-v { font-size: 34px; letter-spacing: -.02em; }
+.pstat-sub { margin-top: 10px; }
+.pstat.hero::before { display: none; }
+
+/* Trade ticket and risk card: the same inner room as the chart card. */
+.side-col > .card, .ticket { padding: 24px; }
+.ticket-head { margin-bottom: 20px; }
+.tk-field { margin-bottom: 20px; }
+.tk-quick { gap: 8px; margin: -8px 0 20px; }
+.tk-quick button { padding: 8px 0; border-radius: 9999px; font-size: 13px; }
+/* The estimate line: a hint until a quantity is typed, then the cost. */
+.est { margin: 0 0 16px; }
+.ticket-btns { gap: 10px; }
+.ticket-btns .btn { padding: 13px 12px; border-radius: 9999px; font-weight: 590; }
+.prac-main { gap: 24px; }
+
+/* Lists under the chart: a little more separation between blocks. */
+#paperBook h2, #paperBook .sec-h, #paperBook h3.view-sub { margin-top: 40px; }
+
+@media (max-width: 720px) {
+  /* Phone: the total across the top, the three parts in one row beneath
+     it, instead of a 2-by-2 grid with one card left on its own. */
+  .paper-top { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 24px; }
+  .pstat.hero { grid-column: 1 / -1; padding: 20px; }
+  .pstat:not(.hero) { padding: 14px 12px; }
+  .pstat:not(.hero) .pstat-k { font-size: 10px; letter-spacing: .06em; margin-bottom: 6px; }
+  .pstat-v.sm { font-size: clamp(14px, 4.1vw, 18px); letter-spacing: -.01em; }
+  .pstat:not(.hero) .pstat-note { font-size: 11px; }
+  .side-col > .card, .ticket { padding: 20px; }
+}
+/* Phone header, signed in: brand, theme, streak, plan and Log out did not
+   fit 390px and Log out ran off the edge. The plan badge goes (the plan is
+   on the Plans and Settings pages) and the gaps tighten. */
+@media (max-width: 480px) {
+  .acct { gap: 8px; }
+  .acct .plan { display: none; }
+  .topbar { gap: 4px; }
+}
+/* A change of zero has no colored pill behind it, so it should not keep
+   the pill's inset either; it lines up with the figure above. */
+.pstat-sub:not(.up):not(.down) { padding-left: 0; padding-right: 0; background: none; }
