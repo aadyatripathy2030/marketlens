@@ -19,7 +19,7 @@
      Red/green cannot be told apart by a deuteranope and is unavoidable here,
      so direction is always carried by a sign, an arrow or position as well as
      by hue. Both sit >= 4.5:1 on --card (AA) and inside the lightness band. */
-  --good: #44a85a; --good-soft: #152a1a; --bad: #e0564d; --bad-soft: #2c1816;
+  --good: #44a85a; --good-soft: #152a1a; --bad: #e0564d; --bad-soft: #221210; --bad-fill: #b93a32; --field-border: #6b665c;
   --warn: #c9a15a; --neutral: #9a958c;
   /* Chart overlays, validated as a categorical pair against --card:
      dE 22.9 protan / 23.1 tritan, both inside the lightness band 0.48-0.67.
@@ -146,7 +146,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .view-empty { color: var(--muted); font-size: 14px; background: var(--card); border-radius: var(--radius); padding: 32px; text-align: center; }
 .view-empty .btn { margin-top: 16px; }
 
-.nav-badge { display: inline-grid; place-items: center; min-width: 17px; height: 17px; padding: 0 4px; border-radius: var(--radius-sm); background: var(--bad); color: #fff; font-size: 11px; font-weight: 700; vertical-align: middle; }
+.nav-badge { display: inline-grid; place-items: center; min-width: 17px; height: 17px; padding: 0 4px; border-radius: var(--radius-sm); background: var(--bad-fill); color: #fff; font-size: 11px; font-weight: 700; vertical-align: middle; }
 
 /* Screener + Alerts forms */
 .screen-filters, .alert-form { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; }
@@ -415,8 +415,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .controls { margin-bottom: 20px; }
 .search { display: flex; gap: 12px; margin-bottom: 12px; align-items: flex-start; }
 .search-box { position: relative; flex: 1; min-width: 0; }
-.input { width: 100%; font-family: var(--font); font-size: 16px; color: var(--text); background: var(--bg2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 12px 16px; text-transform: uppercase; }
-.sel { font-family: var(--font); font-size: 14px; color: var(--text); background: var(--bg2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 12px 16px; cursor: pointer; }
+.input { width: 100%; font-family: var(--font); font-size: 16px; color: var(--text); background: var(--bg2); border: 1px solid var(--field-border); border-radius: var(--radius-sm); padding: 12px 16px; text-transform: uppercase; }
+.sel { font-family: var(--font); font-size: 14px; color: var(--text); background: var(--bg2); border: 1px solid var(--field-border); border-radius: var(--radius-sm); padding: 12px 16px; cursor: pointer; }
 .sel:focus { outline: none; border-color: var(--accent); }
 
 /* Ticker autocomplete */
@@ -873,7 +873,7 @@ body.drawer-open .drawer { transform: translateX(0); }
 .danger-label b { color: var(--text); }
 .danger-row { display: flex; gap: 12px; flex-wrap: wrap; }
 .danger-row .input { flex: 1; min-width: 180px; text-transform: none; }
-.btn-danger { background: var(--bad); color: #fff; border: none; font-weight: 600; white-space: nowrap; }
+.btn-danger { background: var(--bad-fill); color: #fff; border: none; font-weight: 600; white-space: nowrap; }
 .btn-danger:hover { filter: brightness(1.08); }
 .btn-danger:disabled { opacity: .6; cursor: default; }
 
@@ -1482,3 +1482,78 @@ body:not([data-view="analyze"]) .disclaimer { display: none; }
 .auth-age input { width: 16px; height: 16px; margin: 0; accent-color: var(--btn); }
 .auth-age.hidden { display: none; }
 .plan-renew { font-size: 13px; color: var(--muted); margin-top: 16px; line-height: 1.5; }
+
+/* Server-rendered intro on a stock's page, and the footer's stock links. */
+.ssr-stock { max-width: 70ch; margin: 0 0 16px; }
+.ssr-stock p { font-size: 14px; line-height: 1.6; color: var(--muted); margin-bottom: 6px; }
+.ssr-stock strong { color: var(--text); }
+.ssr-stock a { color: var(--accent); }
+.foot-stocks { gap: 14px; }
+
+/* Read by screen readers, not shown. */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* Reduced motion, everywhere: anything not already handled above
+   (the loading shimmer among them) stops animating. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+/* ===================================================================
+   Speckled graphite (Nov 8 2026, at the user's request). The ground is a
+   cool graphite grey instead of warm charcoal, and every surface carries
+   the same fine mineral speckle: a soft grain, plus sparse light and dark
+   flecks, like a honed stone or a graphite composite. The speckle sits
+   UNDER the content (it is a background image), so text and the chart are
+   never drawn through it. Still one accent, no gradients, no shadows.
+   Contrast re-measured on the new surfaces: text 12.9:1 on --card, muted
+   6.8:1, links 5.9:1, up 5.6:1, down 5.2:1, field borders 3.5:1.
+   =================================================================== */
+:root {
+  --bg: #18191b; --bg2: #1f2023; --card: #232427; --card-hi: #2b2c30;
+  --text: #eceef1; --muted: #aab0b8;
+  --border: #36383c; --border-strong: #4a4d52; --field-border: #737880;
+  --good: #4cb262; --good-soft: #182b1d; --bad: #ef7268; --bad-soft: #2a1a19;
+  --neutral: #9a9fa7; --forecast: #8a8e95;
+  /* Three tiles, each a different size so the pattern never visibly repeats:
+     a fine grain, sparse pale flecks and sparse dark flecks. */
+  --speckle:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='173' height='173'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='1' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 1 0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='discrete' tableValues='0 0 0 0 0 0 0 0 .22 .5'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='211' height='211'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='1' seed='23' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='discrete' tableValues='0 0 0 0 0 0 0 0 0 .3'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.95' numOctaves='2' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .13 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
+}
+/* A soft sheen, as if lit from the upper right, under the speckle. */
+body { background-color: var(--bg); background-image: var(--speckle), radial-gradient(120% 80% at 85% 0%, rgba(255,255,255,.055), transparent 60%); background-attachment: fixed; }
+/* Raised surfaces get the same stone, so a card reads as a slab of it. */
+.topbar, .card, .chart-card, .plan-card, .learn-card, .wl-card, .feature, .admin-stat, .aff-card,
+.modal, .suggest, .consent, .drawer, .quote-card, .alert-item, .sc-table, .acc-table, .input, .sel {
+  background-image: var(--speckle);
+}
+.topbar { background-color: var(--bg); }
+.input, .sel { background-color: var(--bg2); }
+
+/* The one accent on the graphite: an original impressionist painting (dusk
+   river, generated for ChartGauge on 2026-11-08, public/hero-painting.jpg)
+   behind the home hero, full width. It is darkened most where the headline
+   sits and fades into the graphite at the bottom, and the same speckle lies
+   over it, so it reads as part of the stone rather than a photo pasted on.
+   The live chart keeps its own solid card, so no price is drawn over paint. */
+.hero-wrap { position: relative; isolation: isolate; }
+.hero-wrap::before {
+  /* Full width: the hero starts at the page's left padding inside a
+     centered 1600px column, so the layer reaches back by that much. */
+  content: ""; position: absolute; z-index: -1; top: calc(-1 * var(--app-pad-top, 24px)); bottom: 0;
+  left: calc(-1 * (max(0px, (100vw - 1600px) / 2) + var(--app-pad-x, 32px))); width: 100vw;
+  background-image:
+    var(--speckle),
+    linear-gradient(to bottom, var(--bg) 0%, rgba(24,25,27,0) 14%, rgba(24,25,27,0) 60%, var(--bg) 100%),
+    linear-gradient(90deg, rgba(24,25,27,.9) 0%, rgba(24,25,27,.8) 40%, rgba(24,25,27,.64) 100%),
+    url("/hero-painting.jpg");
+  background-size: auto, auto, auto, cover;
+  background-position: 0 0, 0 0, 0 0, 70% 40%;
+  pointer-events: none;
+}
+@media (max-width: 560px) { :root { --app-pad-x: 16px; --app-pad-top: 20px; } }
+@media (max-width: 1100px) {
+  /* Stacked: the headline sits over the brightest part, so more shade. */
+  .hero-wrap::before { background-image: var(--speckle), linear-gradient(to bottom, rgba(24,25,27,.82) 0%, rgba(24,25,27,.7) 50%, var(--bg) 100%), url("/hero-painting.jpg"); background-size: auto, auto, cover; background-position: 0 0, 0 0, 70% 40%; }
+}

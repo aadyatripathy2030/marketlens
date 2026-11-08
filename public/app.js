@@ -656,7 +656,7 @@
     $('strat').querySelectorAll('.strat-btn').forEach(x => {
       const on = x.dataset.mode === mode;
       x.classList.toggle('active', on);
-      x.setAttribute('aria-selected', on ? 'true' : 'false');
+      x.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
     const iv = STRATEGY_INTERVAL[strategy];
     if (iv && iv !== interval) {
@@ -1642,7 +1642,7 @@
       <div class="tile"><div class="tile-val ${rsiCls}">${r == null ? '—' : r}</div><div class="tile-lbl">RSI (${d.indicators.rsiPeriod})</div></div>
       <div class="tile"><div class="tile-val">${fmt(d.indicators.maFast)}</div><div class="tile-lbl">${fastLbl}</div></div>
       <div class="tile"><div class="tile-val">${fmt(d.indicators.maSlow)}</div><div class="tile-lbl">${slowLbl}</div></div>
-      <div class="tile"><div class="tile-val ${projCls}">${fmt(proj)}</div><div class="tile-lbl">${d.forecast.length}-bar proj.</div></div>`;
+      <div class="tile"><div class="tile-val ${projCls}">${fmt(proj)}</div><div class="tile-lbl">${(d.forecast || []).length}-bar proj.</div></div>`;
   }
 
   let runSeq = 0;           // guards against a slow request landing after a newer one
@@ -1676,6 +1676,10 @@
     const quiet = !!(opts && opts.quiet);
     symbol = (symbol || $('symbol').value || '').trim().toUpperCase();
     if (!symbol) return;
+    // The server-rendered intro describes the stock the page was opened on;
+    // it goes once another one is analyzed.
+    const ssr = document.getElementById('ssrStock');
+    if (ssr && ssr.dataset.sym !== symbol) { ssr.remove(); const h = $('analyzeH'); if (h) h.textContent = 'Chart analysis'; }
     $('error').classList.add('hidden');
     $('goBtn').disabled = true; $('goBtn').textContent = 'Analyzing…';
     $('chartPanel').classList.add('loading');
@@ -1771,6 +1775,7 @@
       $('note').textContent = d.note || '';
       $('result').classList.remove('hidden');
       resetView(); drawChart(); revealChart(); tiles(d); renderTech(d.tech); renderBands(d.bands); renderLevels(d);
+      announce(`Analysis loaded for ${d.symbol || symbol}.`);
       setAnalysisPending();
       loadAnalysis(d);
       loadFundamentals(d.symbol);
@@ -2659,6 +2664,7 @@
     loadWatchlist();
     // Whatever the wall was standing in front of is now allowed.
     releasePending();
+    resumePlan();
   }
   const codeErr = (m) => { $('authCodeErr').textContent = m; $('authCodeErr').classList.remove('hidden'); };
   $('authCodeForm').addEventListener('submit', async (e) => {
@@ -2814,14 +2820,31 @@
     } catch (e) {}
   }
 
+  let viewShownOnce = false;
   function showView(name, opts) {
     if (!VIEWS.includes(name)) name = 'home';
     if (!opts || !opts.fromUrl) syncUrl(name, !!(opts && opts.replace));
     VIEWS.forEach(v => $('view-' + v).classList.toggle('hidden', v !== name));
     currentView = name;
     document.body.dataset.view = name;
-    document.querySelectorAll('.drawer-link, .nav-link').forEach(l => l.classList.toggle('active', l.dataset.view === name));
+    document.querySelectorAll('.drawer-link, .nav-link').forEach(l => {
+      const on = l.dataset.view === name;
+      l.classList.toggle('active', on);
+      if (on) l.setAttribute('aria-current', 'page'); else l.removeAttribute('aria-current');
+    });
     window.scrollTo(0, 0);
+    // After a click (not the first load), say where the reader has arrived:
+    // the tab title follows the view, and focus moves to its heading so a
+    // screen reader announces it instead of staying silent.
+    if (viewShownOnce) {
+      const h = $('view-' + name).querySelector('h1, h2');
+      if (h) {
+        document.title = (name === 'home' ? 'ChartGauge' : h.textContent.trim() + ' | ChartGauge');
+        h.setAttribute('tabindex', '-1');
+        try { h.focus({ preventScroll: true }); } catch (e) {}
+      }
+    }
+    viewShownOnce = true;
     // The chart panel is a single element shared by the views that show a
     // chart, so it moves to whichever one is on screen. Before the wall check,
     // because the front page draws its chart for everyone.
@@ -3135,7 +3158,7 @@
   }
   $('compareForm').addEventListener('submit', (e) => {
     e.preventDefault();
-    const s = $('compareInput').value.trim().toUpperCase().replace(/[^A-Z0-9.\-]/g, '');
+    const s = $('compareInput').value.trim().toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '');
     $('compareInput').value = '';
     if (s && !compareSymbols.includes(s) && compareSymbols.length < 4) { compareSymbols.push(s); renderCompareChips(); loadCompare(); }
   });
@@ -3266,14 +3289,27 @@
       return `<div class="alert-item ${hit ? 'triggered' : ''}"><span class="alert-sym" data-s="${esc(a.symbol)}">${esc(a.symbol)}</span><span class="alert-cond">${a.direction === 'above' ? 'rises above' : 'falls below'} <b>$${(+a.target).toFixed(2)}</b></span><span class="alert-now">${a.price != null ? 'now $' + (+a.price).toFixed(2) : ''}</span><span class="spacer"></span><span class="alert-status ${hit ? 'hit' : 'active'}">${hit ? '✓ Triggered' : 'Active'}</span><button class="alert-del" data-id="${esc(a.id)}" title="Delete">×</button></div>`;
     }).join('');
     $('alertList').querySelectorAll('.alert-sym').forEach(s => s.addEventListener('click', () => goAnalyze(s.dataset.s)));
-    $('alertList').querySelectorAll('.alert-del').forEach(b => b.addEventListener('click', async () => { await fetch('/api/alerts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'remove', id: b.dataset.id }) }); loadAlerts(); }));
+    $('alertList').querySelectorAll('.alert-del').forEach(b => { b.setAttribute('aria-label', 'Delete alert'); b.addEventListener('click', async () => {
+      try {
+        const r = await fetch('/api/alerts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'remove', id: b.dataset.id }) });
+        $('alMsg').textContent = r.ok ? 'Alert deleted.' : 'Could not delete that alert. Try again.';
+      } catch (err) { $('alMsg').textContent = 'Could not reach the server. Try again.'; }
+      loadAlerts();
+    }); });
   }
   $('alertForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!currentUser) return openAuth('login');
-    const symbol = $('alSymbol').value.trim().toUpperCase().replace(/[^A-Z0-9.\-]/g, ''), direction = $('alDir').value, target = +$('alTarget').value;
-    if (!symbol || !(target > 0)) return;
-    await fetch('/api/alerts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol, direction, target }) });
+    const symbol = $('alSymbol').value.trim().toUpperCase().replace(/[^A-Z0-9.\-\/]/g, ''), direction = $('alDir').value, target = +$('alTarget').value;
+    const say = (m) => { $('alMsg').textContent = m; };
+    if (!symbol) return say('Enter a stock or pair, for example AAPL or BTC/USD.');
+    if (!(target > 0)) return say('Enter a target price above 0.');
+    try {
+      const r = await fetch('/api/alerts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol, direction, target }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) return say(j.message || j.error || 'Could not add that alert. Try again.');
+      say(`Alert set: ${symbol} ${direction === 'above' ? 'rises above' : 'falls below'} $${target.toFixed(2)}.`);
+    } catch (err) { return say('Could not reach the server. Check your connection and try again.'); }
     $('alSymbol').value = ''; $('alTarget').value = '';
     loadAlerts();
   });
@@ -3412,7 +3448,16 @@
     if ($('manageBtn')) $('manageBtn').addEventListener('click', openPortal);
     // Signed out, the same button opens the sign-in modal rather than checkout.
     $('pricingBody').querySelectorAll('.plan-btn').forEach(b => b.addEventListener('click',
-      () => currentUser ? startCheckout(b.dataset.plan, b) : openAuth('login')));
+      () => { if (currentUser) return startCheckout(b.dataset.plan, b); rememberPlan(b.dataset.plan); openAuth('signup'); }));
+  }
+  // A plan picked while signed out is remembered (half an hour, this browser)
+  // and checkout resumes once the account exists, even after the trip to the
+  // confirmation email.
+  function rememberPlan(plan) { try { localStorage.setItem('chartgauge_pending_plan', JSON.stringify({ plan, at: Date.now() })); } catch (e) {} }
+  function resumePlan() {
+    let p = null;
+    try { p = JSON.parse(localStorage.getItem('chartgauge_pending_plan') || 'null'); localStorage.removeItem('chartgauge_pending_plan'); } catch (e) {}
+    if (p && p.plan && Date.now() - p.at < 30 * 60000 && currentUser) startCheckout(p.plan);
   }
   async function startCheckout(plan, b) {
     if (b) { b.disabled = true; b.textContent = 'Redirecting…'; }
@@ -4044,6 +4089,7 @@
       openAuth('login');
       if (v === 'ok') {
         showConfirmed();
+        window.setTimeout(resumePlan, 1500);
       } else {
         $('authErr').textContent = 'That confirmation link has expired or was already used. Sign in to get a new one.';
         $('authErr').classList.remove('hidden');
@@ -4081,4 +4127,69 @@
     showView('pricing');
   } else if (deep) { goAnalyze(deep.toUpperCase()); }
   else routeFromPath(true);          // the path decides the opening view
+})();
+
+// ---- Keyboard and screen-reader support ----
+// Kept apart from the views so every render path gets it without each one
+// having to remember.
+function announce(msg) {
+  const el = document.getElementById('srAnnounce');
+  if (!el) return;
+  el.textContent = '';
+  setTimeout(() => { el.textContent = msg; }, 50);
+}
+(function a11y() {
+  // Things that open a stock or remove a chip on click, drawn as divs and
+  // spans by several renderers, become focusable buttons for the keyboard:
+  // Enter or Space does what a click does.
+  const CLICKABLE = '.quote-card, .rk, .mover, .alert-sym, #compareResult thead th[data-s], .wl-chip, .wl-chip .x, tr[tabindex="0"]';
+  const mark = (root) => {
+    root.querySelectorAll(CLICKABLE).forEach(el => {
+      if (el.matches('a, button')) return;
+      if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '0');
+      if (!el.hasAttribute('role') && el.tagName !== 'TR') el.setAttribute('role', 'button');
+      if (el.classList.contains('x') && !el.hasAttribute('aria-label')) el.setAttribute('aria-label', 'Remove ' + (el.dataset.x || ''));
+    });
+  };
+  mark(document);
+  new MutationObserver((list) => { for (const m of list) m.addedNodes.forEach(n => { if (n.nodeType === 1) { if (n.matches(CLICKABLE)) mark(n.parentNode || document); mark(n); } }); })
+    .observe(document.body, { childList: true, subtree: true });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const el = e.target;
+    if (!el || !el.matches || !el.matches(CLICKABLE) || el.matches('a, button, input, select, textarea')) return;
+    e.preventDefault();
+    el.click();
+  });
+
+  // Every .modal-overlay is a modal dialog: named by its heading, Escape
+  // closes it (when it has a close button), Tab stays inside it, and focus
+  // goes back where it was when it closes.
+  let lastOutside = null;
+  document.addEventListener('focusin', (e) => { if (!e.target.closest('.modal-overlay')) lastOutside = e.target; });
+  const openModal = () => [...document.querySelectorAll('.modal-overlay')].find(m => !m.classList.contains('hidden'));
+  document.querySelectorAll('.modal-overlay').forEach(m => {
+    const box = m.querySelector('.modal') || m;
+    box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
+    const h = box.querySelector('.modal-title, h2');
+    if (h) { if (!h.id) h.id = m.id + 'Heading'; box.setAttribute('aria-labelledby', h.id); }
+    let wasOpen = !m.classList.contains('hidden');
+    new MutationObserver(() => {
+      const open = !m.classList.contains('hidden');
+      if (wasOpen && !open && lastOutside && document.contains(lastOutside)) { try { lastOutside.focus(); } catch (e) {} }
+      wasOpen = open;
+    }).observe(m, { attributes: true, attributeFilter: ['class'] });
+  });
+  document.addEventListener('keydown', (e) => {
+    const m = openModal(); if (!m) return;
+    if (e.key === 'Escape') { const x = m.querySelector('.modal-x'); if (x) { e.preventDefault(); x.click(); } return; }
+    if (e.key !== 'Tab') return;
+    const f = [...m.querySelectorAll('a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+      .filter(x => !x.disabled && x.offsetParent !== null);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (!m.contains(document.activeElement)) { e.preventDefault(); first.focus(); }
+    else if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
 })();

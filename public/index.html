@@ -14,7 +14,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="ChartGauge" />
-<meta name="theme-color" content="#0e1014" />
+<meta name="theme-color" content="#1c1d1f" />
 <meta name="color-scheme" content="dark" />
 <!--SEO-->
 <!--GA-->
@@ -23,12 +23,13 @@
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
+<div class="sr-only" id="srAnnounce" role="status" aria-live="polite"></div>
 
 <header class="topbar">
   <button type="button" class="nav-toggle" id="navToggle" aria-label="Open the menu" aria-expanded="false" aria-controls="drawer">
     <span></span><span></span><span></span>
   </button>
-  <a class="brand" href="/" data-view="home"><svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><rect width="64" height="64" rx="14" fill="#0e1014"/><rect x="19.75" y="15" width="4.5" height="34" rx="1" fill="#ff5f56"/><rect x="14" y="23" width="16" height="18" rx="2" fill="#ff5f56"/><rect x="39.75" y="11" width="4.5" height="40" rx="1" fill="#3ddc84"/><rect x="34" y="17" width="16" height="28" rx="2" fill="#3ddc84"/></svg>ChartGauge</a>
+  <a class="brand" href="/" data-view="home"><svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><rect width="64" height="64" rx="14" fill="#1c1d1f"/><rect x="19.75" y="15" width="4.5" height="34" rx="1" fill="#ff5f56"/><rect x="14" y="23" width="16" height="18" rx="2" fill="#ff5f56"/><rect x="39.75" y="11" width="4.5" height="40" rx="1" fill="#3ddc84"/><rect x="34" y="17" width="16" height="28" rx="2" fill="#3ddc84"/></svg>ChartGauge</a>
   <!-- Four doors on wide screens and More for the rest; narrow screens get
        the menu button instead. -->
   <nav class="nav" id="topNav" aria-label="Main">
@@ -207,12 +208,12 @@
     <div class="watchlist hidden" id="watchStrip"></div>
 
     <div class="control-row">
-      <div class="strat" id="strat" role="tablist" aria-label="Strategy">
-        <button class="strat-btn active" data-mode="daytrade" role="tab" aria-selected="true">Day trading<small>Short-term momentum</small></button>
-        <button class="strat-btn" data-mode="longterm" role="tab" aria-selected="false">Long-term<small>50 / 200-day trend</small></button>
+      <div class="strat" id="strat" role="group" aria-label="Strategy">
+        <button type="button" class="strat-btn active" data-mode="daytrade" aria-pressed="true">Day trading<small>Short-term momentum</small></button>
+        <button type="button" class="strat-btn" data-mode="longterm" aria-pressed="false">Long-term<small>50 / 200-day trend</small></button>
       </div>
     </div>
-    <div class="error hidden" id="error"></div>
+    <div class="error hidden" id="error" role="alert"></div>
   </div>
 
   <section class="result hidden" id="result">
@@ -489,6 +490,7 @@
       <input id="alTarget" class="input sc-in" placeholder="Target $" inputmode="decimal" />
       <button class="btn btn-primary" type="submit">Add alert</button>
     </form>
+    <p class="auth-status" id="alMsg" role="status"></p>
     <div id="alertList"></div>
   </section>
 
@@ -660,7 +662,7 @@
               <button type="button" class="btn btn-buy" id="pBuy">Buy</button>
               <button type="button" class="btn btn-sell" id="pSell">Sell</button>
             </div>
-            <div id="pMsg" class="paper-msg" hidden></div>
+            <div id="pMsg" class="paper-msg" role="status" hidden></div>
           </div>
 
           <div class="card">
@@ -769,7 +771,7 @@
       <input type="password" id="authPass" class="input" placeholder="Password (8+ characters)" aria-label="Password" autocomplete="current-password" />
       <!-- Sign-up only. Accounts are for adults (Terms), so it is asked, not assumed. -->
       <label class="auth-age hidden" id="authAgeRow"><input type="checkbox" id="authAge" /> I am 18 or older</label>
-      <div class="auth-err hidden" id="authErr"></div>
+      <div class="auth-err hidden" id="authErr" role="alert"></div>
       <button type="submit" class="btn btn-primary btn-block" id="authSubmit">Sign in</button>
       <button type="button" class="btn btn-google btn-block hidden" id="authGoogle">
         <svg viewBox="0 0 18 18" width="17" height="17" aria-hidden="true"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58z"/></svg>
@@ -789,7 +791,7 @@
         <button type="button" class="link-btn" id="authResend">Didn’t get it? Send the link again</button>
         <button type="button" class="link-btn quiet" id="authBack">Use a different email</button>
       </div>
-      <p class="auth-status" id="authPendingStatus"></p>
+      <p class="auth-status" id="authPendingStatus" role="status"></p>
     </div>
     <!-- The second step of every sign-in: the code that was emailed. -->
     <div class="auth-face hidden" id="authCode">
@@ -799,7 +801,7 @@
       <p class="auth-face-email" id="authCodeEmail"></p>
       <form id="authCodeForm">
         <input type="text" id="authCodeInput" class="input auth-code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="······" aria-label="Sign-in code" />
-        <div class="auth-err hidden" id="authCodeErr"></div>
+        <div class="auth-err hidden" id="authCodeErr" role="alert"></div>
         <button type="submit" class="btn btn-primary btn-block" id="authCodeSubmit">Sign in</button>
       </form>
       <p class="auth-face-p small">The code expires in 10 minutes.</p>
@@ -807,7 +809,7 @@
         <button type="button" class="link-btn" id="authCodeResend">Didn’t get it? Send a new code</button>
         <button type="button" class="link-btn quiet" id="authCodeBack">Start over</button>
       </div>
-      <p class="auth-status" id="authCodeStatus"></p>
+      <p class="auth-status" id="authCodeStatus" role="status"></p>
     </div>
     <p class="auth-toggle" id="authToggleRow"><span id="authToggleText">New to ChartGauge?</span> <button type="button" class="link-btn" id="authToggle">Create an account</button></p>
     <p class="auth-note">By continuing you agree to the <a href="/terms" target="_blank" rel="noopener">Terms of Service</a> and the <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>. ChartGauge is a trading tool, not an adviser: trading can lose money, and nothing on it is financial advice.<br /><br />Never enter a real trading or bank password here. This is a demo; passwords are hashed, never stored in plain text.</p>

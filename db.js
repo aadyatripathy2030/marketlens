@@ -27,6 +27,10 @@ async function init() {
     try {
       const { Pool } = require('pg');
       pool = new Pool({ connectionString: DATABASE_URL, ssl: sslFor(DATABASE_URL) });
+      // An idle client dropped by the server emits 'error' on the pool; with
+      // no listener that is an uncaught exception and the whole site restarts.
+      // The pool replaces the client by itself, so it is only recorded.
+      pool.on('error', (e) => { lastErr = e.message; console.error('postgres pool error:', e.message); });
       await pool.query(`CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, pw TEXT NOT NULL,
         plan TEXT NOT NULL DEFAULT 'free', created BIGINT NOT NULL)`);
@@ -63,6 +67,9 @@ async function init() {
         uid TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         method TEXT NOT NULL, holder TEXT NOT NULL, last4 TEXT NOT NULL,
         enc TEXT NOT NULL, updated BIGINT NOT NULL)`);
+      // When saved details were last REPLACED (null if only ever entered once),
+      // so a payment to freshly changed details can be held.
+      await pool.query('ALTER TABLE payouts ADD COLUMN IF NOT EXISTS changed BIGINT');
       // What each affiliate has earned and been paid, one row per event, in
       // cents. kind is commission (a referred account paid), refund (some of
       // that went back) or payout (the operator sent money; negative). The
@@ -147,6 +154,17 @@ async function init() {
         out_price DOUBLE PRECISION, out_day TEXT, ret DOUBLE PRECISION, graded BIGINT)`);
       await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS predictions_sym_day ON predictions (symbol, day)');
       await pool.query('CREATE INDEX IF NOT EXISTS predictions_ungraded ON predictions (symbol) WHERE graded IS NULL');
+      // Lookups the webhook, the affiliate pages and the purge make by
+      // something other than the primary key.
+      for (const ix of [
+        'CREATE INDEX IF NOT EXISTS users_stripe_customer_idx ON users (stripe_customer) WHERE stripe_customer IS NOT NULL',
+        'CREATE INDEX IF NOT EXISTS users_stripe_sub_idx ON users (stripe_sub) WHERE stripe_sub IS NOT NULL',
+        'CREATE INDEX IF NOT EXISTS users_referred_by_idx ON users (referred_by) WHERE referred_by IS NOT NULL',
+        'CREATE INDEX IF NOT EXISTS sessions_uid_idx ON sessions (uid)',
+        'CREATE INDEX IF NOT EXISTS sessions_expires_idx ON sessions (expires)',
+        'CREATE INDEX IF NOT EXISTS email_tokens_uid_idx ON email_tokens (uid)',
+        'CREATE INDEX IF NOT EXISTS affiliate_ledger_group_idx ON affiliate_ledger (group_ref, kind)',
+      ]) await pool.query(ix);
       // The record stores the reading's display name, and those names changed
       // from bullish/bearish to buy/sell. The bands and thresholds did not move
       // -- "Very bullish" and "Strong buy" are the same 72-and-above band -- so
@@ -181,20 +199,32 @@ const hasUrl = () => !!DATABASE_URL;
 const lastError = () => lastErr;
 
 // ---- password hashing (built-in scrypt, no deps) ----
-function hashPw(pw) {
+// Async scrypt runs on libuv's thread pool; scryptSync held the one event
+// loop for ~30ms per sign-in, pausing every other request and live stream.
+// Same parameters and stored format as before, so existing hashes still match.
+const scryptAsync = (pw, salt) => new Promise((resolve, reject) =>
+  crypto.scrypt(pw, salt, 64, (e, k) => e ? reject(e) : resolve(k)));
+function hashPwSync(pw) {
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.scryptSync(pw, salt, 64).toString('hex');
-  return salt + ':' + hash;
+  return salt + ':' + crypto.scryptSync(pw, salt, 64).toString('hex');
 }
-function verifyPw(pw, stored) {
+async function hashPw(pw) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  return salt + ':' + (await scryptAsync(String(pw), salt)).toString('hex');
+}
+async function verifyPw(pw, stored) {
   // A Google-only account has no password hash. Nothing can match it, so a
   // password attempt on such an account must fail rather than throw.
   const [salt, hash] = String(stored || '').split(':');
   if (!salt || !hash) return false;
-  const h = crypto.scryptSync(pw, salt, 64).toString('hex');
+  const h = (await scryptAsync(String(pw), salt)).toString('hex');
   const a = Buffer.from(h), b = Buffer.from(hash);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
+
+// Hashed once at load, so a login for an address with no account can spend
+// the same scrypt time as a real one and not reveal which addresses exist.
+const DUMMY_PW = hashPwSync(crypto.randomBytes(12).toString('hex'));
 
 const pub = (u) => u && { id: u.id, email: u.email, plan: u.plan, verified: u.email_verified !== false };
 
@@ -324,9 +354,22 @@ async function getUserByGoogleId(gid) {
 
 // Google has confirmed the address by the time this runs, so a password
 // account that was never confirmed becomes confirmed here.
+// A password set on an account that was never confirmed was chosen by
+// whoever typed the address, not necessarily its owner, so it is cleared
+// here. Returns true when the account was unconfirmed until now, so the
+// caller can end that account's sessions too.
 async function linkGoogleId(uid, gid) {
-  if (mode === 'postgres') { await pool.query('UPDATE users SET google_id=$1, email_verified=TRUE WHERE id=$2', [String(gid), uid]); return; }
-  const u = mem.users.get(uid); if (u) { u.google_id = String(gid); u.email_verified = true; }
+  if (mode === 'postgres') {
+    const r = await pool.query(`UPDATE users u SET google_id=$1, email_verified=TRUE,
+        pw = CASE WHEN prev.email_verified THEN u.pw ELSE '' END
+      FROM users prev WHERE u.id=$2 AND prev.id=$2 RETURNING prev.email_verified AS was`, [String(gid), uid]);
+    return !!(r.rows[0] && r.rows[0].was === false);
+  }
+  const u = mem.users.get(uid); if (!u) return false;
+  const was = u.email_verified === false;
+  u.google_id = String(gid); u.email_verified = true;
+  if (was) u.pw = '';
+  return was;
 }
 
 // Created with no password: the only way in is Google until one is set.
@@ -353,7 +396,7 @@ async function createGoogleUser(email, gid) {
 async function createUser(email, pw, verified) {
   email = String(email).toLowerCase().trim();
   const id = crypto.randomUUID();
-  const rec = { id, email, pw: hashPw(pw), plan: 'free', created: Date.now(), email_verified: !!verified };
+  const rec = { id, email, pw: await hashPw(pw), plan: 'free', created: Date.now(), email_verified: !!verified };
   rec.adult_at = rec.created;   // sign-up refuses to get here without the 18+ box
   if (mode === 'postgres') {
     try {
@@ -435,7 +478,7 @@ async function markVerified(uid) {
 // new password replaces the old, so whoever can open the inbox ends up with
 // the account rather than whoever typed the address first.
 async function setPassword(uid, pw) {
-  const hashed = hashPw(pw);
+  const hashed = await hashPw(pw);
   if (mode === 'postgres') { await pool.query('UPDATE users SET pw=$1 WHERE id=$2', [hashed, uid]); return; }
   const u = mem.users.get(uid); if (u) u.pw = hashed;
 }
@@ -468,37 +511,79 @@ async function deleteLoginCode(id) {
 }
 // { uid } when the code is right; { left } with the guesses remaining when it
 // is wrong (0 means the attempt is over); null when there is no live attempt.
+//
+// The guess is counted BEFORE it is compared, in one atomic step. Reading the
+// count and writing it back separately let fifty guesses sent at once all see
+// "0 tries used", which made the five-try limit meaningless.
 async function checkLoginCode(id, code) {
-  const rec = await getLoginCode(id);
-  if (!rec) return null;
-  if (rec.hash === tokenHash(id + ':' + code)) { await deleteLoginCode(id); return { uid: rec.uid }; }
-  const attempts = Number(rec.attempts) + 1;
+  if (!id) return null;
+  let rec;
+  if (mode === 'postgres') {
+    const r = await pool.query('UPDATE login_codes SET attempts = attempts + 1 WHERE id=$1 AND expires >= $2 RETURNING uid, hash, attempts',
+      [id, Date.now()]);
+    rec = r.rows[0];
+  } else {
+    rec = mem.codes.get(id);
+    if (rec && rec.expires >= Date.now()) rec.attempts = Number(rec.attempts) + 1; else rec = null;
+  }
+  if (!rec) { await deleteLoginCode(id).catch(() => {}); return null; }
+  const attempts = Number(rec.attempts);
+  if (attempts > CODE_MAX_ATTEMPTS) { await deleteLoginCode(id); return { left: 0 }; }
+  if (rec.hash === tokenHash(id + ':' + code)) {
+    // Single use: only the request that actually removes the row wins.
+    if (mode === 'postgres') {
+      const d = await pool.query('DELETE FROM login_codes WHERE id=$1 RETURNING id', [id]);
+      if (!d.rowCount) return null;
+    } else if (!mem.codes.delete(id)) return null;
+    return { uid: rec.uid };
+  }
   if (attempts >= CODE_MAX_ATTEMPTS) { await deleteLoginCode(id); return { left: 0 }; }
-  if (mode === 'postgres') await pool.query('UPDATE login_codes SET attempts=$1 WHERE id=$2', [attempts, id]);
-  else rec.attempts = attempts;
   return { left: CODE_MAX_ATTEMPTS - attempts };
 }
 
 // ---- sessions ----
+// The browser holds the token; the table holds only 'h:' + its SHA-256, so a
+// leaked copy of the table cannot be replayed as cookies. Rows written before
+// this change hold the raw token; they still work and are rewritten to the
+// hashed form the first time they are used. A cookie must be exactly 64 hex
+// characters, so a stored 'h:...' value can never be presented as a token.
+const SESSION_RE = /^[0-9a-f]{64}$/;
+const sessKey = (token) => 'h:' + tokenHash(token);
 async function createSession(uid) {
   const token = crypto.randomBytes(32).toString('hex');
   const expires = Date.now() + SESSION_TTL;
-  if (mode === 'postgres') await pool.query('INSERT INTO sessions (token, uid, expires) VALUES ($1,$2,$3)', [token, uid, expires]);
-  else mem.sessions.set(token, { uid, expires });
+  if (mode === 'postgres') await pool.query('INSERT INTO sessions (token, uid, expires) VALUES ($1,$2,$3)', [sessKey(token), uid, expires]);
+  else mem.sessions.set(sessKey(token), { uid, expires });
   return token;
 }
 async function getSessionUser(token) {
-  if (!token) return null;
+  if (!token || !SESSION_RE.test(token)) return null;
+  const key = sessKey(token);
   let s;
-  if (mode === 'postgres') { const r = await pool.query('SELECT * FROM sessions WHERE token=$1', [token]); s = r.rows[0]; }
-  else s = mem.sessions.get(token);
+  if (mode === 'postgres') {
+    const r = await pool.query('SELECT * FROM sessions WHERE token=$1 OR token=$2 LIMIT 1', [key, token]);
+    s = r.rows[0];
+    if (s && s.token === token) await pool.query('UPDATE sessions SET token=$1 WHERE token=$2', [key, token]).catch(() => {});
+  } else {
+    s = mem.sessions.get(key) || mem.sessions.get(token);
+  }
   if (!s || s.expires < Date.now()) { if (s) await deleteSession(token); return null; }
   return pub(await getUserById(s.uid));
 }
 async function deleteSession(token) {
-  if (!token) return;
-  if (mode === 'postgres') await pool.query('DELETE FROM sessions WHERE token=$1', [token]);
-  else mem.sessions.delete(token);
+  if (!token || !SESSION_RE.test(token)) return;
+  if (mode === 'postgres') await pool.query('DELETE FROM sessions WHERE token=$1 OR token=$2', [sessKey(token), token]);
+  else { mem.sessions.delete(sessKey(token)); mem.sessions.delete(token); }
+}
+// Every session the account has, except (optionally) the one making the
+// request: used when a password changes hands or an account is re-claimed.
+async function deleteUserSessions(uid, keepToken) {
+  const keep = keepToken && SESSION_RE.test(keepToken) ? [sessKey(keepToken), keepToken] : ['', ''];
+  if (mode === 'postgres') {
+    await pool.query('DELETE FROM sessions WHERE uid=$1 AND token <> $2 AND token <> $3', [uid, keep[0], keep[1]]);
+    return;
+  }
+  for (const [t, s] of mem.sessions) if (s && s.uid === uid && !keep.includes(t)) mem.sessions.delete(t);
 }
 
 // Expired sessions were only ever removed when someone presented the dead
@@ -672,10 +757,11 @@ async function savePayout(uid, p) {
   const rec = { uid, method: p.method, holder: p.holder, last4: p.last4, enc: p.enc, updated: Date.now() };
   if (mode === 'postgres') {
     await pool.query(`INSERT INTO payouts (uid, method, holder, last4, enc, updated) VALUES ($1,$2,$3,$4,$5,$6)
-      ON CONFLICT (uid) DO UPDATE SET method=EXCLUDED.method, holder=EXCLUDED.holder, last4=EXCLUDED.last4, enc=EXCLUDED.enc, updated=EXCLUDED.updated`,
+      ON CONFLICT (uid) DO UPDATE SET method=EXCLUDED.method, holder=EXCLUDED.holder, last4=EXCLUDED.last4, enc=EXCLUDED.enc, updated=EXCLUDED.updated, changed=EXCLUDED.updated`,
       [uid, rec.method, rec.holder, rec.last4, rec.enc, rec.updated]);
     return;
   }
+  if (mem.payouts.has(uid)) rec.changed = rec.updated;
   mem.payouts.set(uid, rec);
 }
 // ---- Stripe Connect ----
@@ -799,6 +885,17 @@ async function setPro(uid, customer, sub) {
   if (mode === 'postgres') await pool.query("UPDATE users SET plan='pro', stripe_customer=$2, stripe_sub=$3 WHERE id=$1", [uid, customer || null, sub || null]);
   else { const u = mem.users.get(uid); if (u) { u.plan = 'pro'; u.stripe_customer = customer; u.stripe_sub = sub; } }
 }
+// The Stripe customer is made before checkout, so every checkout for one
+// account uses the same customer and a second subscription can be seen.
+async function setCustomer(uid, customer) {
+  if (mode === 'postgres') { await pool.query('UPDATE users SET stripe_customer=$2 WHERE id=$1', [uid, customer]); return; }
+  const u = mem.users.get(uid); if (u) u.stripe_customer = customer;
+}
+// Every account tied to a Stripe subscription, for the daily plan check.
+async function listSubscribers() {
+  if (mode === 'postgres') { const r = await pool.query("SELECT id, email, plan, stripe_customer, stripe_sub FROM users WHERE stripe_sub IS NOT NULL"); return r.rows; }
+  return [...mem.users.values()].filter(u => u.stripe_sub);
+}
 async function setFree(uid) {
   if (mode === 'postgres') await pool.query("UPDATE users SET plan='free' WHERE id=$1", [uid]);
   else { const u = mem.users.get(uid); if (u) u.plan = 'free'; }
@@ -908,6 +1005,15 @@ async function gradePrediction(id, outPrice, outDay, ret) {
 // taken together — the return you would have had without consulting the score
 // at all — so the score is measured against doing nothing, not against a
 // benchmark chosen to flatter it.
+// The most recent reading recorded for a symbol, for its public page: real
+// figures already written down, so serving the page costs no data credits.
+async function latestPrediction(symbol) {
+  if (mode === 'postgres') {
+    const r = await pool.query('SELECT symbol, day, score, label, price FROM predictions WHERE symbol=$1 ORDER BY day DESC LIMIT 1', [symbol]);
+    return r.rows[0] || null;
+  }
+  return null;
+}
 async function accuracyStats() {
   let rows, oldestPending = null;
   if (mode === 'postgres') {
@@ -946,12 +1052,12 @@ async function accuracyStats() {
 
 module.exports = {
   deleteUser,
-  recordPrediction, ungradedFor, gradePrediction, accuracyStats,
+  recordPrediction, ungradedFor, gradePrediction, accuracyStats, latestPrediction,
   bumpUsage, peekUsage,
   getUserByGoogleId, linkGoogleId, createGoogleUser,
   init, storeMode, hasUrl, lastError, verifyPw,
   createUser, getUserByEmail, getUserById,
-  createSession, getSessionUser, deleteSession, purgeExpiredSessions,
+  createSession, getSessionUser, deleteSession, deleteUserSessions, purgeExpiredSessions, DUMMY_PW,
   createVerifyToken, consumeVerifyToken, peekToken, markVerified, setPassword,
   makeAffiliate, dropAffiliate, getUserByAffiliateCode, setReferrer, countReferrals,
   affiliateInfo, listAffiliates, getPayout, savePayout, payoutSummary,
@@ -964,5 +1070,5 @@ module.exports = {
   listWatch, listWatchFull, addWatch, removeWatch, setWatchLevels,
   listAlerts, addAlert, removeAlert, markTriggered,
   listUsers, counts,
-  setPro, setFree, findByStripeSub,
+  setPro, setFree, findByStripeSub, setCustomer, listSubscribers,
 };

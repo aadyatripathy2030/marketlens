@@ -5,7 +5,8 @@
 // data to, and what a Pro subscription does and does not include. They are an
 // accurate account of the software, not legal advice.
 
-const CONTACT_EMAIL = (process.env.CONTACT_EMAIL || 'chartgauge@gmail.com').trim();
+const CFG = require('./config');
+const CONTACT_EMAIL = CFG.CONTACT_EMAIL;
 // Whether a confirmation link is sent on sign-up, so these pages describe
 // the email provider only when one is actually in use.
 const MAIL_ON = !!(process.env.RESEND_API_KEY || '').replace(/\s/g, '');
@@ -22,7 +23,7 @@ const UPDATED = 'November 2026';
 
 // Kept in step with FREE_UNTIL in server.js — the terms have to describe the
 // access people actually have, not the split that starts later.
-const FREE_UNTIL_MS = Date.parse(process.env.FREE_UNTIL || '2026-10-18T00:00:00Z');
+const FREE_UNTIL_MS = CFG.FREE_UNTIL;
 // The last free day, and the day charging begins — both in UTC, both shown, so
 // the terms cannot be read as ending a day earlier than the site advertises.
 const fmtUTC = (ms) => new Date(ms).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -32,7 +33,7 @@ const inLaunch = () => Number.isFinite(FREE_UNTIL_MS) && Date.now() < FREE_UNTIL
 // Kept in step with TRIAL_DAYS in server.js, read from the same variable, so
 // the terms describe the trial checkout actually gives rather than a number
 // typed here once and left behind.
-const TRIAL_DAYS = Number(process.env.TRIAL_DAYS || 14);
+const TRIAL_DAYS = CFG.TRIAL_DAYS;
 const launchPara = () => inLaunch()
   ? `<strong>Launch period:</strong> through the end of ${FREE_UNTIL_TEXT} (UTC) every feature below, including those listed as Pro, is available to every account at no charge. No subscription is needed to use anything during this period, and the daily limits described below are not applied. From ${CHARGE_FROM_TEXT} the split described here takes effect. If you subscribe before that date you are supporting the project early and will not receive anything a free account does not already have until the split begins.`
   : '';
@@ -203,9 +204,9 @@ const buildContact = () => h('Contact', [
 // ------------------------------------------------------ affiliate terms
 // Read from the same variables the ledger uses, so the page states the rate
 // that is actually being credited.
-const AFF_SHARE = String(process.env.AFFILIATE_SHARE || '25').replace(/[^\d.]/g, '') || '25';
-const AFF_MONTHS = Number(process.env.AFFILIATE_MONTHS || 12);
-const AFF_MIN = Number(process.env.AFFILIATE_MIN_PAYOUT || 25);
+const AFF_SHARE = CFG.AFFILIATE_SHARE;
+const AFF_MONTHS = CFG.AFFILIATE_MONTHS;
+const AFF_MIN = CFG.AFFILIATE_MIN_PAYOUT;
 const buildAffiliateTerms = () => h('Affiliate Terms', [
   s('Who this is for',
     `The ${SITE} affiliate programme is by invitation. An account becomes an affiliate when ${SITE} marks it as one, at which point it receives a referral link of its own and the terms below apply. Accepting the link, sharing it, or entering payout details counts as agreeing to them.`),
@@ -249,7 +250,7 @@ const buildAccessibility = () => h('Accessibility Statement', [
     ul([
       'Every page can be used with a keyboard alone. The first link on each page skips to the content, and the focused control is always visibly outlined.',
       'Pages use landmarks (header, navigation, main, footer), one top-level heading each, headings in order, and a declared language.',
-      'Text and controls meet the 4.5:1 and 3:1 contrast ratios in the default dark theme, and the site honours the system light and dark setting.',
+      'Text and controls are set to meet the 4.5:1 and 3:1 contrast ratios. The site has one dark theme.',
       'Form fields have labels, and errors are written out next to the field rather than shown by color alone.',
       'Animation stops when the operating system asks for reduced motion. Nothing moves, flashes or plays sound on its own.',
       'The site works at a 320 pixel width, zooms to 400% without horizontal scrolling, and its buttons and links are at least 24 by 24 pixels.',
@@ -258,6 +259,7 @@ const buildAccessibility = () => h('Accessibility Statement', [
 
   s('Known gaps',
     ul([
+      'There is no light theme yet, so the system light setting is not followed.',
       'The candlestick chart is drawn on a canvas, which a screen reader cannot read. The numbers it shows are also presented as text: the last price, the change, every indicator value, the score and the stop-loss and take-profit levels. A per-bar text table of the chart is not yet offered.',
       'Up and down candles are told apart by color. The colors can be changed in Settings, and every figure the colors summarize is also given as a signed number, but the chart itself still relies on color.',
       'The chart-image reading accepts a screenshot and describes it in text, which is the accessible direction; there is no equivalent in the other direction yet.',

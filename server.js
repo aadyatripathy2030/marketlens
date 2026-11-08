@@ -44,13 +44,13 @@ if (!mailEnabled()) console.log('email: off (set RESEND_API_KEY to require a con
 const PAYOUT_KEY = (process.env.PAYOUT_KEY || '').trim();
 const payoutsOn = () => PAYOUT_KEY.length >= 16;
 if (!payoutsOn()) console.log('affiliates: PAYOUT_KEY is not set, so payout details cannot be saved yet');
-const AFFILIATE_SHARE = String(process.env.AFFILIATE_SHARE || '25').replace(/[^\d.]/g, '');
-const AFF_SHARE = Number(AFFILIATE_SHARE) || 0;                       // percent of each payment
-const AFFILIATE_MONTHS = Number(process.env.AFFILIATE_MONTHS || 12);   // commission window from the account's first payment
-const AFFILIATE_MIN_PAYOUT = Number(process.env.AFFILIATE_MIN_PAYOUT || 25); // dollars; balances under this roll over
+const CFG = require('./config');
+const { AFFILIATE_SHARE, AFF_SHARE } = CFG;                         // percent of each payment
+const AFFILIATE_MONTHS = CFG.AFFILIATE_MONTHS;   // commission window from the account's first payment
+const AFFILIATE_MIN_PAYOUT = CFG.AFFILIATE_MIN_PAYOUT; // dollars; balances under this roll over
 const AFF_WINDOW_MS = AFFILIATE_MONTHS * 30.4375 * 86400000;
 const money = (cents, cur) => (!cur || cur === 'usd' ? '$' : cur.toUpperCase() + ' ') + (Math.abs(cents) / 100).toFixed(2);
-const CONTACT_EMAIL = (process.env.CONTACT_EMAIL || 'chartgauge@gmail.com').trim();
+const CONTACT_EMAIL = CFG.CONTACT_EMAIL;
 // The monthly payout run: on this day of the month (UTC) everyone at or over
 // the minimum who finished Stripe's setup is paid through Stripe, and a
 // summary goes to the report address. AFFILIATE_AUTOPAY=off leaves it to the
@@ -98,16 +98,23 @@ const BILLING_ON = !!(STRIPE_SECRET_KEY && (STRIPE_PRICES.weekly || STRIPE_PRICE
 // Free trial on a first subscription, in days. 0 turns it off. Checkout still
 // collects a card, so it charges by itself when the trial runs out and the
 // webhook already grants access on the completed session, trial or not.
-const TRIAL_DAYS = Number(process.env.TRIAL_DAYS || 14);
+const TRIAL_DAYS = CFG.TRIAL_DAYS;
+const SITE_ORIGIN = String(process.env.SITE_ORIGIN || (process.env.RENDER ? 'https://chartgauge.com' : '')).replace(/\/+$/, '');
+const SITE_HOST = SITE_ORIGIN ? SITE_ORIGIN.replace(/^https?:\/\//, '') : '';
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'atriuminstitutereal@gmail.com,aadyatripathy3@gmail.com,chartgauge@gmail.com').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
-const isAdmin = (u) => !!(u && ADMIN_EMAILS.includes(String(u.email || '').toLowerCase()));
+// An address on a list proves nothing until its owner has shown they can open
+// that inbox, so an account whose email is still unconfirmed gets neither
+// admin nor complimentary Pro. Session users carry `verified`, rows from the
+// users table carry `email_verified`; either being false is enough to refuse.
+const emailConfirmed = (u) => !!u && u.email_verified !== false && u.verified !== false;
+const isAdmin = (u) => !!(u && emailConfirmed(u) && ADMIN_EMAILS.includes(String(u.email || '').toLowerCase()));
 // Accounts that get Pro without paying — the operator's own, and anyone else
 // listed. Held here rather than written into the users table so it survives a
 // database reset and cannot be lost by a Stripe webhook flipping the row back.
 const COMP_PRO_EMAILS = (process.env.PRO_EMAILS || 'aadyatripathy3@gmail.com,cjcthegolfer2@icloud.com,chartgauge@gmail.com').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
 // One answer to "is this account Pro", used everywhere a plan is checked, so a
 // complimentary account cannot be Pro in one place and free in another.
-const isPro = (u) => !!(u && (u.plan === 'pro' || isAdmin(u) || COMP_PRO_EMAILS.includes(String(u.email || '').toLowerCase())));
+const isPro = (u) => !!(u && (u.plan === 'pro' || isAdmin(u) || (emailConfirmed(u) && COMP_PRO_EMAILS.includes(String(u.email || '').toLowerCase()))));
 
 // Launch period: every Pro feature is open to every account until this moment,
 // after which the normal split applies with no deploy needed. Set FREE_UNTIL
@@ -115,7 +122,7 @@ const isPro = (u) => !!(u && (u.plan === 'pro' || isAdmin(u) || COMP_PRO_EMAILS.
 // End of 17 October UTC, so 17 October is itself a free day everywhere rather
 // than ending at UTC midnight — which is the afternoon of the 16th in the US
 // and would cut people off a day before the date they were told.
-const FREE_UNTIL = Date.parse(process.env.FREE_UNTIL || '2026-10-18T00:00:00Z');
+const FREE_UNTIL = CFG.FREE_UNTIL;
 const inLaunchPeriod = () => Number.isFinite(FREE_UNTIL) && Date.now() < FREE_UNTIL;
 
 // Entitlement and access are deliberately different questions. isPro is what
@@ -144,7 +151,12 @@ const KNOWN_API = new Set([
   '/api/risk', '/api/sentiment',
 ]);
 const errorLog = [];                   // recent server errors (ring buffer)
-function logError(e) { errorLog.push({ t: Date.now(), msg: String((e && e.message) || e).slice(0, 200) }); if (errorLog.length > 60) errorLog.shift(); }
+// Kept in memory for the admin page AND printed in full, so a failed payout,
+// ledger sync or webhook shows up in Render's logs with its stack.
+function logError(e) {
+  errorLog.push({ t: Date.now(), msg: String((e && e.message) || e).slice(0, 200) }); if (errorLog.length > 60) errorLog.shift();
+  console.error('[error]', e && e.stack ? e.stack : e);
+}
 // Candle intervals, from 1-minute up to monthly. outputsize = how many bars to
 // pull (capped at Twelve Data's 5000 free-tier max); the daily/weekly/monthly
 // intervals reach back the stock's whole life. INTERVAL_MS spaces demo bars.
@@ -158,7 +170,7 @@ function stratLabel(strategy, direction) {
 
 const MIME = { '.woff2': 'font/woff2', '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
+  '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json; charset=utf-8' };
 
 function json(res, code, obj) { res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify(obj)); }
@@ -198,6 +210,11 @@ function httpsJson(options, body) {
 // spends several, so identical lookups inside a short window are collapsed.
 // In-flight requests are shared too: a burst of identical requests becomes
 // one upstream call, not one per caller. Failures are never cached.
+// Every cache keyed by something a visitor chooses (a symbol, a query) is
+// capped by count, oldest first, so a loop over made-up symbols cannot grow
+// one past what the 512 MB instance holds.
+function capMap(map, max) { while (map.size > max) map.delete(map.keys().next().value); }
+const DATA_CACHE_MAX = Number(process.env.DATA_CACHE_MAX || 600);
 const dataCache = new Map();   // key -> { at, value }
 const inFlight = new Map();    // key -> Promise
 function cached(key, ttlMs, producer) {
@@ -206,7 +223,7 @@ function cached(key, ttlMs, producer) {
   const pending = inFlight.get(key);
   if (pending) return pending;
   const p = Promise.resolve().then(producer)
-    .then(v => { dataCache.set(key, { at: Date.now(), value: v }); return v; })
+    .then(v => { dataCache.delete(key); dataCache.set(key, { at: Date.now(), value: v }); capMap(dataCache, DATA_CACHE_MAX); return v; })
     .finally(() => inFlight.delete(key));
   inFlight.set(key, p);
   return p;
@@ -380,6 +397,7 @@ function markUnknown(sym) {
   if (unknownSymbols.size > 500) {
     const now = Date.now();
     for (const [k, t] of unknownSymbols) if (t < now) unknownSymbols.delete(k);
+    capMap(unknownSymbols, 2000);
   }
 }
 function knownUnknown(sym) {
@@ -616,6 +634,45 @@ function ruleBasedReport(p) {
   return { summary: ruleBasedSummary(p), bull: bull.slice(0, 4), bear: bear.slice(0, 4), conclusion };
 }
 
+// The analyze endpoints are handed the reading the browser already has. What
+// goes into the prompt is rebuilt here from that, field by field: numbers
+// must be finite numbers, words are cut short and limited to what a reading
+// can contain. Passing the body through as it came let anyone with an account
+// put a megabyte of their own text in front of the model.
+const cleanSymbol = (v) => String(v || '').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
+const num = (v) => (typeof v === 'number' && Number.isFinite(v)) ? v : null;
+const word = (v, n) => typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').slice(0, n || 24) : null;
+function cleanReportInput(b) {
+  if (!b || typeof b !== 'object') return null;
+  const sym = cleanSymbol(b.symbol);
+  if (!sym) return null;
+  const t = b.tech || {}, r = b.rating || {}, sma = t.sma || {}, c = b.call, e = b.edge;
+  return {
+    symbol: sym, latest: num(b.latest), currency: word(b.currency, 5) || 'USD', changePct: num(b.changePct),
+    tech: {
+      price: num(t.price), rsi14: num(t.rsi14), vwap: num(t.vwap), atr: num(t.atr),
+      sma: { 20: num(sma[20]), 50: num(sma[50]), 200: num(sma[200]) },
+      macd: t.macd ? { hist: num(t.macd.hist) } : null,
+      bollinger: t.bollinger ? { pctB: num(t.bollinger.pctB) } : null,
+      volatility: t.volatility && num(t.volatility.annual) != null ? { annual: num(t.volatility.annual) } : null,
+      trend: t.trend ? { strength: num(t.trend.strength), direction: t.trend.direction === 'down' ? 'down' : t.trend.direction === 'up' ? 'up' : 'sideways' } : null,
+      supportResistance: t.supportResistance ? { support: num(t.supportResistance.support), resistance: num(t.supportResistance.resistance) } : null,
+    },
+    rating: {
+      insufficient: !!r.insufficient, groupCount: num(r.groupCount), groupsPossible: num(r.groupsPossible),
+      label: word(r.label, 24), score: num(r.score), agreeing: num(r.agreeing), risk: word(r.risk, 12),
+    },
+    call: c && ['Buy', 'Sell', 'Hold'].includes(c.action) ? { action: c.action, why: word(c.why, 300) || '' } : null,
+    edge: e && num(e.n) != null ? { horizon: num(e.horizon), winRate: num(e.winRate), n: num(e.n), baseWinRate: num(e.baseWinRate) } : null,
+  };
+}
+// Pro lifts the free daily allowance, but not to infinity: each written
+// report and each image read spends real money on the model, so a day has
+// a generous ceiling that no honest use reaches.
+const PRO_AI_DAILY = Number(process.env.PRO_AI_DAILY || 150);
+const PRO_IMAGE_DAILY = Number(process.env.PRO_IMAGE_DAILY || 40);
+const proCapNote = () => `That is today's ${PRO_AI_DAILY} written reports, the daily ceiling on Pro. This one is the rule-based read. The count resets tomorrow.`;
+
 function reportPrompt(p) {
   const t = p.tech || {}, r = p.rating || {}, sma = t.sma || {};
   const fmt = (x) => x == null ? 'n/a' : (typeof x === 'number' ? x.toFixed(2) : x);
@@ -697,8 +754,8 @@ function summaryPrefix(buf) {
 // The client never has to parse half-formed JSON, and a client that cannot
 // stream can still use the plain /api/analyze route.
 async function handleAnalyzeStream(req, res) {
-  const p = await readBody(req);
-  if (!p || !p.symbol) return json(res, 400, { error: 'Missing data.' });
+  const p = cleanReportInput(await readBody(req));
+  if (!p) return json(res, 400, { error: 'Missing data.' });
   res.writeHead(200, {
     'Content-Type': 'application/x-ndjson; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
@@ -718,9 +775,12 @@ async function handleAnalyzeStream(req, res) {
       return res.end();
     }
     streamModel = AI_MODEL_FREE;
+  } else if (await db.peekUsage(key, 'ai_pro') >= PRO_AI_DAILY) {
+    send({ t: 'done', ...ruleBasedReport(p), source: 'rule', limited: true, note: proCapNote() });
+    return res.end();
   }
   // Counted once the report actually parses; a stream that dies is not charged.
-  const chargeStream = async () => { if (!pro) { try { await db.bumpUsage(key, 'ai', AI_FREE_DAILY); } catch (e) {} } };
+  const chargeStream = async () => { try { await db.bumpUsage(key, pro ? 'ai_pro' : 'ai', pro ? PRO_AI_DAILY : AI_FREE_DAILY); } catch (e) {} };
   const { system, user } = reportPrompt(p);
   const body = JSON.stringify({ model: streamModel, max_tokens: 1000, stream: true, system, messages: [{ role: 'user', content: user }] });
   let full = '', sent = 0, sse = '';
@@ -781,8 +841,8 @@ function aiFallbackNote(e, where) {
 }
 
 async function handleAnalyze(req, res) {
-  const p = await readBody(req);
-  if (!p || !p.symbol) return json(res, 400, { error: 'Missing data.' });
+  const p = cleanReportInput(await readBody(req));
+  if (!p) return json(res, 400, { error: 'Missing data.' });
   if (ANTHROPIC_API_KEY) {
     const { pro, key } = await plan(req);
     let model = AI_MODEL;
@@ -793,11 +853,13 @@ async function handleAnalyze(req, res) {
         return json(res, 200, { ...ruleBasedReport(p), source: 'rule', limited: true, note: aiLimitNote() });
       }
       model = AI_MODEL_FREE;
+    } else if (await db.peekUsage(key, 'ai_pro') >= PRO_AI_DAILY) {
+      return json(res, 200, { ...ruleBasedReport(p), source: 'rule', limited: true, note: proCapNote() });
     }
     try {
       const rep = await callClaudeReport(p, model);
       if (!rep.summary) throw new Error('empty AI report');
-      if (!pro) await db.bumpUsage(key, 'ai', AI_FREE_DAILY);
+      await db.bumpUsage(key, pro ? 'ai_pro' : 'ai', pro ? PRO_AI_DAILY : AI_FREE_DAILY);
       return json(res, 200, { ...rep, source: 'ai' });
     } catch (e) { return json(res, 200, { ...ruleBasedReport(p), source: 'rule', note: aiFallbackNote(e, 'analyze') }); }
   }
@@ -822,8 +884,11 @@ async function callClaudeVision(base64, mediaType) {
   return text.trim();
 }
 async function handleAnalyzeImage(req, res) {
-  const { pro } = await plan(req);
+  const { pro, key } = await plan(req);
   if (!pro) return json(res, 402, PRO_ONLY('Reading a chart image'));
+  if (await db.peekUsage(key, 'image').catch(() => 0) >= PRO_IMAGE_DAILY) {
+    return json(res, 429, { error: `That is today's ${PRO_IMAGE_DAILY} chart images, the daily ceiling. The count resets tomorrow.` });
+  }
   const p = await readBody(req, 8e6); // allow up to ~8MB base64 payloads
   const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
   if (!p || !p.image || !allowed.includes(p.mediaType)) {
@@ -835,7 +900,14 @@ async function handleAnalyzeImage(req, res) {
     return json(res, 200, { source: 'none',
       summary: 'Image analysis needs Claude vision. Set ANTHROPIC_API_KEY on the server to analyze uploaded charts. (Stock analysis above works without a key.)' });
   }
-  try { return json(res, 200, { summary: await callClaudeVision(p.image, p.mediaType), source: 'ai' }); }
+  if (typeof p.image !== 'string' || !/^[A-Za-z0-9+/=\s]+$/.test(p.image.slice(0, 2000))) {
+    return json(res, 400, { error: 'Upload a PNG, JPEG, GIF, or WebP image.' });
+  }
+  try {
+    const summary = await callClaudeVision(p.image, p.mediaType);
+    await db.bumpUsage(key, 'image', PRO_IMAGE_DAILY).catch(() => {});
+    return json(res, 200, { summary, source: 'ai' });
+  }
   catch (e) { return json(res, 200, { source: 'error', summary: 'Could not analyze the image (' + e.message + ').' }); }
 }
 
@@ -1034,6 +1106,7 @@ function hubConnect() {
     }
     for (const [sym, tick] of latest) {
       tickHub.last.set(sym, tick);
+      capMap(tickHub.last, 500);
       const set = tickHub.subs.get(sym);
       if (!set) continue;
       const line = 'data: ' + JSON.stringify({ symbol: sym, price: tick.p, ts: tick.t, volume: tick.v }) + '\n\n';
@@ -1079,6 +1152,9 @@ function hubRemove(symbol, res) {
   }
 }
 
+const STREAMS_PER_USER = Number(process.env.STREAMS_PER_USER || 6);
+const STREAM_SYMBOLS_MAX = Number(process.env.STREAM_SYMBOLS_MAX || 45);
+const streamsByUser = new Map();
 async function handleStream(req, res, symbolRaw) {
   const user = await currentUser(req);
   if (!user) return json(res, 401, { error: 'Please sign in.' });
@@ -1089,6 +1165,13 @@ async function handleStream(req, res, symbolRaw) {
     // the page falls back to polling when it sees this.
     return json(res, 503, { error: 'live_unavailable' });
   }
+  // A few open streams per account (a handful of tabs), and a ceiling on
+  // distinct symbols across everyone, so one account cannot hold thousands of
+  // sockets or crowd every live-price slot.
+  const mine = streamsByUser.get(user.id) || 0;
+  if (mine >= STREAMS_PER_USER) return json(res, 429, { error: 'live_unavailable', reason: 'Too many live charts open. Close a tab or two.' });
+  if (!tickHub.subs.has(symbol) && tickHub.subs.size >= STREAM_SYMBOLS_MAX) return json(res, 503, { error: 'live_unavailable' });
+  streamsByUser.set(user.id, mine + 1);
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
@@ -1104,7 +1187,13 @@ async function handleStream(req, res, symbolRaw) {
   hubAdd(symbol, res);
   // Comment frames keep proxies from closing an idle stream.
   const beat = setInterval(() => { try { res.write(': ping\n\n'); } catch (e) {} }, 25000);
-  const bye = () => { clearInterval(beat); hubRemove(symbol, res); };
+  let gone = false;
+  const bye = () => {
+    if (gone) return; gone = true;
+    clearInterval(beat); hubRemove(symbol, res);
+    const n = (streamsByUser.get(user.id) || 1) - 1;
+    if (n > 0) streamsByUser.set(user.id, n); else streamsByUser.delete(user.id);
+  };
   req.on('close', bye);
   req.on('error', bye);
 }
@@ -1351,12 +1440,20 @@ function tooMany(key, limit, windowMs) {
   h.n++;
   return h.n > limit ? Math.ceil((h.resetAt - now) / 1000) : 0;
 }
-// Render sits behind a proxy, so the socket address is always Render's. The
-// left-most x-forwarded-for entry is the client; it is spoofable, which is why
-// the per-account limit below exists alongside it.
+// Render sits behind Cloudflare, so the socket address is always a proxy's.
+// x-forwarded-for cannot be used: Render keeps whatever the client sent and
+// appends to it, so any entry a client can choose, it can forge, and every
+// per-IP limit fell to a made-up header. Cloudflare overwrites
+// True-Client-IP / CF-Connecting-IP with the address it actually saw, so
+// those are trusted when TRUST_CF_IP is on (the default on Render).
+// Elsewhere (local runs) the socket address is the client.
+const TRUST_CF_IP = (process.env.TRUST_CF_IP || (process.env.RENDER ? 'on' : 'off')) === 'on';
 function clientIp(req) {
-  const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-  return fwd || (req.socket && req.socket.remoteAddress) || 'unknown';
+  if (TRUST_CF_IP) {
+    const cf = String(req.headers['true-client-ip'] || req.headers['cf-connecting-ip'] || '').trim();
+    if (cf) return cf;
+  }
+  return (req.socket && req.socket.remoteAddress) || 'unknown';
 }
 // Dropped rather than grown without bound; these entries are all short-lived.
 const hitsSweep = setInterval(() => {
@@ -1379,7 +1476,12 @@ function throttled(res, keys) {
 
 // ---- Accounts + watchlist ----
 function parseCookies(req) {
-  const out = {}; (req.headers.cookie || '').split(';').forEach(p => { const i = p.indexOf('='); if (i > 0) out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim()); });
+  // A malformed value (a stray % from another site's cookie) is skipped, not
+  // thrown: thrown, it turned every request from that browser into a 500.
+  const out = {}; (req.headers.cookie || '').split(';').forEach(p => {
+    const i = p.indexOf('='); if (i <= 0) return;
+    try { out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim()); } catch (e) {}
+  });
   return out;
 }
 function setSessionCookie(req, res, token, clear) {
@@ -1404,8 +1506,7 @@ const FREE_ALERT_MAX = Number(process.env.FREE_ALERT_MAX || 3);
 
 function clientKey(req, user) {
   if (user) return 'u:' + user.id;
-  const fwd = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-  return 'ip:' + (fwd || (req.socket && req.socket.remoteAddress) || 'unknown');
+  return 'ip:' + clientIp(req);
 }
 
 // Resolves the caller once: who they are, whether they are Pro, and the key
@@ -1433,12 +1534,16 @@ const PRO_ONLY = (what) => ({ error: 'pro_required', feature: what,
 const validEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e || ''));
 
 // ---- Email confirmation ----
-// Email is a convenience, not a lock. When a send fails the sign-in goes
-// through the ordinary way, the same as with no mail configured, and mail is
-// treated as down for two minutes so the next sign-ins do not each wait on
-// an API call that is not working.
+// Once mail is configured, the email IS the lock: a sign-up is not usable
+// until its link is opened, and a sign-in is not finished until its code is
+// entered. When a send fails the request is refused, never waved through.
+// (It used to be waved through, and since one failed send marked mail as
+// down for everyone for two minutes, anyone who could make a send fail
+// could register an unconfirmed address and be signed straight in.)
+// With no mail configured at all (local runs), accounts work at once.
 let mailFailedAt = 0;
-const mailHealthy = () => mailEnabled() && Date.now() - mailFailedAt > 2 * 60000;
+const DUMMY_PW = db.DUMMY_PW;
+const MAIL_DOWN = 'We could not send the email just now, so we could not finish this. Try again in a few minutes.';
 // The email, in the site's own colours. Tables and inline styles because
 // that is what mail clients render; no images, so nothing to block or load.
 // Every email ChartGauge sends is about the reader's own account: none is
@@ -1450,11 +1555,11 @@ const MAIL_POSTAL_ADDRESS = (process.env.MAIL_POSTAL_ADDRESS || '').trim();
 const MAIL_FONT = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
 function emailHtml(o) {
   const code = o.code
-    ? `<div style="margin:22px 0 4px;padding:18px 0;border:1px solid #423f38;border-radius:4px;background:#121211;text-align:center;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:34px;letter-spacing:10px;color:#f0efec;">${esc(o.code)}</div>`
+    ? `<div style="margin:22px 0 4px;padding:18px 0;border:1px solid #4a4d52;border-radius:4px;background:#1c1d1f;text-align:center;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:34px;letter-spacing:10px;color:#eceef1;">${esc(o.code)}</div>`
     : '';
   // A labelled value worth keeping, such as a link of the reader's own.
   const box = o.box
-    ? `<div style="margin:22px 0 4px;padding:14px 16px;border:1px solid #423f38;border-radius:4px;background:#121211;">`
+    ? `<div style="margin:22px 0 4px;padding:14px 16px;border:1px solid #4a4d52;border-radius:4px;background:#1c1d1f;">`
       + `<div style="font-family:${MAIL_FONT};font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:#9a958c;margin-bottom:6px;">${esc(o.box.label)}</div>`
       + `<a href="${esc(o.box.url || o.box.value)}" style="font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:15px;color:#6ea2ff;text-decoration:none;word-break:break-all;">${esc(o.box.value)}</a></div>`
     : '';
@@ -1469,14 +1574,14 @@ function emailHtml(o) {
       + `<p style="margin:0;font-family:${MAIL_FONT};font-size:12px;line-height:1.6;color:#9a958c;word-break:break-all;">Or paste this link into your browser:<br><a href="${esc(o.button.url)}" style="color:#9a958c;">${esc(o.button.url)}</a></p>`
     : '';
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${esc(o.title)}</title></head>`
-    + `<body style="margin:0;padding:0;background:#121211;">`
-    + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#121211;"><tr><td align="center" style="padding:32px 16px;">`
+    + `<body style="margin:0;padding:0;background:#1c1d1f;">`
+    + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#1c1d1f;"><tr><td align="center" style="padding:32px 16px;">`
     + `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;">`
-    + `<tr><td style="padding:0 2px 16px;font-family:${MAIL_FONT};font-size:17px;font-weight:700;color:#f0efec;">`
+    + `<tr><td style="padding:0 2px 16px;font-family:${MAIL_FONT};font-size:17px;font-weight:700;color:#eceef1;">`
     + `<span style="display:inline-block;width:5px;height:14px;background:#ff5f56;border-radius:1px;vertical-align:-1px;margin-right:3px;"></span>`
     + `<span style="display:inline-block;width:5px;height:20px;background:#3ddc84;border-radius:1px;vertical-align:-4px;margin-right:9px;"></span>ChartGauge</td></tr>`
-    + `<tr><td style="background:#1d1d1a;border:1px solid #2e2d28;border-radius:4px;padding:28px 26px;">`
-    + `<h1 style="margin:0 0 10px;font-family:${MAIL_FONT};font-size:22px;font-weight:700;color:#f0efec;">${esc(o.title)}</h1>`
+    + `<tr><td style="background:#26272a;border:1px solid #36383c;border-radius:4px;padding:28px 26px;">`
+    + `<h1 style="margin:0 0 10px;font-family:${MAIL_FONT};font-size:22px;font-weight:700;color:#eceef1;">${esc(o.title)}</h1>`
     + `<p style="margin:0;font-family:${MAIL_FONT};font-size:15px;line-height:1.6;color:#d6d2c8;">${esc(o.intro)}</p>`
     + intro2 + lines + code + box + button
     + `<p style="margin:18px 0 0;font-family:${MAIL_FONT};font-size:13px;line-height:1.6;color:#9a958c;">${esc(o.outro)}</p>`
@@ -1519,6 +1624,10 @@ const VERIFY_MSG = (email) => `Check ${email} for a link to confirm your address
 // (the site address with ?ref=CODE), and an email with a link to the form
 // where they say how they want to be paid.
 const PAYOUT_TTL = 7 * 86400000;
+// Details changed this recently are flagged to the admin before a manual
+// payment, and the monthly run lists them instead of counting them as due.
+const PAYOUT_HOLD_DAYS = Number(process.env.PAYOUT_HOLD_DAYS || 3);
+const payoutRecentlyChanged = (p) => !!(p && p.changed && Date.now() - Number(p.changed) < PAYOUT_HOLD_DAYS * 86400000);
 const affiliateLink = (req, code) => siteOrigin(req) + '/?ref=' + code;
 const shareWords = () => AFF_SHARE ? `${AFFILIATE_SHARE}% of what those accounts pay for ${AFFILIATE_MONTHS} months` : 'a share of what those accounts pay';
 async function sendAffiliateEmail(req, user, code) {
@@ -1576,6 +1685,11 @@ async function handleAffiliatePayout(req, res) {
   const who = await payoutSubject(req, token);
   if (!who) return json(res, 403, { error: 'This link has expired. Sign in and open Settings to reach the form.' });
   if (!payoutsOn()) return json(res, 503, { error: 'Details cannot be saved just now. Your Pro access and your link are live; we will email you when the form is ready.' });
+  // The emailed link is for entering details the first time. Changing where
+  // money goes needs a signed-in session (which itself needed the emailed
+  // code), so a forwarded or leaked link cannot redirect a payout.
+  const prior = await db.getPayout(who.user.id).catch(() => null);
+  if (prior && who.viaToken) return json(res, 403, { error: 'Your details are already saved. To change them, sign in and open Settings.' });
   const holder = String(b.holder || '').trim().replace(/\s+/g, ' ');
   if (holder.length < 2 || holder.length > 80) return json(res, 400, { error: 'Enter the name on the account.' });
   const method = b.method === 'paypal' ? 'paypal' : 'bank';
@@ -1599,6 +1713,15 @@ async function handleAffiliatePayout(req, res) {
   await db.savePayout(who.user.id, { method, holder, last4, enc: sealJson(rec) });
   // The emailed link is spent once it has done its job.
   if (who.viaToken) await db.consumeVerifyToken(token, 'payout').catch(() => {});
+  // Every change is announced to the account's own inbox, so a change the
+  // owner did not make is noticed before a payment goes out.
+  if (prior && mailEnabled()) {
+    const shown = method === 'paypal' ? 'PayPal ' + last4 : 'bank account ending ' + last4;
+    const outro = `If you did not make this change, reply to ${CONTACT_EMAIL} straight away. Payments to newly changed details are held for ${PAYOUT_HOLD_DAYS} days.`;
+    sendMail(who.user.email, 'Your ChartGauge payout details were changed',
+      `Your affiliate payout details were just changed to ${shown}.\n\n${outro}`,
+      emailHtml({ title: 'Payout details changed', intro: `Your affiliate payouts will now go to ${shown}.`, outro })).catch(logError);
+  }
   return json(res, 200, { ok: true, method, last4 });
 }
 // The form, as its own document rather than a view in the app: it is opened
@@ -1609,9 +1732,9 @@ async function servePayoutPage(req, res) {
   const token = String(q.get('token') || '');
   const who = await payoutSubject(req, token).catch(() => null);
   const head = `<!doctype html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Payout details | ${SITE_NAME}</title><meta name="robots" content="noindex" /><link rel="stylesheet" href="/styles.css" /></head><body class="po-body"><div class="po-wrap">
+<title>Payout details | ${SITE_NAME}</title><meta name="robots" content="noindex" /><link rel="stylesheet" href="/styles.css" /></head><body class="po-body"><a class="skip-link" href="#main">Skip to content</a><main id="main" tabindex="-1" class="po-wrap">
 <a class="po-brand" href="/"><span class="po-bars"><i></i><i></i></span>ChartGauge</a>`;
-  const foot = `<p class="po-foot">Questions: <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a></p></div><script src="/payout.js"></script></body></html>`;
+  const foot = `<p class="po-foot">Questions: <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a></p></main><script src="/payout.js"></script></body></html>`;
   res.setHeader('Cache-Control', 'no-store');
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   if (!who) {
@@ -1740,7 +1863,19 @@ async function handleCodeResend(req, res) {
   return json(res, 200, { ok: true, message: 'Sent again. ' + CODE_MSG(user.email) });
 }
 
+// With a database configured but unreachable, the store falls back to
+// memory. Accounts made or signed into then would vanish at the next
+// restart, so accounts wait until the database is back (it is retried
+// every minute) instead.
+function accountsDown(res) {
+  if (db.hasUrl() && db.storeMode() !== 'postgres') {
+    json(res, 503, { error: 'Accounts are briefly unavailable while the database reconnects. Try again in a minute.' });
+    return true;
+  }
+  return false;
+}
 async function handleSignup(req, res) {
+  if (accountsDown(res)) return;
   const b = await readBody(req);
   const email = String(b.email || '').toLowerCase().trim();
   if (throttled(res, [['signup:ip:' + clientIp(req), 5, 60 * 60000]])) return;
@@ -1756,24 +1891,36 @@ async function handleSignup(req, res) {
     // An address that was registered but never confirmed is not yet anyone's.
     // Whoever can open the inbox gets it, with the password they just chose.
     const existing = await db.getUserByEmail(email).catch(() => null);
+    if (existing && existing.email_verified !== false && mailEnabled()) {
+      // Answer exactly as for a new sign-up, so the form cannot be used to
+      // test which addresses have accounts; the owner hears about it by email.
+      if (!tooMany('taken:acct:' + existing.id, 2, 60 * 60000)) {
+        const outro = 'If this was you, sign in with your existing password or with Google. If it was not, you can ignore this email; nothing has changed.';
+        sendMail(existing.email, 'You already have a ChartGauge account',
+          `Someone (probably you) tried to create a ChartGauge account with this address, which already has one.\n\n${outro}`,
+          emailHtml({ title: 'You already have an account', intro: 'Someone tried to sign up with this address, which already has a ChartGauge account.', outro })).catch(logError);
+      }
+      return json(res, 200, { pending: true, email, message: VERIFY_MSG(email) });
+    }
     if (!existing || existing.email_verified !== false || !mailEnabled()) {
       return json(res, 409, { error: 'That email already has an account. Try logging in.' });
     }
+    // The new password replaces the old one, and any session made under the
+    // old one (there should be none for an unconfirmed account) is ended.
     await db.setPassword(existing.id, b.password);
+    await db.deleteUserSessions(existing.id).catch(logError);
     user = existing; fresh = false;
   }
   if (fresh) await attributeReferral(req, user);
-  if (mailHealthy()) {
+  if (mailEnabled()) {
     // No session until the link is opened: the account exists but cannot be
     // used, so typing an address that is not yours gets you nothing.
     try {
       await sendVerification(req, user);
-      return json(res, 200, { pending: true, email: user.email, message: VERIFY_MSG(user.email) });
-    } catch (e) { logError(e); }
+    } catch (e) { logError(e); return json(res, 503, { error: MAIL_DOWN }); }
+    return json(res, 200, { pending: true, email: user.email, message: VERIFY_MSG(user.email) });
   }
-  // No way to reach the inbox, so the account is usable at once, the same as
-  // when no mail is configured at all.
-  if (user.email_verified === false) await db.markVerified(user.id).catch(logError);
+  // No mail configured at all: the account is usable at once.
   const token = await db.createSession(user.id);
   setSessionCookie(req, res, token);
   return json(res, 200, { user: slim(user) });
@@ -1801,6 +1948,7 @@ async function handleResend(req, res) {
   return json(res, 200, { ok: true, message: VERIFY_MSG(email) });
 }
 async function handleLogin(req, res) {
+  if (accountsDown(res)) return;
   const b = await readBody(req);
   const email = String(b.email || '').toLowerCase().trim();
   // Checked before any hashing happens, so a flood costs no CPU.
@@ -1809,21 +1957,22 @@ async function handleLogin(req, res) {
     ['login:acct:' + email, 8, 15 * 60000],
   ])) return;
   const user = await db.getUserByEmail(b.email || '');
-  if (!user || !db.verifyPw(b.password || '', user.pw)) return json(res, 401, { error: 'Wrong email or password.' });
-  if (user.email_verified === false && mailHealthy()) {
+  // A miss still pays for one hash, so the response time does not say
+  // whether the address has an account.
+  if (!user) { await db.verifyPw(b.password || '', DUMMY_PW); return json(res, 401, { error: 'Wrong email or password.' }); }
+  if (!(await db.verifyPw(b.password || '', user.pw))) return json(res, 401, { error: 'Wrong email or password.' });
+  if (user.email_verified === false && mailEnabled()) {
     // Right password, unconfirmed inbox. A fresh link goes out with the
-    // refusal, so the way in is waiting where the first one went. If the
-    // link cannot be sent, the refusal would be a dead end, so it is not made.
-    let sent = null;
-    try { sent = await sendVerification(req, user); } catch (e) { logError(e); }
-    if (sent !== null) return json(res, 403, { error: 'verify_required', pending: true, email: user.email,
+    // refusal, so the way in is waiting where the first one went.
+    let sent;
+    try { sent = await sendVerification(req, user); } catch (e) { logError(e); return json(res, 503, { error: MAIL_DOWN }); }
+    return json(res, 403, { error: 'verify_required', pending: true, email: user.email,
       message: 'Your email address has not been confirmed yet. ' + (sent ? 'A new link was just sent. ' : '') + VERIFY_MSG(user.email) });
   }
-  if (mailHealthy()) {
-    try {
-      await startCodeStep(req, res, user);
-      return json(res, 200, { code_required: true, email: user.email, message: CODE_MSG(user.email) });
-    } catch (e) { logError(e); }
+  if (mailEnabled()) {
+    try { await startCodeStep(req, res, user); }
+    catch (e) { logError(e); return json(res, 503, { error: MAIL_DOWN }); }
+    return json(res, 200, { code_required: true, email: user.email, message: CODE_MSG(user.email) });
   }
   const token = await db.createSession(user.id);
   setSessionCookie(req, res, token);
@@ -1849,6 +1998,7 @@ const googleStates = new Map();
 function newGoogleState(next, adult) {
   const v = crypto.randomBytes(16).toString('hex');
   googleStates.set(v, { at: Date.now(), next: next || '/', adult: !!adult });
+  capMap(googleStates, 5000);
   if (googleStates.size > 500) for (const [k, o] of googleStates) if (Date.now() - o.at > 600000) googleStates.delete(k);
   return v;
 }
@@ -1902,6 +2052,7 @@ const googleFail = (res, why) => { res.writeHead(302, { Location: '/?google_erro
 
 async function handleGoogleCallback(req, res) {
   if (!googleEnabled()) return json(res, 404, { error: 'Google sign-in is not configured.' });
+  if (db.hasUrl() && db.storeMode() !== 'postgres') return googleFail(res, 'failed');
   const q = new URLSearchParams(req.url.split('?')[1] || '');
   if (q.get('error')) return googleFail(res, 'canceled');
   const st = takeGoogleState(q.get('state') || '');
@@ -1922,17 +2073,24 @@ async function handleGoogleCallback(req, res) {
     let user = await db.getUserByGoogleId(claims.sub);
     if (!user) {
       const existing = await db.getUserByEmail(email);
-      if (existing) { await db.linkGoogleId(existing.id, claims.sub); user = existing; }
+      if (existing) {
+        // Google has just proved who owns this inbox. If the account was never
+        // confirmed, its password was chosen by whoever typed the address, who
+        // may not be the owner: that password and any sessions go.
+        const wasUnconfirmed = await db.linkGoogleId(existing.id, claims.sub);
+        if (wasUnconfirmed) await db.deleteUserSessions(existing.id).catch(logError);
+        user = await db.getUserById(existing.id) || existing;
+      }
       // A new account needs the 18+ box from the sign-up form, which "Sign in
       // with Google" on the sign-in form never showed.
       else if (!st.adult) return googleFail(res, 'age');
       else { user = await db.createGoogleUser(email, claims.sub); await attributeReferral(req, user); }
     }
     const sep = st.next.includes('?') ? '&' : '?';
-    if (mailHealthy()) {
+    if (mailEnabled()) {
       // Google vouched for the address; the code proves the inbox is still
       // in the same hands right now, the same as a password sign-in. If the
-      // code cannot be sent, Google's word is enough, as it was before.
+      // code cannot be sent, Google's own check of the address stands.
       try {
         await startCodeStep(req, res, user);
         res.writeHead(302, { Location: st.next + sep + 'google=code' });
@@ -2197,7 +2355,8 @@ async function handleAdminPayout(req, res) {
   let details;
   try { details = openJson(p.enc); }
   catch (e) { return json(res, 500, { error: 'The stored details could not be decrypted. PAYOUT_KEY has changed since they were saved; ask them to enter the details again.' }); }
-  return json(res, 200, { email, updated: Number(p.updated), details });
+  return json(res, 200, { email, updated: Number(p.updated), details,
+    warning: payoutRecentlyChanged(p) ? `These details were changed ${new Date(Number(p.changed)).toUTCString()}. Confirm the change with the affiliate by email before paying.` : null });
 }
 
 // ---- Affiliate ledger ----
@@ -2295,12 +2454,15 @@ async function handleAdminAffiliatePay(req, res) {
   const email = String(b.email || '').toLowerCase().trim();
   const user = await db.getUserByEmail(email);
   if (!user || !user.affiliate_code) return json(res, 404, { error: `${email} is not an affiliate.` });
-  const t = await db.ledgerTotals(user.id);
-  const cents = b.amount == null ? t.owed : Math.round(Number(b.amount) * 100);
-  if (!(cents > 0)) return json(res, 400, { error: 'Nothing is owed.' });
-  if (cents > t.owed) return json(res, 400, { error: `Only ${money(t.owed)} is owed.` });
-  await db.addLedger({ aff_uid: user.id, kind: 'payout', amount: -cents, note: String(b.note || '').slice(0, 120) || `paid by ${me.email}` });
-  return json(res, 200, { email, paid: cents, totals: await db.ledgerTotals(user.id) });
+  const r = await withPayLock(user.id, async () => {
+    const t = await db.ledgerTotals(user.id);
+    const cents = b.amount == null ? t.owed : Math.round(Number(b.amount) * 100);
+    if (!(cents > 0)) return { error: 'Nothing is owed.' };
+    if (cents > t.owed) return { error: `Only ${money(t.owed)} is owed.` };
+    await db.addLedger({ aff_uid: user.id, kind: 'payout', amount: -cents, note: String(b.note || '').slice(0, 120) || `paid by ${me.email}` });
+    return { email, paid: cents, totals: await db.ledgerTotals(user.id) };
+  });
+  return json(res, r.error ? 400 : 200, r);
 }
 async function handleAdminAffiliateLedger(req, res) {
   const me = await currentUser(req);
@@ -2386,7 +2548,38 @@ async function handleAffiliateConnect(req, res) {
 // after a timeout cannot pay twice, while a genuinely new balance (the ledger
 // has moved on) gets a fresh key. The ledger row is keyed by the transfer id
 // for the same reason: a replayed transfer is noticed, not counted again.
-async function transferToAffiliate(user, by) {
+// One payout per affiliate at a time, across the admin buttons, "Mark paid"
+// and the monthly run, so two clicks or a click during the run cannot both
+// see the same balance and both pay it.
+const payingNow = new Set();
+async function withPayLock(uid, fn) {
+  if (payingNow.has(uid)) return { error: 'A payment to this affiliate is already in progress. Wait a moment and refresh.' };
+  payingNow.add(uid);
+  try { return await fn(); } finally { payingNow.delete(uid); }
+}
+// A transfer Stripe made but the ledger never recorded (the ledger write
+// failed after the transfer succeeded) would leave the balance looking unpaid
+// and get paid again. Before sending anything, the affiliate's recent
+// transfers are read back from Stripe and any missing one is recorded.
+async function recordMissedTransfers(user) {
+  const list = await stripeGet('transfers?limit=20&destination=' + encodeURIComponent(user.stripe_account));
+  let found = 0;
+  for (const tr of (list && list.data) || []) {
+    if (tr.reversed || (tr.metadata && tr.metadata.uid && tr.metadata.uid !== user.id)) continue;
+    if (await db.ledgerByRef(tr.id)) continue;
+    const fresh = await db.addLedger({ aff_uid: user.id, kind: 'payout', amount: -Number(tr.amount), stripe_ref: tr.id, note: `Stripe transfer ${tr.id} (recorded late)` });
+    if (fresh) found++;
+  }
+  return found;
+}
+function transferToAffiliate(user, by) { return withPayLock(user.id, () => transferToAffiliateLocked(user, by)); }
+async function transferToAffiliateLocked(user, by) {
+  if (user.stripe_account) {
+    try {
+      const n = await recordMissedTransfers(user);
+      if (n) return { email: user.email, error: `Found ${n} earlier Stripe transfer${n === 1 ? '' : 's'} that the ledger had missed and recorded ${n === 1 ? 'it' : 'them'}. Nothing new was sent; check the balance before paying again.`, totals: await db.ledgerTotals(user.id) };
+    } catch (e) { logError(e); return { email: user.email, error: 'Could not check earlier transfers with Stripe, so nothing was sent. Try again in a minute.' }; }
+  }
   const t = await db.ledgerTotals(user.id);
   if (!(t.owed > 0)) return { email: user.email, error: 'Nothing is owed.' };
   if (!user.stripe_account) return { email: user.email, error: `${user.email} has not set up Stripe payouts.` };
@@ -2448,7 +2641,12 @@ async function runMonthlyPayout(by) {
       const owed = (a.totals && a.totals.owed) || 0;
       if (!(owed > 0)) continue;
       if (owed < min) { run.rolling.push({ email: a.email, owed }); continue; }
-      if (!a.connect || !connectOn) { run.manual.push({ email: a.email, owed, method: a.payout ? a.payout.method : null }); continue; }
+      if (!a.connect || !connectOn) {
+        const det = await db.getPayout(a.id).catch(() => null);
+        run.manual.push({ email: a.email, owed, method: a.payout ? a.payout.method : null,
+          hold: payoutRecentlyChanged(det) ? `details changed ${new Date(Number(det.changed)).toISOString().slice(0, 10)}; confirm with them before paying` : null });
+        continue;
+      }
       const r = await transferToAffiliate(await db.getUserById(a.id), run.by);
       if (r.error) run.failed.push({ email: a.email, owed, error: r.error });
       else { run.paid.push({ email: a.email, paid: r.paid, transfer: r.transfer }); run.total += r.paid; }
@@ -2470,7 +2668,7 @@ async function sendPayoutReport(run) {
   const lines = [
     ...run.paid.map(p => `Paid ${money(p.paid)} to ${p.email} through Stripe (${p.transfer}).`),
     ...run.failed.map(f => `Could not pay ${money(f.owed)} to ${f.email}: ${f.error}`),
-    ...run.manual.map(m => `${m.email} is owed ${money(m.owed)} and is paid by hand${m.method ? ' (' + (m.method === 'paypal' ? 'PayPal' : 'bank transfer') + ')' : ''}. Open the admin page for the details, then press Mark paid.`),
+    ...run.manual.map(m => `${m.email} is owed ${money(m.owed)} and is paid by hand${m.method ? ' (' + (m.method === 'paypal' ? 'PayPal' : 'bank transfer') + ')' : ''}. Open the admin page for the details, then press Mark paid.${m.hold ? ' HOLD: ' + m.hold + '.' : ''}`),
     ...run.rolling.map(r => `${r.email} has ${money(r.owed)}, under the ${money(AFFILIATE_MIN_PAYOUT * 100)} minimum, so it rolls over.`),
   ];
   const intro = n ? `The monthly run sent ${money(run.total)} to ${n} affiliate${n === 1 ? '' : 's'} through Stripe. Stripe pays it on to their banks on its usual schedule.`
@@ -2770,6 +2968,7 @@ async function quoteOne(symbol, viaTwelve) {
     const e = quoteStore.get(symbol) || {};
     if (q) { e.q = q; e.at = Date.now(); e.tryAt = 0; } else e.tryAt = Date.now();
     quoteStore.set(symbol, e);
+    capMap(quoteStore, 5000);
     return q;
   })();
   quoteInflight.set(symbol, p);
@@ -3029,7 +3228,13 @@ async function handleMovers(req, res) {
 }
 
 async function handleQuotes(req, res, raw) {
-  const symbols = String(raw || '').toUpperCase().split(',').map(s => s.replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16)).filter(Boolean).slice(0, 24);
+  // Each unseen symbol costs a call against the shared per-minute price
+  // budget, so one account cannot spend it all: a steady rate per account,
+  // and only symbols the site lists or has already priced are fetched.
+  const me = await currentUser(req).catch(() => null);
+  if (throttled(res, [['quotes:' + (me ? 'u:' + me.id : 'ip:' + clientIp(req)), 40, 60000]])) return;
+  const symbols = String(raw || '').toUpperCase().split(',').map(s => s.replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16))
+    .filter(s => s && (TICKER_NAMES[s] || quoteStore.has(s) || /^[A-Z]{1,5}$/.test(s))).slice(0, 24);
   if (!symbols.length) return json(res, 400, { error: 'No symbols.' });
   // Source described whether a key was configured, not whether the prices came
   // back — so when the provider failed and every quote fell back to generated
@@ -3239,7 +3444,20 @@ async function billingInfo() {
   return out;
 }
 
-function readRawBody(req, cap) { cap = cap || 1e6; return new Promise(resolve => { let d = ''; req.on('data', c => { d += c; if (d.length > cap) req.destroy(); }); req.on('end', () => resolve(d)); req.on('error', () => resolve('')); }); }
+// Collected as bytes and decoded once at the end: decoding chunk by chunk
+// could split a multi-byte character and break the signature check. Settles
+// on 'close' too, so an oversized body that is cut off does not hang.
+function readRawBody(req, cap) {
+  cap = cap || 1e6;
+  return new Promise(resolve => {
+    const parts = []; let n = 0, done = false;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    req.on('data', c => { if (done) return; n += c.length; if (n > cap) { finish(''); req.destroy(); return; } parts.push(c); });
+    req.on('end', () => finish(Buffer.concat(parts).toString('utf8')));
+    req.on('error', () => finish(''));
+    req.on('close', () => finish(Buffer.concat(parts).toString('utf8')));
+  });
+}
 // Stripe's tolerance for how old a signed payload may be. Without it a valid
 // webhook captured once can be replayed forever.
 const STRIPE_SIG_TOLERANCE_S = 300;
@@ -3252,7 +3470,7 @@ function verifyStripeSig(raw, header, secret) {
   const expected = crypto.createHmac('sha256', secret).update(parts.t + '.' + raw).digest('hex');
   try { return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(parts.v1)); } catch { return false; }
 }
-const baseUrl = (req) => (req.headers['x-forwarded-proto'] || 'http') + '://' + req.headers.host;
+const baseUrl = (req) => siteOrigin(req);
 
 async function handleCheckout(req, res) {
   const user = await currentUser(req);
@@ -3270,6 +3488,22 @@ async function handleCheckout(req, res) {
   const prior = await db.getUserById(user.id);
   const firstTime = !(prior && prior.stripe_customer);
   try {
+    // One Stripe customer per account, made before the first checkout. With a
+    // fresh customer per checkout, paying in two tabs made two subscriptions,
+    // and the one not on file could not be canceled from the site.
+    let customer = prior && prior.stripe_customer;
+    if (customer) {
+      const subs = await stripeGet('subscriptions?status=all&limit=10&customer=' + encodeURIComponent(customer));
+      const live = ((subs && subs.data) || []).find(x => ['active', 'trialing', 'past_due'].includes(x.status));
+      if (live) {
+        await db.setPro(user.id, customer, live.id);
+        return json(res, 200, { error: 'You already have a subscription. Reload the page to see Pro, or open Manage subscription.' });
+      }
+    } else {
+      const c = await stripePost('customers', { email: user.email, 'metadata[uid]': user.id }, { 'Idempotency-Key': 'cust-' + user.id });
+      customer = c.id;
+      await db.setCustomer(user.id, customer);
+    }
     const params = {
       mode: 'subscription',
       'line_items[0][price]': price,
@@ -3277,7 +3511,7 @@ async function handleCheckout(req, res) {
       success_url: baseUrl(req) + '/?billing=success',
       cancel_url: baseUrl(req) + '/?billing=cancel',
       client_reference_id: user.id,
-      customer_email: user.email,
+      customer,
       allow_promotion_codes: 'true',
     };
     if (TRIAL_DAYS > 0 && firstTime) {
@@ -3362,28 +3596,81 @@ async function handleWebhook(req, res) {
   }
   if (!verifyStripeSig(raw, req.headers['stripe-signature'], STRIPE_WEBHOOK_SECRET)) { res.writeHead(400); return res.end('bad signature'); }
   let event; try { event = JSON.parse(raw); } catch { res.writeHead(400); return res.end('bad json'); }
+  // A failure while changing an account's plan or the ledger answers 500, so
+  // Stripe sends the event again (it retries for days). Answering 200 after
+  // a failed write meant a customer could pay and stay on Free, or cancel
+  // and keep Pro, with nothing ever retrying. Every write here is safe to
+  // repeat. Emails are sent best-effort and never cause a retry.
   try {
-    if (event.type === 'checkout.session.completed') {
+    if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
       const s = event.data.object;
-      if (s.client_reference_id) await db.setPro(s.client_reference_id, s.customer, s.subscription);
-      if (s.client_reference_id && s.subscription) {
-        try { await sendSubscribedEmail(req, await db.getUserById(s.client_reference_id), s.subscription); } catch (e) { logError(e); }
+      // Some payment methods settle later; access waits until the money has.
+      const paid = s.payment_status === 'paid' || s.payment_status === 'no_payment_required';
+      if (s.client_reference_id && paid) {
+        const before = await db.getUserById(s.client_reference_id);
+        await db.setPro(s.client_reference_id, s.customer, s.subscription);
+        if (before && before.stripe_sub && s.subscription && before.stripe_sub !== s.subscription) {
+          await cancelDuplicateSub(before, s.subscription).catch(logError);
+        }
+        if (s.subscription && event.type === 'checkout.session.completed') {
+          try { await sendSubscribedEmail(req, await db.getUserById(s.client_reference_id), s.subscription); } catch (e) { logError(e); }
+        }
       }
     } else if (event.type === 'customer.subscription.deleted' ||
       (event.type === 'customer.subscription.updated' && ['canceled', 'unpaid', 'incomplete_expired'].includes(event.data.object.status))) {
       const u = await db.findByStripeSub(event.data.object.id);
       if (u) await db.setFree(u.id);
+    } else if (event.type === 'customer.subscription.updated' && ['active', 'trialing'].includes(event.data.object.status)) {
+      // A subscription that comes back (a past-due card paid, a resumed plan).
+      const u = await db.findByStripeSub(event.data.object.id);
+      if (u && u.plan !== 'pro') await db.setPro(u.id, u.stripe_customer, u.stripe_sub);
     } else if (event.type === 'invoice.paid' || event.type === 'invoice.payment_succeeded') {
       await creditInvoice(event.data.object);
     } else if (event.type === 'charge.refunded') {
       await debitRefund(event.data.object);
     } else if (event.type === 'customer.subscription.trial_will_end') {
-      await sendTrialEndingEmail(event.data.object);
+      await sendTrialEndingEmail(event.data.object).catch(logError);
     } else if (event.type === 'invoice.upcoming') {
-      await sendRenewalReminder(event.data.object);
+      await sendRenewalReminder(event.data.object).catch(logError);
     }
-  } catch (e) { logError(e); }
+  } catch (e) {
+    logError(e);
+    res.writeHead(500); return res.end('retry');
+  }
   res.writeHead(200); res.end('ok');
+}
+// A second subscription for an account that already had one (two checkouts
+// finished close together). The account keeps the one it already had; the
+// new one is canceled at once and its first payment, if any, refunded, so
+// nobody is billed twice for one account. Logged so the admin page shows it.
+async function cancelDuplicateSub(before, newSub) {
+  const old = await stripeGet('subscriptions/' + encodeURIComponent(before.stripe_sub)).catch(() => null);
+  if (!old || !['active', 'trialing', 'past_due'].includes(old.status)) return;
+  const dup = await stripeGet('subscriptions/' + encodeURIComponent(newSub) + '?expand[]=latest_invoice');
+  await stripeDelete('subscriptions/' + encodeURIComponent(newSub));
+  const pi = dup && dup.latest_invoice && dup.latest_invoice.payment_intent;
+  if (pi && dup.latest_invoice.amount_paid > 0) {
+    await stripePost('refunds', { payment_intent: typeof pi === 'string' ? pi : pi.id }, { 'Idempotency-Key': 'dup-refund-' + newSub });
+  }
+  await db.setPro(before.id, before.stripe_customer, before.stripe_sub);
+  logError(new Error(`duplicate subscription ${newSub} for ${before.email} canceled and refunded; kept ${before.stripe_sub}`));
+}
+// Once a day every subscribed account's plan is checked against Stripe, so
+// a webhook that never arrived (or failed every retry) cannot leave a paying
+// customer on Free or a canceled one on Pro for good.
+async function syncPlans() {
+  if (!STRIPE_SECRET_KEY) return { checked: 0 };
+  let checked = 0, fixed = 0;
+  for (const u of await db.listSubscribers()) {
+    try {
+      const sub = await stripeGet('subscriptions/' + encodeURIComponent(u.stripe_sub));
+      checked++;
+      const on = ['active', 'trialing', 'past_due'].includes(sub.status);
+      if (on && u.plan !== 'pro') { await db.setPro(u.id, u.stripe_customer, u.stripe_sub); fixed++; }
+      if (!on && u.plan === 'pro') { await db.setFree(u.id); fixed++; }
+    } catch (e) { logError(e); }
+  }
+  return { checked, fixed };
 }
 
 // ---- SEO ----
@@ -3393,7 +3680,17 @@ async function handleWebhook(req, res) {
 // lessons are rendered into the HTML so they index without JavaScript.
 const SITE_NAME = 'ChartGauge';
 const LEGAL = require('./legal');
-const siteOrigin = (req) => (req.headers['x-forwarded-proto'] || 'http') + '://' + (req.headers.host || 'chartgauge.com');
+// Every absolute URL the site writes (links in email, Stripe return URLs, the
+// Google redirect, canonicals, the sitemap) comes from one fixed origin. It
+// used to come from the request's Host header, which a client chooses: that
+// made the onrender.com address an indexable copy of the site and could put
+// a real sign-in link on someone else's host. On Render it is
+// https://chartgauge.com unless SITE_ORIGIN says otherwise; local runs keep
+// using whatever host they were opened on.
+function siteOrigin(req) {
+  if (SITE_ORIGIN) return SITE_ORIGIN;
+  return (req && req.headers['x-forwarded-proto'] || 'http') + '://' + (req && req.headers.host || 'localhost');
+}
 
 const VIEW_SEO = {
   '': { view: 'home', title: 'ChartGauge | Buy, Sell or Hold Calls for Stocks and Crypto',
@@ -3406,15 +3703,15 @@ const VIEW_SEO = {
     desc: 'Put two or more stocks next to each other on market cap, revenue, P/E, PEG, margins, ROE, debt to equity, dividend yield and beta.' },
   'screener': { view: 'screener', title: 'Stock screener: filter by sector, market cap and price | ChartGauge',
     desc: 'Filter a curated universe of stocks by sector, market capitalization and price range to find candidates worth a closer look.' },
-  'alerts': { view: 'alerts', title: 'Price alerts | ChartGauge',
+  'alerts': { view: 'alerts', noindex: true, title: 'Price alerts | ChartGauge',
     desc: 'Set a target above or below the current price and get flagged when a stock crosses it.' },
-  'watchlist': { view: 'watchlist', title: 'Your watchlist | ChartGauge',
+  'watchlist': { view: 'watchlist', noindex: true, title: 'Your watchlist | ChartGauge',
     desc: 'Keep the stocks you follow in one place, with live prices and one-click analysis.' },
   'learn': { view: 'learn', title: 'Learn trading and investing: free lessons with quizzes | ChartGauge',
     desc: 'Nineteen short lessons covering market basics, technical and fundamental analysis, valuation, financial statements, risk management, order types, candlesticks, volume, trading psychology, costs and index funds, each with a quiz.' },
   'practice': { view: 'practice', title: 'Paper trading: practice with pretend money | ChartGauge',
     desc: 'A practice account with a starting balance you choose. Fills use the live price, positions are valued in real time, and a risk meter measures the book against limits you set. None of it is real money.' },
-  'settings': { view: 'settings', title: 'Settings: choose what the analysis shows | ChartGauge',
+  'settings': { view: 'settings', noindex: true, title: 'Settings: choose what the analysis shows | ChartGauge',
     desc: 'Turn any part of the analysis on or off: the indicator score, the measured base rate, exit levels, the thirteen technical readings, the projection, fundamentals, news and the written summary.' },
   'accuracy': { view: 'accuracy', title: 'How accurate is ChartGauge? The measured record',
     desc: 'Every reading ChartGauge has shown is written down before the outcome is known, then graded against what the price actually did 20 trading days later. The running record is published here, including when the score does worse than doing nothing.' },
@@ -3444,6 +3741,29 @@ try {
   LESSONS.forEach(l => { LESSON_INDEX[l.id] = l; });
 } catch (e) { logError(e); }
 
+// Names for the symbols the search suggests, loaded from the client's own
+// list, so a stock's page can say what the company is and a symbol nobody
+// lists (a typo, or a made-up one) is kept out of the index.
+const TICKER_NAMES = {};
+try {
+  const raw = fs.readFileSync(path.join(PUBLIC, 'tickers.js'), 'utf8');
+  const sandbox = { window: {} };
+  new Function('window', raw)(sandbox.window);
+  for (const [sym, name] of sandbox.window.TICKER_LIST || []) TICKER_NAMES[sym] = name;
+} catch (e) { logError(e); }
+Object.assign(TICKER_NAMES, {
+  'SPY': 'SPDR S&P 500 ETF', 'QQQ': 'Invesco QQQ (Nasdaq-100) ETF', 'DIA': 'SPDR Dow Jones ETF', 'IWM': 'iShares Russell 2000 ETF',
+  'VOO': 'Vanguard S&P 500 ETF', 'VTI': 'Vanguard Total Stock Market ETF',
+  'BTC/USD': 'Bitcoin', 'ETH/USD': 'Ethereum', 'SOL/USD': 'Solana', 'XRP/USD': 'XRP', 'DOGE/USD': 'Dogecoin',
+});
+// The stock pages the sitemap lists and the site links to. A curated set:
+// a page per symbol would be thousands of near-identical pages.
+const FEATURED = ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AMD','NFLX','JPM','V','WMT','XOM','KO','DIS','BAC','INTC','CRM','ORCL','AVGO','BTC/USD','ETH/USD','SOL/USD','XRP/USD','DOGE/USD'];
+// When the lessons were first published and last revised (git history of
+// public/lessons.js). Update LESSONS_MODIFIED when the lessons change.
+const LESSONS_PUBLISHED = '2026-07-27';
+const LESSONS_MODIFIED = '2026-10-28';
+
 const esc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -3465,10 +3785,14 @@ function seoFor(urlPath, req) {
     const mode = /^(day-trading|long-term)$/i.test(segs[segs.length - 1] || '') ? segs.pop().toLowerCase() : '';
     // BTC/USD arrives as two segments once the path is decoded; rejoin it.
     const sym = segs.join('/').toUpperCase().replace(/[^A-Z0-9.\-\/]/g, '').slice(0, 16);
+    // Any symbol still opens (people type them into the address bar), but
+    // only a listed one is offered to search engines as a page.
+    const name = TICKER_NAMES[sym] || null;
+    const label = name ? `${name} (${sym})` : sym;
     if (sym) return {
-      view: 'analyze', symbol: sym,
-      title: `${sym} ${mode === 'long-term' ? 'long-term' : mode === 'day-trading' ? 'day-trading' : ''} chart, indicators and stop-loss levels | ${SITE_NAME}`.replace(/\s+/g, ' '),
-      desc: `${sym} candlestick chart with SMA, RSI, MACD, Bollinger bands, ATR and VWAP, an indicator score, and ATR-based stop-loss and take-profit levels. Built for trading; losses are a real risk, and none of it is financial advice.`,
+      view: 'analyze', symbol: sym, symbolName: name, noindex: !name,
+      title: `${label} ${mode === 'long-term' ? 'long-term' : mode === 'day-trading' ? 'day-trading' : ''} chart, buy/sell call and stop-loss levels | ${SITE_NAME}`.replace(/\s+/g, ' '),
+      desc: `${label}: a buy, sell or hold call with the stop-loss and take-profit already set, a candlestick chart and 13 technical indicators. Trading can lose money; not financial advice.`,
       canonical: `${origin}/stock/${sym}`,
     };
   }
@@ -3488,11 +3812,18 @@ function jsonLd(seo, origin) {
     offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
     description: VIEW_SEO[''].desc,
   }];
-  if (seo.view === 'home') {
+  // The publisher, on every page, so any page cited on its own says whose it is.
+  const org = { '@type': 'Organization', '@id': origin + '/#org', name: SITE_NAME, url: origin + '/', logo: origin + '/icon-512.png', email: CONTACT_EMAIL };
+  blocks.push({ '@context': 'https://schema.org', ...org });
+  if (seo.view === 'accuracy') {
     blocks.push({
-      '@context': 'https://schema.org', '@type': 'Organization', name: SITE_NAME, url: origin + '/',
-      logo: origin + '/icon-512.png', email: CONTACT_EMAIL,
+      '@context': 'https://schema.org', '@type': 'Dataset', name: 'ChartGauge graded reading record',
+      description: 'Every reading ChartGauge shows, written down before the outcome is known and graded against the price 20 trading days later, including how it compares with doing nothing.',
+      url: seo.canonical, creator: { '@id': origin + '/#org' }, isAccessibleForFree: true,
+      dateModified: new Date().toISOString().slice(0, 10), measurementTechnique: 'Forward return after a fixed number of trading days',
     });
+  }
+  if (seo.view === 'home') {
     blocks.push({
       '@context': 'https://schema.org', '@type': 'WebSite', name: SITE_NAME, url: origin + '/',
       potentialAction: { '@type': 'SearchAction', target: { '@type': 'EntryPoint', urlTemplate: origin + '/stock/{search_term_string}' }, 'query-input': 'required name=search_term_string' },
@@ -3516,7 +3847,8 @@ function jsonLd(seo, origin) {
       educationalLevel: l.level, timeRequired: `PT${l.minutes}M`,
       learningResourceType: 'Lesson', isAccessibleForFree: true, inLanguage: 'en',
       teaches: (l.sections || []).map(x => x.h).join(', '),
-      provider: { '@type': 'Organization', name: SITE_NAME, url: origin + '/' },
+      provider: { '@id': origin + '/#org' }, author: { '@id': origin + '/#org' }, publisher: { '@id': origin + '/#org' },
+      datePublished: LESSONS_PUBLISHED, dateModified: LESSONS_MODIFIED,
     });
     blocks.push({
       '@context': 'https://schema.org', '@type': 'BreadcrumbList',
@@ -3551,7 +3883,8 @@ function seoHead(seo, origin) {
     `<meta name="twitter:title" content="${esc(seo.title)}" />`,
     `<meta name="twitter:description" content="${esc(seo.desc)}" />`,
     `<meta name="twitter:image" content="${esc(img)}" />`,
-    `<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1" />`,
+    `<meta name="robots" content="${seo.noindex ? 'noindex,follow' : 'index,follow,max-image-preview:large,max-snippet:-1'}" />`,
+    ...(seo.lesson ? [`<meta property="article:published_time" content="${LESSONS_PUBLISHED}" />`, `<meta property="article:modified_time" content="${LESSONS_MODIFIED}" />`] : []),
     jsonLd(seo, origin),
   ].join('\n');
 }
@@ -3560,6 +3893,28 @@ function seoHead(seo, origin) {
 // is present regardless of what the client-side app does with it afterwards.
 // Mirrors APPLIES_LABEL in app.js so the server-rendered lesson says the same
 // thing as the one the app draws over it.
+const fmtIsoDay = (d) => new Date(d + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+// The lesson list for /learn, in the document, so every lesson is linked
+// from a crawlable page and not only from the sitemap.
+function learnListHtml() {
+  return `<div class="learn-grid">` + LESSONS.map(l =>
+    `<a class="learn-card" href="/learn/${encodeURIComponent(l.id)}"><div class="learn-card-top"><div class="learn-title">${esc(l.title)}</div></div>`
+    + `<div class="learn-meta">${esc(l.level)} · ${esc(l.minutes)} min</div><p class="learn-desc">${esc(l.intro)}</p></a>`).join('') + `</div>`;
+}
+// A stock's page, before any JavaScript: what it is, its last recorded
+// reading if there is one, and links to the other featured pages.
+function stockHtml(seo, last) {
+  const label = seo.symbolName ? `${seo.symbolName} (${seo.symbol})` : seo.symbol;
+  const read = last
+    ? `<p>Last recorded reading: <strong>${esc(last.label)}</strong>, score ${esc(last.score)}/100, at ${esc(Number(last.price).toFixed(2))} on <time datetime="${esc(last.day)}">${esc(fmtIsoDay(last.day))}</time>. Every reading is graded in public on the <a href="/accuracy">track record</a>.</p>`
+    : '';
+  const others = FEATURED.filter(x => x !== seo.symbol).slice(0, 12)
+    .map(x => `<a href="/stock/${x}">${esc(x)}</a>`).join(' · ');
+  return `<div class="ssr-stock" id="ssrStock" data-sym="${esc(seo.symbol)}">`
+    + `<p>A buy, sell or hold call on ${esc(label)}, with the stop-loss and take-profit levels already set, a candlestick chart and 13 technical indicators. Trading can lose money; this is not financial advice.</p>`
+    + read
+    + `<p class="ssr-more">More stocks: ${others}</p></div>`;
+}
 const APPLIES_WORD = { day: 'For day trading', long: 'For long-term investing', both: 'For day trading and long-term investing' };
 function lessonHtml(l) {
   if (!l) return '';
@@ -3568,7 +3923,7 @@ function lessonHtml(l) {
   return `<article class="ssr-lesson" id="ssrLesson">`
     + `<h1>${esc(l.title)}</h1>`
     + `<p>${esc(l.intro)}</p>`
-    + `<p>${esc(APPLIES_WORD[l.applies] || '')} · ${esc(l.level)} · ${esc(l.minutes)} minute read · ${(l.quiz || []).length} question quiz</p>`
+    + `<p>${esc(APPLIES_WORD[l.applies] || '')} · ${esc(l.level)} · ${esc(l.minutes)} minute read · ${(l.quiz || []).length} question quiz · Updated <time datetime="${LESSONS_MODIFIED}">${esc(fmtIsoDay(LESSONS_MODIFIED))}</time> by the ${SITE_NAME} team</p>`
     + secs
     + (quiz ? `<h2>Check yourself</h2><ol>${quiz}</ol>` : '')
     + `<p><a href="/learn">All lessons</a> · <a href="/">Analyze a stock</a></p>`
@@ -3593,7 +3948,10 @@ const APP_PATH = /^\/(analyze|markets|movers|accuracy|compare|screener|alerts|wa
 // properly, and it is the page a search engine sees for every dead link.
 // Fixed at boot: the date this build went up, for the sitemap, and the date
 // security.txt stops being trusted, a year on, which every deploy renews.
-const DEPLOYED_ON = new Date().toISOString().slice(0, 10);
+// The build's date, from when this file was written to disk by the deploy.
+// Process start would move every time a free instance wakes from sleep,
+// which made the sitemap's lastmod say the whole site changed daily.
+const DEPLOYED_ON = (() => { try { return fs.statSync(__filename).mtime.toISOString().slice(0, 10); } catch (e) { return new Date().toISOString().slice(0, 10); } })();
 const SECURITY_TXT_EXPIRES = new Date(Date.now() + 365 * 86400000).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const ROBOTS_TXT = `User-agent: *
 Allow: /
@@ -3618,6 +3976,28 @@ User-agent: CCBot
 Disallow: /
 
 `;
+// A plain-text summary of the site for AI assistants and answer engines
+// (llmstxt.org): what it is, what it does not claim, and where the pages are.
+function llmsTxt(origin) {
+  const L = (p, t, d) => `- [${t}](${origin}${p})${d ? ': ' + d : ''}`;
+  return [
+    `# ${SITE_NAME}`, '',
+    `> A trading tool for stocks and crypto pairs. Enter a stock and get a mechanical buy, sell or hold call with the stop-loss and take-profit levels already set, a candlestick chart and 13 technical indicators. Every call is written down before the outcome is known and graded in public. Trading can lose money, including everything you put in; nothing on the site is financial advice, and it does not promise or quote returns.`, '',
+    '## Main pages',
+    L('/', 'Home', 'what the tool does and a live example reading'),
+    L('/analyze', 'Analyze', 'the call, chart, indicators and levels for any stock'),
+    L('/accuracy', 'Track record', 'every graded call, including where the score does worse than doing nothing'),
+    L('/practice', 'Practice', 'paper trading with pretend money'),
+    L('/pricing', 'Plans', 'what is free and what Pro adds'), '',
+    '## Lessons',
+    ...LESSONS.map(l => L(`/learn/${encodeURIComponent(l.id)}`, l.title, l.intro)), '',
+    '## Stock pages',
+    ...FEATURED.map(sym => L(`/stock/${sym}`, `${TICKER_NAMES[sym] || sym} (${sym})`)), '',
+    '## Policies',
+    ...Object.keys(LEGAL.PAGES).map(k => L(`/${k}`, LEGAL.PAGES[k].title)), '',
+    `Contact: ${CONTACT_EMAIL}`, '',
+  ].join('\n');
+}
 // A failure while building a page gets a page, not a JSON fragment: the
 // browser asked for a document.
 function serverError(req, res) {
@@ -3627,9 +4007,10 @@ function serverError(req, res) {
   res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(`<!doctype html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Something went wrong | ${SITE_NAME}</title><meta name="robots" content="noindex" /><link rel="stylesheet" href="/styles.css" /></head><body>
-<div class="nf-wrap"><div class="nf-code">500</div><h1 class="nf-title">Something went wrong on our side</h1>
+<a class="skip-link" href="#main">Skip to content</a>
+<main id="main" tabindex="-1" class="nf-wrap"><div class="nf-code">500</div><h1 class="nf-title">Something went wrong on our side</h1>
 <p class="nf-sub">The page could not be built. It has been logged. Reloading usually works; if it keeps happening, <a href="/contact">tell us</a>.</p>
-<div class="nf-links"><a class="nf-primary" href="/">Go to the charts</a><a class="nf-link" href="/learn">Lessons</a><a class="nf-link" href="/contact">Contact</a></div></div></body></html>`);
+<div class="nf-links"><a class="nf-primary" href="/">Go to the charts</a><a class="nf-link" href="/learn">Lessons</a><a class="nf-link" href="/contact">Contact</a></div></main></body></html>`);
 }
 function notFound(req, res) {
   const origin = siteOrigin(req);
@@ -3640,7 +4021,8 @@ function notFound(req, res) {
 <link rel="canonical" href="${esc(origin)}/" />
 <link rel="stylesheet" href="/styles.css" />
 </head><body>
-<div class="nf-wrap">
+<a class="skip-link" href="#main">Skip to content</a>
+<main id="main" tabindex="-1" class="nf-wrap">
   <div class="nf-code">404</div>
   <h1 class="nf-title">That page isn\u2019t here</h1>
   <p class="nf-sub">The link may be out of date, or the address mistyped. Everything below still works.</p>
@@ -3650,7 +4032,7 @@ function notFound(req, res) {
     <a class="nf-link" href="/accuracy">Accuracy record</a>
     <a class="nf-link" href="/contact">Contact</a>
   </div>
-</div>
+</main>
 </body></html>`;
   res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
   res.end(body);
@@ -3667,19 +4049,32 @@ function serveDocument(req, res, urlPath) {
       .replace('<!--SEO-->', seoHead(seo, origin))
       .replace('<!--GA-->', GA_SNIPPET)
       .replace(/<!--CONTACT_EMAIL-->/g, CONTACT_EMAIL)
+      // Featured stock pages, linked from every page's footer so they are
+      // reachable by following links and not only through the sitemap.
+      .replace('<p class="foot-note">', `<nav class="foot-links foot-stocks" aria-label="Popular stocks">${FEATURED.slice(0, 10).map(x => `<a href="/stock/${x}">${esc(x)}</a>`).join('')}</nav><p class="foot-note">`)
       .replace('<span id="footYear">2026</span>', `<span id="footYear">${new Date().getFullYear()}</span>`);
-    // One <h1> per rendered page: the active view keeps it, the rest step down.
-    out = out.replace(/<h1 class="(hero-h|view-h)"/g, '<h2 class="$1"');
+    // One <h1> per rendered page: the active view keeps it, the rest step
+    // down. Opening and closing tags change together (rewriting only the
+    // opening tag left <h2 ...>...</h1> pairs).
+    out = out.replace(/<h1 class="((?:hero-h|view-h)[^"]*)"([^>]*)>([\s\S]*?)<\/h1>/g, '<h2 class="$1"$2>$3</h2>');
+    const promote = (from) => {
+      const hAt = out.indexOf('<h2 class="', from);
+      const end = hAt >= 0 ? out.indexOf('</h2>', hAt) : -1;
+      if (hAt < 0 || end < 0) return;
+      out = out.slice(0, hAt) + '<h1' + out.slice(hAt + 3, end) + '</h1>' + out.slice(end + 5);
+    };
     if (seo.lesson || seo.legal) { /* the rendered page supplies its own h1 */ }
-    else if (seo.view === 'home') out = out.replace('<h2 class="hero-h"', '<h1 class="hero-h"');
+    else if (seo.view === 'home') promote(out.indexOf('<h2 class="hero-h"'));
     else {
-      const marker = `id="view-${seo.view}">`;
-      const at = out.indexOf(marker);
-      if (at >= 0) {
-        const hAt = out.indexOf('<h2 class="view-h"', at);
-        if (hAt >= 0) out = out.slice(0, hAt) + '<h1 class="view-h"' + out.slice(hAt + '<h2 class="view-h"'.length);
-      }
+      const at = out.indexOf(`id="view-${seo.view}">`);
+      if (at >= 0) promote(at);
     }
+    // A stock's page names the stock in its heading.
+    if (seo.symbol) {
+      const label = seo.symbolName ? `${seo.symbolName} (${seo.symbol})` : seo.symbol;
+      out = out.replace(/(<h1 class="view-h" id="analyzeH">)[\s\S]*?(<\/h1>)/, `$1${esc(label)}: chart and trade levels$2`);
+    }
+    if (seo.view === 'learn' && !seo.lesson) out = out.replace('<div id="learnHost"></div>', `<div id="learnHost">${learnListHtml()}</div>`);
     // Lesson prose goes into the document itself so it indexes without JS.
     if (seo.lesson) out = out.replace('<div id="learnHost"></div>', `<div id="learnHost"></div>${lessonHtml(seo.lesson)}`);
     if (seo.legal) out = out.replace('<div id="legalHost"></div>', `<div id="legalHost">${seo.legal.html}</div>`);
@@ -3698,6 +4093,14 @@ function serveDocument(req, res, urlPath) {
         .then(st => finish(out.replace('<div id="accuracySsr"></div>', accuracyHtml(st, ACCURACY_HORIZON))))
         .catch(() => finish(out));
     }
+    if (seo.symbol) {
+      return db.latestPrediction(seo.symbol).catch(() => null)
+        .then(last => finish(out.replace(/(<h1 class="view-h" id="analyzeH">[\s\S]*?<\/h1>)/, `$1${stockHtml(seo, last)}`)));
+    }
+    if (seo.view === 'pricing') {
+      return billingInfo().catch(() => ({}))
+        .then(b => finish(out.replace('<div class="pricing" id="pricingBody"></div>', `<div class="pricing" id="pricingBody">${pricingHtml(b)}</div>`)));
+    }
     return finish(out);
 
     function finish(body) {
@@ -3710,6 +4113,17 @@ function serveDocument(req, res, urlPath) {
   });
 }
 
+// The plans, in the document, for anyone (or anything) that reads the page
+// without running app.js, which redraws this with the account's own state.
+function pricingHtml(b) {
+  const per = (o) => o && o.amount != null ? `${money(o.amount, o.currency)} ${o.intervalCount > 1 ? 'every ' + o.intervalCount + ' ' + o.interval + 's' : 'per ' + o.interval}` : null;
+  const prices = ['weekly', 'monthly', 'yearly'].map(k => per(b && b[k])).filter(Boolean);
+  return `<div class="plan-card"><div class="plan-price">Free</div><p>The chart, all 13 indicators, the buy, sell or hold call, stop-loss and take-profit levels, the measured base rate, practice trading and every lesson. ${AI_FREE_DAILY} written reports a day.</p></div>`
+    + `<div class="plan-card"><div class="plan-price">Pro</div><p>Unlimited written reports (up to ${PRO_AI_DAILY} a day), reading an uploaded chart image, the screener, side-by-side compare and extra take-profit levels.`
+    + (prices.length ? ` ${esc(prices.join(', '))}.` : '')
+    + (TRIAL_DAYS > 0 ? ` A first subscription starts with a ${TRIAL_DAYS}-day free trial.` : '')
+    + ` Renews automatically until you cancel; cancel any time from this page.</p></div>`;
+}
 // Server-rendered accuracy figures. Deliberately states the unflattering
 // comparison in words rather than leaving a reader to work it out from a table.
 function accuracyHtml(st, horizon) {
@@ -3807,6 +4221,15 @@ const server = http.createServer(async (req, res) => {
   try {
     securityHeaders(req, res);
     const url = req.url.split('?')[0];
+    // Pages asked for on any other host (the onrender.com address, chiefly)
+    // move permanently to the real one, so there is one copy of the site to
+    // index. The API is left alone: the Stripe webhook and any existing
+    // callers keep working whichever host they were pointed at.
+    if (SITE_HOST && req.headers.host && req.headers.host !== SITE_HOST && !url.startsWith('/api/')
+        && (req.method === 'GET' || req.method === 'HEAD')) {
+      res.writeHead(301, { Location: SITE_ORIGIN + req.url });
+      return res.end();
+    }
     if (url.startsWith('/api/')) {
       usage.total++;
       // Only paths that are real endpoints get their own counter. Without this
@@ -3819,6 +4242,10 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
       return res.end(ROBOTS_TXT + `Sitemap: ${siteOrigin(req)}/sitemap.xml\n`);
     }
+    if (url === '/llms.txt') {
+      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end(llmsTxt(siteOrigin(req)));
+    }
     if (url === '/.well-known/security.txt') {
       const origin = siteOrigin(req);
       res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -3829,12 +4256,10 @@ const server = http.createServer(async (req, res) => {
       // lastmod is the deploy date, not the request date: the pages change
       // when the code does, and a date that moved daily would say nothing.
       const today = DEPLOYED_ON;
-      // A curated list only: publishing a URL per ticker would be thousands of
-      // near-identical pages, which is thin content rather than coverage.
-      const FEATURED = ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AMD','NFLX','JPM','V','WMT','XOM','KO','DIS','BAC','INTC','CRM','ORCL','AVGO','BTC/USD','ETH/USD','SOL/USD','XRP/USD','DOGE/USD'];
       const urls = [
         { loc: origin + '/', pri: '1.0', freq: 'daily' },
-        ...Object.keys(VIEW_SEO).filter(Boolean).map(k => ({ loc: `${origin}/${k}`, pri: '0.8', freq: 'weekly' })),
+        // Pages that only show a signed-in account's own data are not listed.
+        ...Object.keys(VIEW_SEO).filter(k => k && !VIEW_SEO[k].noindex).map(k => ({ loc: `${origin}/${k}`, pri: '0.8', freq: 'weekly' })),
         ...LESSONS.map(l => ({ loc: `${origin}/learn/${l.id}`, pri: '0.7', freq: 'monthly' })),
         ...Object.keys(LEGAL.PAGES).map(k => ({ loc: `${origin}/${k}`, pri: '0.4', freq: 'yearly' })),
         ...FEATURED.map(sym => ({ loc: `${origin}/stock/${sym}`, pri: '0.6', freq: 'daily' })),
@@ -3970,8 +4395,8 @@ db.init().then((storeMode) => {
       detectConnect().catch(logError);
       const probe = setInterval(() => { if (!connectOn) detectConnect().catch(logError); }, 3600000);
       if (probe.unref) probe.unref();
-      const first = setTimeout(() => syncAffiliateLedger().catch(logError), 60000);
-      const daily = setInterval(() => syncAffiliateLedger().catch(logError), 24 * 3600000);
+      const first = setTimeout(() => { syncAffiliateLedger().catch(logError); syncPlans().catch(logError); }, 60000);
+      const daily = setInterval(() => { syncAffiliateLedger().catch(logError); syncPlans().catch(logError); }, 24 * 3600000);
       if (first.unref) first.unref();
       if (daily.unref) daily.unref();
       startAutoPay();

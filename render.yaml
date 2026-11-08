@@ -19,8 +19,11 @@
 # In Render: New → Blueprint (or open your existing blueprint → Manual Sync).
 # Keys are sync:false, so Render prompts for them — never commit keys.
 databases:
-  - name: marketlens-db-dgit     # free Postgres; Render provisions + wires it automatically
-    plan: free
+  - name: marketlens-db-dgit     # Render Postgres; provisioned + wired automatically
+    # Upgraded from free on 2026-10-16 after the free database expired. Paid
+    # plans keep daily backups. This line must match the live plan, or a
+    # blueprint sync would try to put it back on free.
+    plan: basic-256mb
 
 services:
   - type: web
@@ -56,8 +59,8 @@ services:
         sync: false
       - key: STRIPE_WEBHOOK_SECRET # Stripe webhook signing secret (whsec_...)
         sync: false
-      - key: ANTHROPIC_MODEL      # optional; a cheaper model (e.g. claude-haiku-4-5) lowers cost
-        value: claude-opus-4-8
+      - key: ANTHROPIC_MODEL      # optional; model id for written reports. Set in the dashboard, not here,
+        sync: false               # so a blueprint sync never resets it.
       - key: GOOGLE_CLIENT_ID     # "Sign in with Google" — dormant (silently) until both are set
         sync: false
       - key: GOOGLE_CLIENT_SECRET
@@ -74,8 +77,6 @@ services:
         sync: false
       - key: AFFILIATE_SHARE      # optional; the percentage quoted in the affiliate welcome email, e.g. 30
         sync: false
-      - key: FREE_UNTIL           # everything is free until this instant, then the normal split
-        value: "2026-10-18T00:00:00Z"
 
 # Read by the app but deliberately NOT declared here, because each has a working
 # default and listing them would prompt for a value on every blueprint sync:
@@ -87,4 +88,11 @@ services:
 #   MAIL_FROM (sender of the confirmation email; its domain must be verified in
 #   Resend), MAIL_TRANSPORT (resend | log | off), MOVERS_SYMBOLS,
 #   RANKED_REFRESH_MS, RANKED_SYMBOLS, STRIPE_PRICE_ID (legacy).
+#   SITE_ORIGIN (every absolute link; defaults to https://chartgauge.com on Render),
+#   TRUST_CF_IP (on|off; client IP from Cloudflare's header, on by default on Render),
+#   PRO_AI_DAILY (150) / PRO_IMAGE_DAILY (40) daily ceilings on Pro,
+#   PAYOUT_HOLD_DAYS (3), STREAMS_PER_USER (6), STREAM_SYMBOLS_MAX (45),
+#   FREE_UNTIL (launch period end; past, so unset is the same),
+#   MAIL_POSTAL_ADDRESS and DMCA_AGENT ("Name|Address|Phone") for the email
+#   footer and /copyright, CONTACT_EMAIL, AFFILIATE_SHARE.
 # PORT is set by Render itself — never declare it.
