@@ -273,7 +273,7 @@
     if (!row) return;
     if (!call || !call.action) { row.classList.add('hidden'); return; }
     row.classList.remove('hidden');
-    $('signalBadge').textContent = call.action;
+    $('signalBadge').textContent = call.label || call.action;
     $('signalBadge').className = 'signal-badge sig-' + (call.tone || 'neutral');
     $('signalWhy').textContent = call.why || '';
   }
@@ -889,14 +889,6 @@
     };
     timer = setTimeout(tick, 1400);
   })();
-  // A soft spotlight follows the pointer across cards.
-  document.addEventListener('pointermove', (e) => {
-    const c = e.target && e.target.closest && e.target.closest('.tool, .plan2, .learn-card, .plan-card, .steps > li');
-    if (!c) return;
-    const r = c.getBoundingClientRect();
-    c.style.setProperty('--mx', (e.clientX - r.left) + 'px');
-    c.style.setProperty('--my', (e.clientY - r.top) + 'px');
-  }, { passive: true });
 
   // ---- Scroll reveal ----
   // Sections and cards rise into place every time they scroll into sight,
@@ -1820,8 +1812,9 @@
         // held back only when the measured record clearly disagrees. The
         // score rides along as the small line beneath it.
         $('vKicker').textContent = call.vetoed ? 'Verdict, held back' : 'Verdict';
-        $('vAction').textContent = call.action;
-        $('vMeta').textContent = rt.score != null ? `indicators ${rt.score}/100` : '';
+        $('vAction').textContent = call.label || call.action;
+        const unbacked = call.confirmed === false && call.action !== 'Hold';
+        $('vMeta').textContent = [rt.score != null ? `indicators ${rt.score}/100` : '', unbacked ? 'no measured edge' : ''].filter(Boolean).join(' · ');
         $('verdict').className = 'verdict ' + (call.tone || 'neutral');
       } else {
         $('vKicker').textContent = 'Indicators';
@@ -1901,7 +1894,7 @@
     // The call and its exits, from the same reading the chart is drawing.
     const call = lastData.call, L = lastData.levels;
     if (lastData.locked || !call || !call.action) { $('homeCall').classList.add('hidden'); return; }
-    $('homeCallV').textContent = call.action;
+    $('homeCallV').textContent = call.label || call.action;
     $('homeCallV').className = 'home-call-v ' + (call.tone || 'neutral');
     const t = L ? targetsFor(L)[0] : null;
     $('homeCallLv').innerHTML = L
@@ -3070,7 +3063,14 @@
     if (name === 'admin') loadAdmin();
     if (name === 'pricing') renderPricing();
   }
-  function goAnalyze(sym) { showView('analyze'); if (sym) { $('symbol').value = sym; run(sym); } }
+  // The front page's sample (SPY on daily bars) is the one reading a visitor
+  // sees in full. Arriving at it on any other candle size would only show the
+  // sign-in wall, so a visitor without an account lands on the daily bars.
+  function sampleDaily(sym) {
+    if (currentUser || String(sym).toUpperCase() !== HOME_SYMBOL || interval === '1day') return;
+    interval = '1day'; viewCandles = null; syncIntervalButtons();
+  }
+  function goAnalyze(sym) { showView('analyze'); if (sym) { $('symbol').value = sym; sampleDaily(sym); run(sym); } }
   document.querySelectorAll('[data-view]').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); showView(el.dataset.view); }));
 
   // The server renders the lesson into the document so it indexes without
@@ -3093,6 +3093,7 @@
       if (!sym) return showView('home', { fromUrl: true, replace });
       showView('analyze', { fromUrl: true, replace });
       $('symbol').value = sym;
+      sampleDaily(sym);
       run(sym);
       return;
     }
@@ -3563,13 +3564,8 @@
     }
     const signedIn = !!currentUser;
     $('homeEndCta').textContent = signedIn ? 'Analyze a stock' : 'Get a free reading';
-    $('homeEndTry').classList.toggle('hidden', signedIn);
   }
   if ($('homeEndCta')) $('homeEndCta').addEventListener('click', () => currentUser ? showView('analyze') : openAuth('signup'));
-  if ($('homeEndTry')) $('homeEndTry').addEventListener('click', () => {
-    document.body.scrollTo({ top: 0, behavior: 'smooth' }); window.scrollTo({ top: 0, behavior: 'smooth' });
-    setTimeout(() => $('heroInput').focus({ preventScroll: true }), 300);
-  });
   function renderPricing() {
     const pro = !!(currentUser && currentUser.plan === 'pro');
     const li = (arr) => arr.map(([t, on]) => `<li class="${on ? '' : 'off'}">${esc(t)}</li>`).join('');

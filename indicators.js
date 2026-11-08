@@ -591,10 +591,15 @@ function headlineCall(rating, e) {
       why: `The indicators point ${dir}, but in the past setups like this did ${lean === 'Buy' ? 'worse' : 'better'} than usual on this symbol, so the call is held back.` };
   }
   const tone = lean === 'Buy' ? 'bullish' : 'bearish';
+  // A lean the record does not back (or cannot check yet) is shown as
+  // "Lean buy" / "Lean sell", so the chip and the measured sentence under it
+  // say the same thing. action stays Buy / Sell for everything that keys on it.
+  const confirmed = !!(sig && sig.action === lean);
+  const label = confirmed ? lean : 'Lean ' + lean.toLowerCase();
   const why = !sig ? `The indicators point ${dir}. There is not enough history on this symbol yet to check that against its past.`
     : sig.action === 'Hold' ? `The indicators point ${dir}. In the past, setups like this did about as well as an average day on this symbol, so treat it as a lean rather than a strong signal.`
     : `The indicators point ${dir}, and in the past setups like this did ${lean === 'Buy' ? 'better' : 'worse'} than usual on this symbol.`;
-  return { action: lean, tone, vetoed: false, why };
+  return { action: lean, label, confirmed, tone, vetoed: false, why };
 }
 
 function forecastBands(closes) {

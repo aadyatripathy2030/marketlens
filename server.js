@@ -676,7 +676,7 @@ function reportPrompt(p) {
     + `MACD hist: ${fmt(t.macd && t.macd.hist)} | VWAP: ${fmt(t.vwap)} | Bollinger %B: ${fmt(t.bollinger && t.bollinger.pctB)}\n`
     + `ATR: ${fmt(t.atr)} | Volatility(annual %): ${fmt(t.volatility && t.volatility.annual)} | Trend: ${t.trend ? t.trend.strength + '/100 ' + t.trend.direction : 'n/a'}\n`
     + `Support ${fmt(t.supportResistance && t.supportResistance.support)} / Resistance ${fmt(t.supportResistance && t.supportResistance.resistance)}\n`
-    + (p.call && p.call.action ? `VERDICT SHOWN TO THE READER: ${p.call.action}. ${p.call.why} Your summary must be consistent with this verdict and must not call the stock a buy or a sell against it.\n` : '')
+    + (p.call && p.call.action ? `VERDICT SHOWN TO THE READER: ${p.call.label || p.call.action}. ${p.call.why} Your summary must be consistent with this verdict and must not call the stock a buy or a sell against it.\n` : '')
     + (p.edge ? `MEASURED BASE RATE: at scores near ${r.score}, this symbol was higher ${p.edge.horizon} bars later ${p.edge.winRate}% of the time across ${p.edge.n} past occurrences; the rate on any bar was ${p.edge.baseWinRate}%. Treat this as the ground truth about whether the setup has predicted anything for this symbol, and say plainly when it has not.\n` : '')
     + `Return the JSON now.`;
   return { system, user };
@@ -3970,12 +3970,9 @@ function stockHtml(seo, last) {
   const read = last
     ? `<p>Last recorded reading: <strong>${esc(last.label)}</strong>, score ${esc(last.score)}/100, at ${esc(Number(last.price).toFixed(2))} on <time datetime="${esc(last.day)}">${esc(fmtIsoDay(last.day))}</time>.</p>`
     : '';
-  const others = FEATURED.filter(x => x !== seo.symbol).slice(0, 12)
-    .map(x => `<a href="/stock/${x}">${esc(x)}</a>`).join(' · ');
   return `<div class="ssr-stock" id="ssrStock" data-sym="${esc(seo.symbol)}">`
     + `<p>A buy, sell or hold call on ${esc(label)}, with the stop-loss and take-profit levels already set, a candlestick chart and 13 technical indicators. For educational purposes only. Trading can lose money; this is not financial advice.</p>`
-    + read
-    + `<p class="ssr-more">More stocks: ${others}</p></div>`;
+    + read + `</div>`;
 }
 const APPLIES_WORD = { day: 'For day trading', long: 'For long-term investing', both: 'For day trading and long-term investing' };
 function lessonHtml(l) {
@@ -4147,7 +4144,7 @@ function serveDocument(req, res, urlPath) {
     }
     if (seo.symbol) {
       return db.latestPrediction(seo.symbol).catch(() => null)
-        .then(last => finish(out.replace(/(<h1 class="view-h" id="analyzeH">[\s\S]*?<\/h1>)/, (m) => `${m}${stockHtml(seo, last)}`)));
+        .then(last => finish(out.replace('<!--STOCK_INTRO-->', () => stockHtml(seo, last))));
     }
     if (seo.view === 'pricing') {
       return billingInfo().catch(() => ({}))

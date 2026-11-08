@@ -1981,63 +1981,16 @@ body[data-view="verify"] .disclaimer, body[data-view="verify"] .site-foot { disp
 #main p a:not([class]):hover, #main li a:not([class]):hover { color: var(--accent-hi); }
 
 /* ===================================================================
-   Motion after resend.com (Nov 8 2026): the techniques, not their art.
-   Header slides down on load and draws its line only once scrolled; the
-   hero headline is a soft gradient that rises in; a slow beam of light
-   drifts behind the hero; a pill with a rotating rainbow edge; phrases
-   in section headings shimmer once; an endless strip of stocks; a typed
-   placeholder; a pointer spotlight on cards; a ping on the check mark.
+   Home motion, cut to one moment (Nov 8 2026, design critique).
+   The stock strip is the page's one ambient motion; the hero copy and the
+   product shot keep their one-time load-in from the Linear block above.
+   The beam, the rainbow pill, the gradient and shimmering headings, the
+   pointer spotlight and the sliding header were removed: six effects at
+   once, in hues the rest of the site does not use.
+   The header still draws its bottom line only once the page has scrolled.
    =================================================================== */
-:root { --grad-a: #ffffff; --grad-b: rgba(255,255,255,.5); --beam: rgba(255,255,255,.07); --beam-2: rgba(255,255,255,.035); --spot: rgba(255,255,255,.06); }
-:root[data-theme="light"] { --grad-a: #0e0f11; --grad-b: rgba(14,15,17,.55); --beam: rgba(80,90,130,.10); --beam-2: rgba(80,90,130,.05); --spot: rgba(60,70,110,.07); }
-
-@keyframes rsHeader { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: none; } }
-@keyframes rsRise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
-@keyframes rsShotIn { 0% { opacity: 0; transform: scale(.97); } 30% { opacity: 0; } 100% { opacity: 1; transform: none; } }
-.topbar { animation: rsHeader .8s cubic-bezier(.4,0,.2,1) backwards; border-bottom-color: transparent; transition: border-color .3s, background-color .3s; }
+.topbar { border-bottom-color: transparent; transition: border-color .3s, background-color .3s; }
 .topbar.scrolled { border-bottom-color: var(--border); }
-
-/* Hero headline: a soft gradient from full to half strength. */
-.hero-h { background: linear-gradient(to right bottom, var(--grad-a) 30%, var(--grad-b)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; padding-bottom: .06em; }
-.hero-wrap .hero > * { animation: rsRise 1s cubic-bezier(.4,0,.2,1) backwards; }
-.hero-wrap .hero > :nth-child(1) { animation-delay: .1s; }
-.hero-wrap .hero > :nth-child(2) { animation-delay: .2s; }
-.hero-wrap .hero > :nth-child(3) { animation-delay: .32s; }
-.hero-wrap .hero > :nth-child(4) { animation-delay: .44s; }
-.hero-wrap .hero > :nth-child(5) { animation-delay: .54s; }
-.hero-wrap .home-chart { animation: rsShotIn 1.4s cubic-bezier(.4,0,.2,1) .2s backwards; }
-
-/* A beam of light falling across the hero from the upper right, drifting. */
-.hero-wrap::before {
-  content: ""; position: absolute; z-index: -1; pointer-events: none; top: -80px; height: 900px;
-  left: calc(-1 * (max(0px, (100vw - 1280px) / 2) + var(--app-pad-x, 32px))); width: 100vw; overflow: hidden;
-  background:
-    radial-gradient(40% 50% at 82% 0%, var(--beam), transparent 70%),
-    linear-gradient(160deg, transparent 38%, var(--beam-2) 46%, var(--beam) 50%, var(--beam-2) 54%, transparent 62%);
-  filter: blur(18px);
-  animation: rsBeam 14s ease-in-out infinite alternate;
-}
-@keyframes rsBeam { from { transform: translateX(-3%) skewX(-2deg); opacity: .8; } to { transform: translateX(3%) skewX(2deg); opacity: 1; } }
-.hero-wrap { isolation: isolate; }
-
-/* The pill: a rotating rainbow edge around a quiet link. */
-.pill { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; margin: 0 0 24px; border-radius: 9999px;
-  font-size: 13px; color: var(--text); text-decoration: none; background: var(--bg); isolation: isolate; overflow: hidden; }
-@property --pill-a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
-.pill::before { content: ""; position: absolute; inset: 0; z-index: -1; padding: 1px; border-radius: inherit; pointer-events: none;
-  background: conic-gradient(from var(--pill-a), #ff7ac6, #ffb86b, #ffe27a, #8affc1, #5ee0ff, #9a8bff, #ff7ac6);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); animation: rsSpin 6s linear infinite; }
-.pill:hover { color: var(--text); }
-.pill svg { transition: transform .2s cubic-bezier(.4,0,.2,1); }
-.pill:hover svg { transform: translateX(2px); }
-@keyframes rsSpin { to { --pill-a: 360deg; } }
-
-/* A phrase in a section heading: a multicolor gradient that sweeps once. */
-.shimmer { background: linear-gradient(90deg, var(--text) 0%, var(--text) 35%, #9a8bff 48%, #5ee0ff 58%, #8affc1 66%, var(--text) 80%, var(--text) 100%);
-  background-size: 300% 100%; background-position: 100% center; -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
-.home-h:not(.rv) .shimmer, .rv.in .shimmer { animation: rsShimmer 2.6s cubic-bezier(.4,0,.2,1) .3s both; }
-@keyframes rsShimmer { from { background-position: 100% center; } to { background-position: 0% center; } }
 
 /* The strip of stocks: endless, paused on hover, faded at the edges. */
 .marquee { display: flex; gap: 32px; overflow: hidden; margin: -72px 0 96px; padding: 8px 0;
@@ -2051,10 +2004,7 @@ body[data-view="verify"] .disclaimer, body[data-view="verify"] .site-foot { disp
 @keyframes rsScroll { from { transform: translateX(0); } to { transform: translateX(calc(-100% - 32px)); } }
 @media (max-width: 760px) { .marquee { margin: -40px 0 64px; } }
 
-/* Cards: a soft light follows the pointer. */
-.tool, .plan2, .learn-card, .plan-card { background-image: radial-gradient(260px circle at var(--mx, -999px) var(--my, -999px), var(--spot), transparent 70%); }
-
-/* The check mark lands with a ping and a small nudge. */
+/* The check mark lands with a ping and a small nudge (sign-in code page). */
 .code-done { position: relative; }
 #authCode.done .code-done::after { content: ""; position: absolute; left: 50%; top: 50%; width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%;
   border: 2px solid #4cb262; animation: rsPing .9s cubic-bezier(0,0,.2,1) .55s both; pointer-events: none; }
@@ -2063,8 +2013,226 @@ body[data-view="verify"] .disclaimer, body[data-view="verify"] .site-foot { disp
 @keyframes rsNudge { 0%, 100% { transform: scale(1); } 45% { transform: scale(1.06); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .topbar, .hero-wrap .hero > *, .hero-wrap .home-chart, .hero-wrap::before, .pill::before, .marquee-track,
-  .shimmer, #authCode.done .code-done::after, #authCode.done .code-done svg { animation: none !important; }
-  .shimmer { background-position: 0% center; }
+  .marquee-track, #authCode.done .code-done::after, #authCode.done .code-done svg { animation: none !important; }
   .marquee { overflow-x: auto; }
 }
+
+/* ===================================================================
+   Design critique fixes (Nov 8 2026).
+   =================================================================== */
+
+/* One accent role: "selected" and links are the text color, as the
+   buttons already are. Red and green stay for price direction only.
+   (Selected interval pills become a white fill with dark text through
+   .range-btn.active, which reads --accent / --bg.) */
+:root { --accent: #f7f8f8; --accent-hi: #ffffff; --accent-soft: rgba(255,255,255,.08);
+  --ai: #c9ccd1; --ai-2: #f7f8f8; --ai-soft: rgba(255,255,255,.06); }
+:root[data-theme="light"] { --accent: #0e0f11; --accent-hi: #2b2d31; --accent-soft: rgba(0,0,0,.06);
+  --ai: #5d6169; --ai-2: #0e0f11; --ai-soft: rgba(0,0,0,.04); }
+.range-btn.active { color: var(--bg); background: var(--accent); }
+.strat-btn.active { color: var(--text); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--border-strong); }
+/* Links: underlined, so they still read as links without a hue. */
+#main p a:not([class]), #main li a:not([class]), .legal a:not([class]), .link-btn,
+.home-full, .home-more a, .hero-assure a { color: var(--text); text-decoration: underline; text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px; text-decoration-thickness: 1px; }
+#main p a:not([class]):hover, #main li a:not([class]):hover, .link-btn:hover,
+.home-full:hover, .home-more a:hover, .hero-assure a:hover { color: var(--btn-hi); text-decoration-color: currentColor; }
+.marquee a span { color: var(--muted); }
+/* The risk note: a quiet panel, no colored edge. */
+.risk { border-left: 0; border: 1px solid var(--border); background: var(--wash); }
+.risk.danger { border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+
+/* Chart layer toggles: off is a dimmed label with an empty swatch, on is a
+   filled swatch and full-strength text. Never struck through. */
+.ov:not(.active) { opacity: 1; text-decoration: none; color: var(--muted); background: transparent; border-color: var(--border); }
+.ov:not(.active) i:not(.dashed) { background: transparent !important; box-shadow: inset 0 0 0 1px var(--muted); height: 6px; }
+.ov:not(.active) i.dashed { border-top-color: var(--border-strong); }
+.ov.active { color: var(--text); border-color: var(--border-strong); background: var(--wash-2); }
+.ov.active i:not(.dashed) { height: 6px; }
+.ov:hover { border-color: var(--hover-border); color: var(--text); }
+
+/* Hero: plain white headline, less empty space above it, so today's
+   reading and its call land in the first screen. */
+.hero-h { background: none; -webkit-background-clip: border-box; background-clip: border-box; color: var(--text); -webkit-text-fill-color: currentColor; }
+.hero-wrap { padding-top: 64px; gap: 40px; }
+.hero-wrap .hero-sub { margin-bottom: 24px; }
+.hero-assure { margin-top: 12px; }
+@media (max-width: 760px) { .hero-wrap { padding-top: 32px; gap: 32px; } }
+
+/* Cookie choice: a compact card in the corner on wide screens, so it never
+   sits on top of the reading. */
+@media (min-width: 621px) {
+  .consent { left: 16px; right: auto; bottom: 16px; margin: 0; max-width: 380px; flex-direction: column; align-items: stretch; gap: 12px; padding: 14px 16px; }
+  .consent-btns { justify-content: flex-end; }
+}
+
+/* The four tools: the grid fills its column, titles outrank their text. */
+.tools { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.tool { max-width: none; }
+.tool-h { font-size: 19px; line-height: 1.3; margin-bottom: 8px; }
+.tool p { font-size: 15px; line-height: 1.6; }
+@media (max-width: 900px) { .tools { grid-template-columns: 1fr; } }
+
+/* The closing call to action has one button now. */
+.home-end-btns { display: flex; justify-content: center; }
+
+/* A stock page's short intro sits under the tool, not above it. */
+.ssr-stock { margin: 48px 0 0; padding-top: 24px; border-top: 1px solid var(--border); }
+
+/* ===================================================================
+   Liquid glass (Nov 8 2026, at the user's request: "refraction, rim, and
+   reflection", with something behind the text and the main content).
+   - Ground: four large, soft color fields drifting very slowly on a fixed
+     layer behind everything (.bg-blobs). Dim enough that body and muted
+     text keep their contrast through the glass.
+   - Glass: the header, every button and chip, and the content cards.
+     Charts stay on solid panels so candles and levels stay exact.
+     Each panel is a frosted fill (backdrop blur + saturation), a bright
+     rim (a gradient border, lit at the top left, dim along the sides,
+     catching light again at the bottom right), and a reflection (a sheen
+     across the top and a thin diagonal glint).
+   - Refraction: glass.js gives each panel a displacement map for its exact
+     size (Chromium only, see that file), and the backdrop bends along the
+     edges. Other browsers keep the frosted glass.
+   =================================================================== */
+:root {
+  --glass-fill: rgba(18, 20, 26, .46); --glass-fill-hi: rgba(26, 28, 36, .56);
+  --glass-rim-hi: rgba(255,255,255,.50); --glass-rim-mid: rgba(255,255,255,.22); --glass-rim-lo: rgba(255,255,255,.05);
+  --glass-sheen: rgba(255,255,255,.085); --glass-glint: rgba(255,255,255,.05);
+  --glass-inner: rgba(255,255,255,.16); --glass-under: rgba(0,0,0,.35);
+  --glass-shadow: 0 16px 40px -18px rgba(0,0,0,.85), 0 2px 6px -2px rgba(0,0,0,.5);
+  --glass-blur: blur(16px) saturate(1.7);
+  --blob-a: rgba(64, 92, 255, .30); --blob-b: rgba(124, 77, 255, .24); --blob-c: rgba(0, 170, 170, .20); --blob-d: rgba(70, 130, 255, .18);
+}
+:root[data-theme="light"] {
+  --glass-fill: rgba(255,255,255,.52); --glass-fill-hi: rgba(255,255,255,.68);
+  --glass-rim-hi: rgba(255,255,255,.98); --glass-rim-mid: rgba(255,255,255,.7); --glass-rim-lo: rgba(0,0,0,.07);
+  --glass-sheen: rgba(255,255,255,.65); --glass-glint: rgba(255,255,255,.45);
+  --glass-inner: rgba(255,255,255,.9); --glass-under: rgba(20,30,70,.06);
+  --glass-shadow: 0 16px 36px -18px rgba(30,40,90,.30), 0 2px 6px -2px rgba(30,40,90,.10);
+  --blob-a: rgba(96, 130, 255, .30); --blob-b: rgba(160, 120, 255, .24); --blob-c: rgba(40, 200, 190, .22); --blob-d: rgba(255, 170, 120, .16);
+}
+
+/* ---- The ground ---- */
+html, body { background-color: var(--bg); }
+.bg-blobs { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.bg-blobs i { position: absolute; display: block; border-radius: 50%; will-change: transform; }
+.bg-blobs i:nth-child(1) { width: 62vmax; height: 62vmax; left: -14vmax; top: -18vmax; background: radial-gradient(closest-side, var(--blob-a), transparent); animation: lgDriftA 46s ease-in-out infinite alternate; }
+.bg-blobs i:nth-child(2) { width: 54vmax; height: 54vmax; right: -16vmax; top: 8vmax; background: radial-gradient(closest-side, var(--blob-b), transparent); animation: lgDriftB 58s ease-in-out infinite alternate; }
+.bg-blobs i:nth-child(3) { width: 48vmax; height: 48vmax; left: 18vw; bottom: -22vmax; background: radial-gradient(closest-side, var(--blob-c), transparent); animation: lgDriftC 52s ease-in-out infinite alternate; }
+.bg-blobs i:nth-child(4) { width: 30vmax; height: 30vmax; left: 46vw; top: 26vh; background: radial-gradient(closest-side, var(--blob-d), transparent); animation: lgDriftD 40s ease-in-out infinite alternate; }
+@keyframes lgDriftA { to { transform: translate3d(18vw, 14vh, 0) scale(1.12); } }
+@keyframes lgDriftB { to { transform: translate3d(-22vw, 18vh, 0) scale(.9); } }
+@keyframes lgDriftC { to { transform: translate3d(14vw, -20vh, 0) scale(1.1); } }
+@keyframes lgDriftD { to { transform: translate3d(-18vw, -12vh, 0) scale(1.25); } }
+body[data-view="verify"] .bg-blobs { display: none; }
+
+/* ---- Glass panels: fill, rim, reflection ---- */
+.tool, .plan2, .card:not(.chart-card), .learn-card, .plan-card, .wl-card, .quote-card, .alert-item, .feature, .consent, .modal, .drawer {
+  border: 1px solid transparent;
+  background:
+    linear-gradient(180deg, var(--glass-sheen), transparent 38%) padding-box,
+    linear-gradient(112deg, transparent 22%, var(--glass-glint) 30%, transparent 38%) padding-box,
+    linear-gradient(var(--glass-fill), var(--glass-fill)) padding-box,
+    linear-gradient(145deg, var(--glass-rim-hi), var(--glass-rim-lo) 32%, var(--glass-rim-lo) 68%, var(--glass-rim-mid)) border-box;
+  box-shadow: inset 0 1px 0 var(--glass-inner), inset 0 -10px 24px -18px var(--glass-under), var(--glass-shadow);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+}
+.tool:hover, .learn-card:hover, a.card:hover, .plan-card:hover, .wl-card:hover {
+  border-color: transparent;
+  background:
+    linear-gradient(180deg, var(--glass-sheen), transparent 44%) padding-box,
+    linear-gradient(112deg, transparent 22%, var(--glass-glint) 30%, transparent 38%) padding-box,
+    linear-gradient(var(--glass-fill-hi), var(--glass-fill-hi)) padding-box,
+    linear-gradient(145deg, var(--glass-rim-hi), var(--glass-rim-mid) 32%, var(--glass-rim-lo) 68%, var(--glass-rim-hi)) border-box;
+}
+
+/* ---- The header: a sheet of glass across the top ---- */
+.topbar {
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 70%), var(--glass-fill);
+  box-shadow: inset 0 1px 0 var(--glass-inner), 0 1px 0 var(--glass-rim-lo), 0 10px 30px -20px rgba(0,0,0,.6);
+  -webkit-backdrop-filter: blur(20px) saturate(1.8); backdrop-filter: blur(20px) saturate(1.8);
+}
+.topbar.scrolled { border-bottom-color: var(--glass-rim-mid); }
+
+/* ---- Buttons and chips ---- */
+.btn, .chip { -webkit-backdrop-filter: blur(10px) saturate(1.6); backdrop-filter: blur(10px) saturate(1.6); }
+/* Primary: milk glass, bright, dark text, the strongest rim. */
+.btn-primary, .acct .signin.ghost {
+  border: 1px solid transparent; color: var(--btn-text);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,0) 55%) padding-box,
+    linear-gradient(rgba(236,238,242,.86), rgba(236,238,242,.86)) padding-box,
+    linear-gradient(160deg, #ffffff, rgba(255,255,255,.35) 45%, rgba(255,255,255,.9)) border-box;
+  box-shadow: inset 0 1px 0 #fff, inset 0 -2px 6px -2px rgba(0,0,0,.18), 0 8px 20px -10px rgba(0,0,0,.7);
+}
+.btn-primary:hover, .acct .signin.ghost:hover {
+  border-color: transparent;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.7), rgba(255,255,255,0) 55%) padding-box,
+    linear-gradient(rgba(248,249,251,.94), rgba(248,249,251,.94)) padding-box,
+    linear-gradient(160deg, #ffffff, rgba(255,255,255,.5) 45%, #ffffff) border-box;
+}
+:root[data-theme="light"] .btn-primary, :root[data-theme="light"] .acct .signin.ghost {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,0) 50%) padding-box,
+    linear-gradient(rgba(14,15,17,.86), rgba(14,15,17,.86)) padding-box,
+    linear-gradient(160deg, rgba(255,255,255,.6), rgba(14,15,17,.5) 45%, rgba(255,255,255,.35)) border-box;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 8px 20px -10px rgba(20,30,70,.45);
+}
+:root[data-theme="light"] .btn-primary:hover, :root[data-theme="light"] .acct .signin.ghost:hover {
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.28), rgba(255,255,255,0) 50%) padding-box,
+    linear-gradient(rgba(40,42,48,.9), rgba(40,42,48,.9)) padding-box,
+    linear-gradient(160deg, rgba(255,255,255,.7), rgba(14,15,17,.5) 45%, rgba(255,255,255,.45)) border-box;
+}
+/* Ghost buttons and chips: clear glass. */
+.btn-ghost, .chip {
+  border: 1px solid transparent; color: var(--text);
+  background:
+    linear-gradient(180deg, var(--glass-sheen), transparent 60%) padding-box,
+    linear-gradient(var(--glass-fill), var(--glass-fill)) padding-box,
+    linear-gradient(160deg, var(--glass-rim-hi), var(--glass-rim-lo) 45%, var(--glass-rim-mid)) border-box;
+  box-shadow: inset 0 1px 0 var(--glass-inner), 0 6px 16px -10px rgba(0,0,0,.6);
+}
+.btn-ghost:hover, .chip:hover {
+  border-color: transparent;
+  background:
+    linear-gradient(180deg, var(--glass-sheen), transparent 60%) padding-box,
+    linear-gradient(var(--glass-fill-hi), var(--glass-fill-hi)) padding-box,
+    linear-gradient(160deg, var(--glass-rim-hi), var(--glass-rim-mid) 45%, var(--glass-rim-hi)) border-box;
+}
+
+/* ---- Refraction (glass.js sets --lg-url per panel, Chromium only) ---- */
+.lg-refract .topbar { backdrop-filter: blur(14px) saturate(1.8) var(--lg-url, ); }
+.lg-refract :is(.tool, .plan2, .card:not(.chart-card), .learn-card, .plan-card, .wl-card, .consent, .modal) { backdrop-filter: blur(8px) saturate(1.7) var(--lg-url, ); }
+.lg-refract :is(.btn, .chip) { backdrop-filter: blur(4px) saturate(1.6) var(--lg-url, ); }
+
+/* ---- Fallbacks ---- */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --glass-fill: rgba(18,20,26,.9); --glass-fill-hi: rgba(26,28,36,.92); }
+  :root[data-theme="light"] { --glass-fill: rgba(255,255,255,.92); --glass-fill-hi: #fff; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --glass-fill: rgba(18,20,26,.94); --glass-fill-hi: rgba(26,28,36,.96); }
+  :root[data-theme="light"] { --glass-fill: rgba(255,255,255,.95); --glass-fill-hi: #fff; }
+  .bg-blobs { opacity: .5; }
+}
+@media (prefers-reduced-motion: reduce) { .bg-blobs i { animation: none; } }
+
+/* The ground has to show: the page color lives on <html>, the body stays
+   clear, so the fixed color layer sits between them. Surfaces that float
+   over text (header, cookie card, dialogs, the menu) are denser glass, so
+   what passes under them never competes with their own words. */
+html { background-color: var(--bg); }
+body { background-color: transparent; background-image: none; }
+.topbar { background: linear-gradient(180deg, var(--glass-sheen), transparent 70%), var(--glass-float); }
+.consent, .modal, .drawer {
+  background:
+    linear-gradient(180deg, var(--glass-sheen), transparent 38%) padding-box,
+    linear-gradient(var(--glass-float), var(--glass-float)) padding-box,
+    linear-gradient(145deg, var(--glass-rim-hi), var(--glass-rim-lo) 32%, var(--glass-rim-lo) 68%, var(--glass-rim-mid)) border-box;
+}
+:root { --glass-float: rgba(14, 15, 20, .74); }
+:root[data-theme="light"] { --glass-float: rgba(255, 255, 255, .78); }
+@media (prefers-reduced-transparency: reduce) { :root { --glass-float: rgba(14,15,20,.96); } :root[data-theme="light"] { --glass-float: rgba(255,255,255,.97); } }
