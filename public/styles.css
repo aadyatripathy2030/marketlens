@@ -1557,3 +1557,206 @@ body { background-color: var(--bg); background-image: var(--speckle), radial-gra
   /* Stacked: the headline sits over the brightest part, so more shade. */
   .hero-wrap::before { background-image: var(--speckle), linear-gradient(to bottom, rgba(24,25,27,.82) 0%, rgba(24,25,27,.7) 50%, var(--bg) 100%), url("/hero-painting.jpg"); background-size: auto, auto, cover; background-position: 0 0, 0 0, 70% 40%; }
 }
+
+/* ===================================================================
+   Type (Nov 8 2026, at the user's request: "make the font more
+   appealing"). Two faces, both open-licensed (SIL OFL) and served from
+   this site, so no request leaves for a font:
+   - Instrument Serif for headlines: a narrow, high-contrast editorial
+     serif that sits well on the graphite and the painting. It has one
+     weight, so headlines are set at 400 and get their presence from size.
+   - Inter for everything else, with tabular figures so prices line up.
+   =================================================================== */
+@font-face {
+  font-family: 'Inter'; font-style: normal; font-weight: 100 900; font-display: swap;
+  src: url(/fonts/inter-latin-wght-normal.woff2) format('woff2');
+}
+:root {
+  --font: 'Inter', ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-head: 'Instrument Serif', 'Iowan Old Style', Georgia, serif;
+  --font-read: var(--font); --font-num: var(--font);
+}
+/* Fixed-width figures only where numbers stack or tick (prices, tables,
+   tiles): set on the whole page, Inter also widens the hyphen, which
+   spaced out "stop-loss" into "stop - loss". */
+body { font-feature-settings: 'cv11'; font-variant-numeric: normal; letter-spacing: -.006em; }
+table, .tile-val, .plan-price, .acc-table, .sc-table, .lv-price, .quote-card, .wl-card, .alert-item, .paper-stats,
+[class*="price"], [class*="-val"], [class*="num"], .pstat, .home-chart-head { font-variant-numeric: tabular-nums; }
+.hero-h { margin-bottom: 24px; }
+
+/* Display headings: serif, regular weight, set larger and a touch tighter. */
+.hero-h, .view-h, .home-h, .home-band-h, .home-end-h, .record-h, .learn-h, .legal h1, .ssr-lesson h1,
+.modal-title, .wall-h, .auth-face-h, .plan2-h, .plan2-price, .plan-price, .home-call-v, .po-h, .aff-h, .nf-title {
+  font-family: var(--font-head); font-weight: 400; letter-spacing: -.01em;
+}
+.hero-h { font-size: clamp(46px, 5.6vw, 80px); line-height: 1; letter-spacing: -.015em; }
+.view-h { font-size: 40px; line-height: 1.1; }
+.home-h, .home-band-h, .home-end-h, .record-h { font-size: clamp(32px, 3.4vw, 44px); line-height: 1.1; }
+.learn-h, .legal h1, .ssr-lesson h1 { font-size: 40px; line-height: 1.1; }
+.modal-title, .auth-face-h, .wall-h { font-size: 30px; }
+.home-call-v { font-size: 52px; line-height: 1; }
+/* An italic word in a headline, where one is wanted. */
+.hero-h em, .view-h em { font-style: italic; }
+/* Small headings stay in Inter, a little heavier, so they read as labels. */
+.step-h, .tool-h, .feature-h, .po-h2 { font-family: var(--font); font-weight: 600; letter-spacing: -.01em; }
+/* The wordmark: the serif, larger, no weight to fake. */
+.brand, .po-brand { font-family: var(--font-head); font-weight: 400; font-size: 24px; letter-spacing: 0; }
+@media (max-width: 560px) { .view-h, .learn-h, .legal h1 { font-size: 32px; } .home-call-v { font-size: 44px; } }
+.plan-price { font-size: 40px; line-height: 1.1; }
+.plan-price small { font-family: var(--font); font-size: 14px; letter-spacing: 0; }
+
+/* ===================================================================
+   Linear-style finish (Nov 8 2026, at the user's request: "very similar
+   to linear.app, the look and the animations"). The language, not the
+   brand: near-black ground, one sans (Inter) set medium and tight,
+   hairline borders at low white alpha, gray secondary text, white pill
+   buttons, a lit product shot, and short ease-out motion: blur-and-rise
+   entrances, a 0.98 scale-in for the product, 160ms hovers.
+   This supersedes the speckled graphite, the painting and the serif
+   headlines above; those rules stay only as fallbacks they override.
+   Contrast on #08090a: text 18.6:1, muted 6.3:1, up 7.6:1, down 6.6:1.
+   =================================================================== */
+:root {
+  --bg: #08090a; --bg2: #0f1011; --card: #101113; --card-hi: #16171a;
+  --text: #f7f8f8; --muted: #8a8f98; --neutral: #8a8f98; --forecast: #6b7079;
+  --border: rgba(255,255,255,.08); --border-strong: rgba(255,255,255,.14); --field-border: #62666d;
+  --good: #4cb262; --bad: #ef7268;
+  --accent: #9aa6ff; --accent-hi: #b3bcff; --accent-soft: #171a2e;
+  --btn: #e6e6e7; --btn-hi: #ffffff;
+  --radius: 12px; --radius-sm: 8px;
+  --ease-out-quad: cubic-bezier(.25,.46,.45,.94);
+  --ease-out-quart: cubic-bezier(.165,.84,.44,1);
+  --ease-out-expo: cubic-bezier(.19,1,.22,1);
+  --font-head: var(--font);
+  --speckle: none;
+}
+body { background: var(--bg); background-image: none; color: var(--text);
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; letter-spacing: -.011em; }
+.topbar, .card, .chart-card, .plan-card, .learn-card, .wl-card, .feature, .admin-stat, .aff-card,
+.modal, .suggest, .consent, .drawer, .quote-card, .alert-item, .sc-table, .acc-table, .input, .sel { background-image: none; }
+.hero-wrap::before { content: none; }
+
+/* ---- Type: one face, medium weight, tight ---- */
+.hero-h, .view-h, .home-h, .home-band-h, .home-end-h, .record-h, .learn-h, .legal h1, .ssr-lesson h1,
+.modal-title, .wall-h, .auth-face-h, .plan2-h, .plan2-price, .plan-price, .home-call-v, .po-h, .aff-h, .nf-title {
+  font-family: var(--font); font-weight: 510; letter-spacing: -.022em; color: var(--text);
+}
+.hero-h { font-size: clamp(40px, 5vw, 64px); line-height: 1.04; letter-spacing: -.024em; max-width: 16ch; margin-bottom: 20px; }
+.hero-sub { color: var(--muted); font-size: 17px; line-height: 1.55; max-width: 52ch; }
+.view-h { font-size: 36px; line-height: 1.1; }
+.home-h, .home-band-h, .home-end-h, .record-h { font-size: clamp(28px, 3.2vw, 44px); line-height: 1.1; }
+.learn-h, .legal h1, .ssr-lesson h1 { font-size: 36px; line-height: 1.12; }
+.modal-title, .auth-face-h, .wall-h { font-size: 24px; letter-spacing: -.015em; }
+.plan-price, .plan2-price { font-size: 36px; }
+.home-call-v { font-size: 44px; line-height: 1; }
+/* Two-tone headline: the lead in white, the rest in gray. */
+.tone-2 { color: var(--muted); }
+.step-h, .tool-h, .feature-h, .po-h2, .plan2-h { font-weight: 590; letter-spacing: -.012em; font-size: 16px; }
+.brand, .po-brand { font-family: var(--font); font-weight: 590; font-size: 17px; letter-spacing: -.02em; }
+.muted, .home-sec p, .tool p, .steps p, .faq p { color: var(--muted); }
+@media (max-width: 560px) { .view-h, .learn-h, .legal h1 { font-size: 30px; } .home-call-v { font-size: 38px; } }
+
+/* ---- Header: translucent, blurred, one hairline ---- */
+.topbar { background: rgba(8,9,10,.72); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border); padding-top: 12px; padding-bottom: 12px;
+  transition: background .1s var(--ease-out-quad), border-color .1s var(--ease-out-quad); }
+.nav-link, .nav-more { color: var(--muted); font-size: 14px; font-weight: 450; border-radius: 6px;
+  transition: color .16s var(--ease-out-quad), background-color .16s var(--ease-out-quad); }
+.nav-link:hover, .nav-more:hover, .nav-link[aria-current="page"] { color: var(--text); background: rgba(255,255,255,.04); }
+
+/* ---- Buttons: white pill, ghost pill ---- */
+.btn { border-radius: 9999px; font-weight: 510; font-size: 14px; padding: 10px 18px; letter-spacing: -.01em;
+  transition: background-color .16s var(--ease-out-quad), border-color .16s var(--ease-out-quad), color .16s var(--ease-out-quad), transform .16s var(--ease-out-quad); }
+.btn:active:not(:disabled) { transform: scale(.98); }
+.btn-primary { background: var(--btn); color: #08090a; border-color: var(--btn); }
+.btn-primary:hover { background: var(--btn-hi); border-color: var(--btn-hi); }
+.btn-ghost { background: rgba(255,255,255,.04); color: var(--text); border: 1px solid var(--border-strong); }
+.btn-ghost:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.22); }
+.input, .sel { background-color: rgba(255,255,255,.03); border-radius: var(--radius-sm);
+  transition: border-color .16s var(--ease-out-quad), box-shadow .16s var(--ease-out-quad); }
+.input:focus, .sel:focus { border-color: rgba(255,255,255,.4); box-shadow: 0 0 0 3px rgba(255,255,255,.06); outline: none; }
+.input:focus-visible, .sel:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.hero-search .input { border-radius: 9999px; padding-left: 18px; }
+
+/* ---- Hero: stacked, the product shot full width and lit from below ---- */
+.hero-wrap { grid-template-columns: 1fr; gap: 56px; padding: 120px 0 0; position: relative; }
+.hero-wrap .hero { max-width: 760px; }
+.hero-assure { color: var(--muted); font-size: 13px; }
+.hero-wrap .home-chart { position: relative; margin: 0 0 120px; padding: 16px; background: var(--bg2);
+  border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.6), 0 24px 80px -24px rgba(0,0,0,.9); }
+/* The glow under the shot, as if a light sits just below it. */
+.hero-wrap .home-chart::before { content: ""; position: absolute; z-index: -1; left: -4%; right: -4%; bottom: -60px; height: 70%;
+  background: radial-gradient(60% 60% at 50% 100%, rgba(170,178,196,.22), transparent 70%); filter: blur(24px); pointer-events: none; }
+/* A thin top highlight on the shot's edge. */
+.hero-wrap .home-chart::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,.06), transparent 30%); }
+@media (max-width: 760px) { .hero-wrap { padding-top: 56px; gap: 40px; } .hero-wrap .home-chart { padding: 10px; margin-bottom: 72px; } }
+
+/* ---- Sections ---- */
+.home-sec { padding-top: 32px; }
+.home-h { max-width: 24ch; margin-bottom: 48px; }
+.steps { gap: 0; }
+.steps > li { padding: 0 32px; border-left: 1px solid var(--border); }
+.steps > li:first-child { padding-left: 0; border-left: 0; }
+.step-n { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; letter-spacing: .08em; color: var(--muted);
+  background: none; border: 0; width: auto; height: auto; margin-bottom: 48px; display: block; text-transform: uppercase; }
+.step-n::before { content: "Step 0"; }
+@media (max-width: 900px) { .steps > li { padding: 24px 0; border-left: 0; border-top: 1px solid var(--border); } .steps > li:first-child { border-top: 0; padding-top: 0; } .step-n { margin-bottom: 16px; } }
+
+.home-band { background: none; border: 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); border-radius: 0; padding: 96px 0; }
+.home-band-h { max-width: 28ch; }
+.home-band p { color: var(--muted); max-width: 62ch; }
+
+/* Cards: near-invisible fill, a hairline that lightens on hover. */
+.tool, .plan2, .card, .learn-card, .plan-card, .wl-card, .quote-card, .alert-item, .feature, .chart-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+  transition: border-color .16s var(--ease-out-quad), background-color .16s var(--ease-out-quad), transform .16s var(--ease-out-quad); }
+.tools { gap: 16px; }
+.tool { padding: 28px; }
+.tool:hover, .learn-card:hover, a.card:hover, .plan-card:hover, .wl-card:hover { border-color: var(--border-strong); background: var(--card-hi); }
+.tool-go { color: var(--text); font-size: 14px; }
+.tool-go, .home-more a { transition: color .16s var(--ease-out-quad); }
+.tool:hover .tool-go { color: var(--btn-hi); }
+.plan2 { padding: 32px; }
+.faq details { border-color: var(--border); }
+.faq summary { transition: color .16s var(--ease-out-quad); }
+.faq summary:hover { color: var(--text); }
+.home-end { padding: 120px 0; text-align: center; border-top: 1px solid var(--border); }
+.home-end-h { margin-left: auto; margin-right: auto; max-width: 20ch; }
+.home-end-btns { justify-content: center; }
+a { transition: color .16s var(--ease-out-quad); }
+.modal { border: 1px solid var(--border-strong); border-radius: 16px; box-shadow: 0 32px 100px -20px rgba(0,0,0,.9); }
+
+/* ---- Motion ---- */
+/* Page load: the hero copy rises out of a blur, one line after another,
+   then the product shot scales in from 0.98. */
+@keyframes lin-in { from { opacity: 0; transform: translateY(12px); filter: blur(8px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes lin-scale { from { opacity: 0; transform: scale(.98) translateY(16px); } to { opacity: 1; transform: none; } }
+.hero-wrap .hero > * { animation: lin-in .9s var(--ease-out-expo) both; }
+.hero-wrap .hero > :nth-child(1) { animation-delay: .05s; }
+.hero-wrap .hero > :nth-child(2) { animation-delay: .15s; }
+.hero-wrap .hero > :nth-child(3) { animation-delay: .25s; }
+.hero-wrap .hero > :nth-child(4) { animation-delay: .32s; }
+.hero-wrap .home-chart { animation: lin-scale 1.1s var(--ease-out-expo) .35s both; }
+/* Views fade in when switched to. */
+.view:not(.hidden) > :not(.hero-wrap) { animation: lin-fade .5s var(--ease-out-quad) both; }
+@keyframes lin-fade { from { opacity: 0; } to { opacity: 1; } }
+/* Scroll reveal: rise out of a light blur, staggered across a row. */
+.rv { opacity: 0; transform: translateY(16px); filter: blur(6px); transition: none; }
+.rv.in { opacity: 1; transform: none; filter: none;
+  transition: opacity .7s var(--ease-out-quart), transform .8s var(--ease-out-quart), filter .7s var(--ease-out-quart);
+  transition-delay: var(--rd, 0ms); }
+@media (prefers-reduced-motion: reduce) {
+  .hero-wrap .hero > *, .hero-wrap .home-chart, .view:not(.hidden) > * { animation: none !important; }
+  .rv { opacity: 1; transform: none; filter: none; transition: none; }
+  .btn:active:not(:disabled) { transform: none; }
+}
+/* Home column centered, as on a landing page. */
+#view-home { margin-left: auto; margin-right: auto; }
+/* Header account: "Sign in" as quiet text, "Create account" as the white pill. */
+.acct .signin { background: none; border: 0; color: var(--muted); font-size: 13px; font-weight: 510; padding: 6px 10px; border-radius: 9999px;
+  transition: color .16s var(--ease-out-quad), background-color .16s var(--ease-out-quad); }
+.acct .signin:hover { color: var(--text); }
+.acct .signin.ghost { background: var(--btn); color: #08090a; border: 1px solid var(--btn); padding: 6px 14px; }
+.acct .signin.ghost:hover { background: var(--btn-hi); color: #08090a; }

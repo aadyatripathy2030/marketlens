@@ -846,8 +846,8 @@
           if (!e.boundingClientRect.height) return;  // in a hidden view; asked again when shown
           // In sight, or within the pre-trigger zone below it: left alone.
           if (e.isIntersecting || e.boundingClientRect.top < innerHeight) { revealIO.unobserve(el); return; }
-          const i = el.parentElement ? Array.prototype.indexOf.call(el.parentElement.children, el) % 3 : 0;
-          el.style.setProperty('--rd', (i * 40) + 'ms');
+          const i = el.parentElement ? Array.prototype.indexOf.call(el.parentElement.children, el) % 4 : 0;
+          el.style.setProperty('--rd', (i * 80) + 'ms');
           el.classList.add('rv');
           return;
         }
@@ -2500,7 +2500,7 @@
       $('logoutBtn').addEventListener('click', logout);
       if ($('upgradeNav')) $('upgradeNav').addEventListener('click', () => showView('pricing'));
     } else {
-      el.innerHTML = `<button class="signin ghost" id="signupBtn">Create account</button><button class="signin" id="signinBtn">Sign in</button>`;
+      el.innerHTML = `<button class="signin" id="signinBtn">Sign in</button><button class="signin ghost" id="signupBtn">Create account</button>`;
       $('signupBtn').addEventListener('click', () => openAuth('signup'));
       $('signinBtn').addEventListener('click', () => openAuth('login'));
     }
