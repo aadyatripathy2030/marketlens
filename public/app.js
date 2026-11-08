@@ -4138,7 +4138,7 @@
     if (!err && !p.get('google')) return;
     const MSG = {
       canceled: 'Google sign-in was canceled.',
-      mail: 'Google signed you in, but the sign-in code could not be emailed. Please try again in a minute.',
+      mail: 'Google confirmed your account, but the sign-in code could not be emailed, so you are not signed in yet. Please try again in a minute.',
       expired: 'That sign-in link expired. Please try again.',
       unverified_email: 'That Google account has no verified email address, so it cannot be used to sign in.',
       age: 'There is no ChartGauge account for that Google address yet. Choose Create an account and confirm you are 18 or older first.',

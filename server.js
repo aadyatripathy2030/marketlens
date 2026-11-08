@@ -2146,12 +2146,17 @@ async function handleGoogleCallback(req, res) {
     if (mailEnabled()) {
       // Google vouched for the address; the code proves the inbox is still
       // in the same hands right now, the same as a password sign-in. If the
-      // code cannot be sent, Google's own check of the address stands.
+      // code cannot be sent the sign-in stops, as a password sign-in does;
+      // it used to fall through and sign in with no code at all.
       try {
         await startCodeStep(req, res, user);
         res.writeHead(302, { Location: st.next + sep + 'google=code' });
         return res.end();
-      } catch (e) { logError(e); }
+      } catch (e) {
+        logError(e);
+        res.writeHead(302, { Location: st.next + sep + 'google_error=mail' });
+        return res.end();
+      }
     }
     const token = await db.createSession(user.id);
     setSessionCookie(req, res, token);
@@ -2310,7 +2315,7 @@ async function handleAdmin(req, res) {
     // Why the store is memory when a database was configured: the one line
     // that used to live only in the hosting logs.
     dbConfigured: db.hasUrl(), dbError: db.lastError() || null,
-    services: { prices: !!STOCK_API_KEY, ai: !!ANTHROPIC_API_KEY, fundamentals: !!FMP_API_KEY, news: !!FINNHUB_API_KEY, analytics: !!GA_ID },
+    services: { email: mailEnabled(), prices: !!STOCK_API_KEY, ai: !!ANTHROPIC_API_KEY, fundamentals: !!FMP_API_KEY, news: !!FINNHUB_API_KEY, analytics: !!GA_ID },
     credits: { usedLastMinute: creditsUsed(), perMinute: CREDITS_PER_MIN, reservedForUsers: USER_RESERVE,
       dailyQuotaOut: dailyQuotaOut(), dailyQuotaMsg,
       finnhubUsedLastMinute: finnhubUsed(), finnhubPerMinute: FINNHUB_PER_MIN,
