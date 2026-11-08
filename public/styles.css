@@ -1979,3 +1979,92 @@ body[data-view="verify"] .disclaimer, body[data-view="verify"] .site-foot { disp
    browser's default blue. */
 #main p a:not([class]), #main li a:not([class]), .legal a:not([class]) { color: var(--accent); text-underline-offset: 3px; }
 #main p a:not([class]):hover, #main li a:not([class]):hover { color: var(--accent-hi); }
+
+/* ===================================================================
+   Motion after resend.com (Nov 8 2026): the techniques, not their art.
+   Header slides down on load and draws its line only once scrolled; the
+   hero headline is a soft gradient that rises in; a slow beam of light
+   drifts behind the hero; a pill with a rotating rainbow edge; phrases
+   in section headings shimmer once; an endless strip of stocks; a typed
+   placeholder; a pointer spotlight on cards; a ping on the check mark.
+   =================================================================== */
+:root { --grad-a: #ffffff; --grad-b: rgba(255,255,255,.5); --beam: rgba(255,255,255,.07); --beam-2: rgba(255,255,255,.035); --spot: rgba(255,255,255,.06); }
+:root[data-theme="light"] { --grad-a: #0e0f11; --grad-b: rgba(14,15,17,.55); --beam: rgba(80,90,130,.10); --beam-2: rgba(80,90,130,.05); --spot: rgba(60,70,110,.07); }
+
+@keyframes rsHeader { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: none; } }
+@keyframes rsRise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes rsShotIn { 0% { opacity: 0; transform: scale(.97); } 30% { opacity: 0; } 100% { opacity: 1; transform: none; } }
+.topbar { animation: rsHeader .8s cubic-bezier(.4,0,.2,1) backwards; border-bottom-color: transparent; transition: border-color .3s, background-color .3s; }
+.topbar.scrolled { border-bottom-color: var(--border); }
+
+/* Hero headline: a soft gradient from full to half strength. */
+.hero-h { background: linear-gradient(to right bottom, var(--grad-a) 30%, var(--grad-b)); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; padding-bottom: .06em; }
+.hero-wrap .hero > * { animation: rsRise 1s cubic-bezier(.4,0,.2,1) backwards; }
+.hero-wrap .hero > :nth-child(1) { animation-delay: .1s; }
+.hero-wrap .hero > :nth-child(2) { animation-delay: .2s; }
+.hero-wrap .hero > :nth-child(3) { animation-delay: .32s; }
+.hero-wrap .hero > :nth-child(4) { animation-delay: .44s; }
+.hero-wrap .hero > :nth-child(5) { animation-delay: .54s; }
+.hero-wrap .home-chart { animation: rsShotIn 1.4s cubic-bezier(.4,0,.2,1) .2s backwards; }
+
+/* A beam of light falling across the hero from the upper right, drifting. */
+.hero-wrap::before {
+  content: ""; position: absolute; z-index: -1; pointer-events: none; top: -80px; height: 900px;
+  left: calc(-1 * (max(0px, (100vw - 1280px) / 2) + var(--app-pad-x, 32px))); width: 100vw; overflow: hidden;
+  background:
+    radial-gradient(40% 50% at 82% 0%, var(--beam), transparent 70%),
+    linear-gradient(160deg, transparent 38%, var(--beam-2) 46%, var(--beam) 50%, var(--beam-2) 54%, transparent 62%);
+  filter: blur(18px);
+  animation: rsBeam 14s ease-in-out infinite alternate;
+}
+@keyframes rsBeam { from { transform: translateX(-3%) skewX(-2deg); opacity: .8; } to { transform: translateX(3%) skewX(2deg); opacity: 1; } }
+.hero-wrap { isolation: isolate; }
+
+/* The pill: a rotating rainbow edge around a quiet link. */
+.pill { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; margin: 0 0 24px; border-radius: 9999px;
+  font-size: 13px; color: var(--text); text-decoration: none; background: var(--bg); isolation: isolate; overflow: hidden; }
+@property --pill-a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.pill::before { content: ""; position: absolute; inset: 0; z-index: -1; padding: 1px; border-radius: inherit; pointer-events: none;
+  background: conic-gradient(from var(--pill-a), #ff7ac6, #ffb86b, #ffe27a, #8affc1, #5ee0ff, #9a8bff, #ff7ac6);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); animation: rsSpin 6s linear infinite; }
+.pill:hover { color: var(--text); }
+.pill svg { transition: transform .2s cubic-bezier(.4,0,.2,1); }
+.pill:hover svg { transform: translateX(2px); }
+@keyframes rsSpin { to { --pill-a: 360deg; } }
+
+/* A phrase in a section heading: a multicolor gradient that sweeps once. */
+.shimmer { background: linear-gradient(90deg, var(--text) 0%, var(--text) 35%, #9a8bff 48%, #5ee0ff 58%, #8affc1 66%, var(--text) 80%, var(--text) 100%);
+  background-size: 300% 100%; background-position: 100% center; -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+.home-h:not(.rv) .shimmer, .rv.in .shimmer { animation: rsShimmer 2.6s cubic-bezier(.4,0,.2,1) .3s both; }
+@keyframes rsShimmer { from { background-position: 100% center; } to { background-position: 0% center; } }
+
+/* The strip of stocks: endless, paused on hover, faded at the edges. */
+.marquee { display: flex; gap: 32px; overflow: hidden; margin: -72px 0 96px; padding: 8px 0;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent); }
+.marquee-track { display: flex; flex-shrink: 0; gap: 32px; list-style: none; margin: 0; padding: 0; animation: rsScroll 70s linear infinite; }
+.marquee:hover .marquee-track, .marquee:focus-within .marquee-track { animation-play-state: paused; }
+.marquee a { display: inline-flex; align-items: baseline; gap: 8px; color: var(--muted); text-decoration: none; white-space: nowrap; font-size: 15px; padding: 6px 2px;
+  transition: color .2s cubic-bezier(.4,0,.2,1); }
+.marquee a b { color: var(--text); font-weight: 590; letter-spacing: -.01em; transition: color .2s; }
+.marquee a:hover { color: var(--text); }
+@keyframes rsScroll { from { transform: translateX(0); } to { transform: translateX(calc(-100% - 32px)); } }
+@media (max-width: 760px) { .marquee { margin: -40px 0 64px; } }
+
+/* Cards: a soft light follows the pointer. */
+.tool, .plan2, .learn-card, .plan-card { background-image: radial-gradient(260px circle at var(--mx, -999px) var(--my, -999px), var(--spot), transparent 70%); }
+
+/* The check mark lands with a ping and a small nudge. */
+.code-done { position: relative; }
+#authCode.done .code-done::after { content: ""; position: absolute; left: 50%; top: 50%; width: 96px; height: 96px; margin: -48px 0 0 -48px; border-radius: 50%;
+  border: 2px solid #4cb262; animation: rsPing .9s cubic-bezier(0,0,.2,1) .55s both; pointer-events: none; }
+#authCode.done .code-done svg { animation: rsNudge .5s cubic-bezier(.4,0,.2,1) .8s both; }
+@keyframes rsPing { 0% { opacity: .6; transform: scale(1); } 100% { opacity: 0; transform: scale(1.9); } }
+@keyframes rsNudge { 0%, 100% { transform: scale(1); } 45% { transform: scale(1.06); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar, .hero-wrap .hero > *, .hero-wrap .home-chart, .hero-wrap::before, .pill::before, .marquee-track,
+  .shimmer, #authCode.done .code-done::after, #authCode.done .code-done svg { animation: none !important; }
+  .shimmer { background-position: 0% center; }
+  .marquee { overflow-x: auto; }
+}

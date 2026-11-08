@@ -860,6 +860,44 @@
   window.addEventListener('themechange', () => { syncThemeUi(); try { drawChart(); } catch (e) {} });
   syncThemeUi();
 
+  function lessMotionNow() { return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+  // ---- Page motion (Nov 8 2026, after resend.com's) ----
+  // The header's bottom line appears once the page has scrolled.
+  const topbarEl = document.querySelector('.topbar');
+  const markScrolled = () => { if (topbarEl) topbarEl.classList.toggle('scrolled', (document.body.scrollTop || document.documentElement.scrollTop || window.scrollY || 0) > 8); };
+  document.addEventListener('scroll', markScrolled, { capture: true, passive: true });
+  markScrolled();
+  // The hero search types its examples, with a caret, until someone uses it.
+  (function typePlaceholder() {
+    const el = $('heroInput');
+    if (!el || lessMotionNow()) return;
+    const words = ['Apple', 'NVDA', 'BTC/USD', 'Tesla', 'Microsoft', 'ETH/USD'];
+    let w = 0, i = 0, del = false, stopped = false, timer = 0;
+    const stop = () => { stopped = true; clearTimeout(timer); el.placeholder = 'Apple, NVDA, BTC/USD'; };
+    el.addEventListener('focus', stop, { once: true });
+    el.addEventListener('input', stop, { once: true });
+    const tick = () => {
+      if (stopped) return;
+      const word = words[w];
+      // Paused while the page is hidden or the home view is not on screen.
+      if (document.hidden || (typeof currentView !== 'undefined' && currentView !== 'home')) { timer = setTimeout(tick, 600); return; }
+      i += del ? -1 : 1;
+      el.placeholder = word.slice(0, i) + (i % 2 || del ? '|' : ' |');
+      if (!del && i === word.length) { del = true; timer = setTimeout(tick, 1400); return; }
+      if (del && i === 0) { del = false; w = (w + 1) % words.length; timer = setTimeout(tick, 350); return; }
+      timer = setTimeout(tick, del ? 45 : 95);
+    };
+    timer = setTimeout(tick, 1400);
+  })();
+  // A soft spotlight follows the pointer across cards.
+  document.addEventListener('pointermove', (e) => {
+    const c = e.target && e.target.closest && e.target.closest('.tool, .plan2, .learn-card, .plan-card, .steps > li');
+    if (!c) return;
+    const r = c.getBoundingClientRect();
+    c.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+    c.style.setProperty('--my', (e.clientY - r.top) + 'px');
+  }, { passive: true });
+
   // ---- Scroll reveal ----
   // Sections and cards rise into place every time they scroll into sight,
   // and are quietly reset once they are fully off screen, so scrolling back

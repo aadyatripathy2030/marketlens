@@ -80,6 +80,7 @@
          reading of the index fund, with the call and its exits drawn in. -->
     <div class="hero-wrap">
       <div class="hero">
+        <a class="pill" href="/learn" data-view="learn"><span>19 free lessons on reading a chart</span><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
         <h1 class="hero-h">Buy, sell or hold, with the stop and target already set.</h1>
         <p class="hero-sub">Search any stock or crypto pair. ChartGauge reads the chart, makes the call, and sets the exits from how far the price really moves.</p>
         <form class="hero-search" id="heroForm">
@@ -114,10 +115,16 @@
         <button type="button" class="home-full" id="homeFull">See the full reading &rarr;</button>
       </div>
     </div>
+    <!-- A slow, endless strip of stocks to open. Pauses on hover; the
+         second copy only closes the loop and is hidden from screen readers. -->
+    <nav class="marquee" aria-label="Popular stocks to analyze">
+      <ul class="marquee-track"><li><a href="/stock/AAPL"><b>AAPL</b><span>Apple</span></a></li><li><a href="/stock/NVDA"><b>NVDA</b><span>Nvidia</span></a></li><li><a href="/stock/MSFT"><b>MSFT</b><span>Microsoft</span></a></li><li><a href="/stock/AMZN"><b>AMZN</b><span>Amazon</span></a></li><li><a href="/stock/GOOGL"><b>GOOGL</b><span>Alphabet</span></a></li><li><a href="/stock/META"><b>META</b><span>Meta</span></a></li><li><a href="/stock/TSLA"><b>TSLA</b><span>Tesla</span></a></li><li><a href="/stock/AMD"><b>AMD</b><span>AMD</span></a></li><li><a href="/stock/NFLX"><b>NFLX</b><span>Netflix</span></a></li><li><a href="/stock/JPM"><b>JPM</b><span>JPMorgan</span></a></li><li><a href="/stock/V"><b>V</b><span>Visa</span></a></li><li><a href="/stock/WMT"><b>WMT</b><span>Walmart</span></a></li><li><a href="/stock/XOM"><b>XOM</b><span>Exxon</span></a></li><li><a href="/stock/KO"><b>KO</b><span>Coca-Cola</span></a></li><li><a href="/stock/DIS"><b>DIS</b><span>Disney</span></a></li><li><a href="/stock/AVGO"><b>AVGO</b><span>Broadcom</span></a></li><li><a href="/stock/BTC/USD"><b>BTC/USD</b><span>Bitcoin</span></a></li><li><a href="/stock/ETH/USD"><b>ETH/USD</b><span>Ethereum</span></a></li></ul>
+      <ul class="marquee-track" aria-hidden="true"><li><a href="/stock/AAPL" tabindex="-1"><b>AAPL</b><span>Apple</span></a></li><li><a href="/stock/NVDA" tabindex="-1"><b>NVDA</b><span>Nvidia</span></a></li><li><a href="/stock/MSFT" tabindex="-1"><b>MSFT</b><span>Microsoft</span></a></li><li><a href="/stock/AMZN" tabindex="-1"><b>AMZN</b><span>Amazon</span></a></li><li><a href="/stock/GOOGL" tabindex="-1"><b>GOOGL</b><span>Alphabet</span></a></li><li><a href="/stock/META" tabindex="-1"><b>META</b><span>Meta</span></a></li><li><a href="/stock/TSLA" tabindex="-1"><b>TSLA</b><span>Tesla</span></a></li><li><a href="/stock/AMD" tabindex="-1"><b>AMD</b><span>AMD</span></a></li><li><a href="/stock/NFLX" tabindex="-1"><b>NFLX</b><span>Netflix</span></a></li><li><a href="/stock/JPM" tabindex="-1"><b>JPM</b><span>JPMorgan</span></a></li><li><a href="/stock/V" tabindex="-1"><b>V</b><span>Visa</span></a></li><li><a href="/stock/WMT" tabindex="-1"><b>WMT</b><span>Walmart</span></a></li><li><a href="/stock/XOM" tabindex="-1"><b>XOM</b><span>Exxon</span></a></li><li><a href="/stock/KO" tabindex="-1"><b>KO</b><span>Coca-Cola</span></a></li><li><a href="/stock/DIS" tabindex="-1"><b>DIS</b><span>Disney</span></a></li><li><a href="/stock/AVGO" tabindex="-1"><b>AVGO</b><span>Broadcom</span></a></li><li><a href="/stock/BTC/USD" tabindex="-1"><b>BTC/USD</b><span>Bitcoin</span></a></li><li><a href="/stock/ETH/USD" tabindex="-1"><b>ETH/USD</b><span>Ethereum</span></a></li></ul>
+    </nav>
     <!-- How it works: the three steps, so a first visitor knows what they
          get before they type anything. -->
     <section class="home-sec" id="homeHow">
-      <h2 class="home-h">From a symbol to a trade plan in one search</h2>
+      <h2 class="home-h">From a symbol to a trade plan <span class="shimmer">in one search</span></h2>
       <ol class="steps">
         <li><span class="step-n">1</span><h3 class="step-h">Pick a stock</h3><p>Any of nearly four thousand US-listed companies, or a crypto pair such as BTC/USD. Choose day trading or long-term.</p></li>
         <li><span class="step-n">2</span><h3 class="step-h">Get the call</h3><p>Buy, sell or hold, scored from five groups of indicators: short trend (20- and 50-day averages, MACD), long trend (50 against 200-day), RSI momentum, stretch from the Bollinger bands, and trend quality.</p></li>
@@ -127,7 +134,7 @@
 
     <!-- What else is here, as a list rather than tiles. -->
     <section class="home-sec">
-      <h2 class="home-h">Practice, learn, and keep watch</h2>
+      <h2 class="home-h">Practice, learn, and <span class="shimmer">keep watch</span></h2>
       <div class="tools">
         <a class="tool" href="/practice" data-view="practice"><h3 class="tool-h">Practice</h3><p>Trade pretend money at live prices, with a risk meter on the whole account. Nothing touches a broker.</p><span class="tool-go">Open practice &rarr;</span></a>
         <a class="tool" href="/learn" data-view="learn"><h3 class="tool-h">Learn</h3><p>Nineteen short lessons with quizzes, on day trading and on long-term investing. Free, no account needed.</p><span class="tool-go">Start a lesson &rarr;</span></a>
@@ -139,7 +146,7 @@
     <!-- Price, stated on the front page. The numbers that can change with
          configuration are filled in from /api/auth/me by app.js. -->
     <section class="home-sec" id="homePlans">
-      <h2 class="home-h">The call is free. Pro removes the limits.</h2>
+      <h2 class="home-h">The call is free. <span class="shimmer">Pro removes the limits.</span></h2>
       <div class="plans-2">
         <div class="plan2">
           <h3 class="plan2-h">Free</h3>
