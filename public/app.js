@@ -866,6 +866,14 @@
   const topbarEl = document.querySelector('.topbar');
   const markScrolled = () => { if (topbarEl) topbarEl.classList.toggle('scrolled', (document.body.scrollTop || document.documentElement.scrollTop || window.scrollY || 0) > 8); };
   document.addEventListener('scroll', markScrolled, { capture: true, passive: true });
+  // While scrolling, styles.css drops the header refraction and pauses the
+  // background drift (the two costliest effects); they return at rest.
+  let scrollIdle = 0;
+  document.addEventListener('scroll', () => {
+    if (!scrollIdle) document.documentElement.classList.add('is-scrolling');
+    clearTimeout(scrollIdle);
+    scrollIdle = setTimeout(() => { scrollIdle = 0; document.documentElement.classList.remove('is-scrolling'); }, 160);
+  }, { capture: true, passive: true });
   markScrolled();
   // The hero search types its examples, with a caret, until someone uses it.
   (function typePlaceholder() {
@@ -936,13 +944,22 @@
   }), { rootMargin: '-6% 0px -6% 0px', threshold: 0 }) : null;
   const revealIO = revealOutIO;
   let revealQueued = false;
-  function revealScan() {
+  // Live quotes and the marquee change the DOM many times a second, so a
+  // DOM change only arms blocks not seen before; showing a view (full=true)
+  // re-arms everything on it.
+  const revealSeen = new WeakSet();
+  let revealFull = false;
+  function revealScan(full) {
+    if (full === true) revealFull = true;
     if (!canReveal || revealQueued) return;
     revealQueued = true;
     requestAnimationFrame(() => {
       revealQueued = false;
+      const all = revealFull; revealFull = false;
       document.querySelectorAll('#main ' + REVEAL_SEL.split(', ').join(', #main ')).forEach(el => {
+        if (!all && revealSeen.has(el)) return;
         if (!el.getClientRects().length) return;
+        revealSeen.add(el);
         // Re-observing asks for a fresh first report, which matters after a
         // view is shown: its blocks below the fold get armed then.
         revealOutIO.unobserve(el); revealOutIO.observe(el);
@@ -950,7 +967,7 @@
       });
     });
   }
-  if (revealIO) new MutationObserver(revealScan).observe($('main'), { childList: true, subtree: true });
+  if (revealIO) new MutationObserver(() => revealScan()).observe($('main'), { childList: true, subtree: true });
 
   function sma(a, n) { return a.map((_, i) => i >= n - 1 ? a.slice(i - n + 1, i + 1).reduce((x, y) => x + y, 0) / n : null); }
 
@@ -1851,6 +1868,7 @@
       $('note').textContent = d.note || '';
       $('result').classList.remove('hidden');
       resetView(); drawChart(); revealChart(); tiles(d); renderTech(d.tech); renderBands(d.bands); renderLevels(d);
+      { const v = $("verdict"); if (v) { v.classList.remove("cg-settle"); void v.offsetWidth; v.classList.add("cg-settle"); } }
       announce(`Analysis loaded for ${d.symbol || symbol}.`);
       setAnalysisPending();
       loadAnalysis(d);
@@ -3015,6 +3033,14 @@
     } catch (e) {}
   }
 
+  // The page scrolls inside <body> (html and body are height:100%), so
+  // window.scrollTo alone does nothing and a new view opened at the old
+  // scroll depth. Reset every scroller it could be.
+  function toTop() {
+    document.body.scrollTop = 0;
+    document.documentElement.scrollTop = 0;
+    try { window.scrollTo({ top: 0, left: 0, behavior: "instant" }); } catch (e) { window.scrollTo(0, 0); }
+  }
   let viewShownOnce = false;
   function showView(name, opts) {
     if (!VIEWS.includes(name)) name = 'home';
@@ -3027,7 +3053,7 @@
       l.classList.toggle('active', on);
       if (on) l.setAttribute('aria-current', 'page'); else l.removeAttribute('aria-current');
     });
-    window.scrollTo(0, 0);
+    toTop();
     // After a click (not the first load), say where the reader has arrived:
     // the tab title follows the view, and focus moves to its heading so a
     // screen reader announces it instead of staying silent.
@@ -3044,7 +3070,7 @@
     // chart, so it moves to whichever one is on screen. Before the wall check,
     // because the front page draws its chart for everyone.
     mountChart(name);
-    revealScan();
+    revealScan(true);
     if (name === 'home') loadHomeChart();
     if (name === 'verify') loadCodePage();
     // Nothing about the data is rendered, and none of the loaders below run,
@@ -4170,7 +4196,7 @@
   }
   function openLesson(id) {
     const l = LESSONS.find(x => x.id === id); if (!l) return renderLearnGrid();
-    window.scrollTo(0, 0);
+    toTop();
     let html = `<div class="learn-detail"><button type="button" class="link-btn learn-back" id="learnBack">← All lessons</button>`;
     html += `<h1 class="learn-h">${esc(l.title)}</h1>`
       + `<div class="learn-meta"><span class="applies applies-${esc(l.applies)}">${esc(APPLIES_LABEL[l.applies] || '')}</span>`

@@ -2292,3 +2292,44 @@ html, body { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) trans
 /* A change of zero has no colored pill behind it, so it should not keep
    the pill's inset either; it lines up with the figure above. */
 .pstat-sub:not(.up):not(.down) { padding-left: 0; padding-right: 0; background: none; }
+
+/* ---- Nov 8 2026: no focus box on headings, smoother motion ----
+   After a view change (signing in, a nav click) focus moves to the view's
+   heading so screen readers announce it. That heading is not a control, so
+   it gets no ring; keyboard focus on real controls is unchanged. */
+h1[tabindex="-1"]:focus, h2[tabindex="-1"]:focus,
+h1[tabindex="-1"]:focus-visible, h2[tabindex="-1"]:focus-visible { outline: none; box-shadow: none; }
+
+/* Entrances and scroll reveals move with opacity and transform only. A
+   blur() in the keyframes made every frame repaint each block at full
+   resolution, which is what dropped frames on retina screens. */
+@keyframes lin-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes cdHead { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.rv { filter: none; will-change: opacity, transform; }
+.rv.in { filter: none; transition: opacity .6s cubic-bezier(.55,.055,.675,.19), transform .7s cubic-bezier(.55,.055,.675,.19); transition-delay: var(--rd, 0ms); }
+.rv.in.rv-up { transition-timing-function: var(--ease-out-quart); }
+
+/* While the page scrolls, the header keeps plain frosted glass and the
+   background drift pauses: the refraction filter is the costliest thing on
+   the page and was redrawn on every scroll frame. It comes back the moment
+   scrolling stops. */
+html.is-scrolling.lg-refract .topbar { backdrop-filter: blur(14px) saturate(1.8); }
+html.is-scrolling .bg-blobs i { animation-play-state: paused; }
+
+/* A little more life on the controls, compositor-only. */
+.tool, .learn-card, a.card, .plan-card, .wl-card, .quote-card, .plan2 {
+  transition: transform .35s var(--ease-out-expo, cubic-bezier(.19,1,.22,1)), border-color .2s, background .2s, box-shadow .35s; }
+@media (hover: hover) {
+  .tool:hover, .learn-card:hover, a.card:hover, .plan-card:hover, .wl-card:hover, .quote-card:hover, .plan2:hover {
+    transform: translateY(-3px); box-shadow: 0 14px 30px -18px rgba(0,0,0,.55); }
+}
+.btn { transition: transform .12s ease-out, background .15s, border-color .15s, color .15s, box-shadow .2s; }
+.btn:active:not(:disabled) { transform: scale(.97); }
+/* A fresh reading settles in rather than snapping. */
+@keyframes cgSettle { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
+.cg-settle { animation: cgSettle .55s var(--ease-out-expo, cubic-bezier(.19,1,.22,1)) both; }
+@media (prefers-reduced-motion: reduce) {
+  .tool, .learn-card, a.card, .plan-card, .wl-card, .quote-card, .plan2, .btn { transition: none; }
+  .tool:hover, .learn-card:hover, a.card:hover, .plan-card:hover, .wl-card:hover, .quote-card:hover, .plan2:hover, .btn:active:not(:disabled) { transform: none; }
+  .cg-settle { animation: none; }
+}
