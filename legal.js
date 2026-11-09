@@ -61,7 +61,7 @@ const buildTerms = () => h('Terms of Service', [
   s('It is not financial advice',
     `Everything on ${SITE} is provided for educational purposes only.`,
     `Nothing on ${SITE} is financial, investment, legal, or tax advice, and no adviser, broker, or fiduciary relationship is created by your use of it. ${SITE} does show a Buy / Sell / Hold verdict. It is a mechanical output, not advice: it is taken from the indicator score, and held back to Hold whenever bars resembling the current one went on to perform clearly worse, or better, than that same symbol's own base rate over the same period. It is not a prediction, it is not personalized to you or your circumstances, and it is not a recommendation that you do anything.`,
-    `The scores, ratings, projections, levels, and written summaries are mechanical outputs of formulas applied to past prices. They are frequently wrong. ${SITE} publishes a measured base rate beside its own score precisely so you can see how often that reading has actually preceded the move it implies, which is often no more often than chance.`,
+    `The scores, ratings, projections, levels, and written summaries are mechanical outputs of formulas applied to past prices. They are frequently wrong. ${SITE} publishes a measured base rate beside its own score so you can see how often that reading has actually preceded the move it implies, which is often no more often than chance.`,
     `All trading and investing involves risk, including the loss of everything you put in. Every decision you make, and every consequence of it, is yours alone.`),
 
   s('Accuracy and availability',
@@ -159,7 +159,7 @@ const buildPrivacy = () => h('Privacy Policy', [
     `${SITE} is not directed at children and accounts are for people 18 and over. Sign-up asks you to confirm your age. If an account turns out to belong to someone under 18, it is closed and its data deleted; to report one, email <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a>.`),
 
   s('Security and its limits',
-    `Passwords are hashed with scrypt, sessions use HttpOnly cookies, and traffic is served over HTTPS. That said, no service is perfectly secure, and this one is a small independent project rather than a financial institution, which is exactly why you should not reuse an important password here.`),
+    `Passwords are hashed with scrypt, sessions use HttpOnly cookies, and traffic is served over HTTPS. That said, no service is perfectly secure, and this one is a small independent project rather than a financial institution, which is why you should not reuse an important password here.`),
 ].join(''));
 
 // -------------------------------------------------------------- refunds
@@ -191,7 +191,7 @@ const buildRefunds = () => h('Refunds and Cancellation', [
 // -------------------------------------------------------------- contact
 const buildContact = () => h('Contact', [
   s('Get in touch',
-    `Email <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> for anything: billing questions, refunds, account deletion, bug reports, or if something on the site is simply wrong.`,
+    `Email <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> for anything: billing questions, refunds, account deletion, bug reports, or if something on the site is wrong.`,
     `${SITE} is a small independent project, not a company with a support desk. Expect a reply within a couple of business days.`),
 
   s('For billing and refunds',

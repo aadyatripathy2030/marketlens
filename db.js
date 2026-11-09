@@ -27,7 +27,17 @@ async function init() {
   if (DATABASE_URL) {
     try {
       const { Pool } = require('pg');
-      pool = new Pool({ connectionString: DATABASE_URL, ssl: sslFor(DATABASE_URL) });
+      // Timeouts, so a slow or unreachable database fails a request in
+      // seconds instead of holding it (and a pool slot) open forever.
+      // statement_timeout is enforced by Postgres itself; query_timeout is
+      // the client-side backstop for when the server never answers.
+      const ms = (name, def) => { const n = parseInt(process.env[name], 10); return n > 0 ? n : def; };
+      pool = new Pool({
+        connectionString: DATABASE_URL, ssl: sslFor(DATABASE_URL),
+        connectionTimeoutMillis: ms('PG_CONNECT_TIMEOUT_MS', 5000),
+        statement_timeout: ms('PG_STATEMENT_TIMEOUT_MS', 10000),
+        query_timeout: ms('PG_QUERY_TIMEOUT_MS', 12000),
+      });
       // An idle client dropped by the server emits 'error' on the pool; with
       // no listener that is an uncaught exception and the whole site restarts.
       // The pool replaces the client by itself, so it is only recorded.

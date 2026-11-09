@@ -515,13 +515,13 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
       // error and a generated chart for a typo is how this bug was reported.
       if (kind === 'not_found') { markUnknown(symbol); return json(res, 404, noSuchTicker(symbol)); }
       logError(e);
-      if (kind === 'auth') return json(res, 503, { error: 'Market data is not configured correctly. This is our problem, not yours.', kind });
+      if (kind === 'auth') return json(res, 503, { error: 'Market data is not configured correctly. The fault is on our side.', kind });
       if (kind === 'quota_daily') { markDailyQuotaOut(e.message); return json(res, 503, { error: 'Market data has hit its daily limit for today. It resets tomorrow.', kind }); }
       if (kind === 'rate_limited') return json(res, 503, { error: 'Market data is rate-limited right now. Try again in a minute.', kind });
       return json(res, 503, { error: 'Market data is unavailable right now. Try again shortly.', kind });
     }
   } else if (!demoAllowed()) {
-    return json(res, 503, { error: 'Market data is not configured correctly. This is our problem, not yours.', kind: 'auth' });
+    return json(res, 503, { error: 'Market data is not configured correctly. The fault is on our side.', kind: 'auth' });
   } else if (!DEMO_SYMBOLS.has(symbol)) {
     // Same answer the live branch gives, rather than inventing a chart for it.
     return json(res, 404, noSuchTicker(symbol));
@@ -598,7 +598,7 @@ function ruleBasedSummary(p) {
     : rsi <= 30 ? `and momentum is washed out: RSI at ${rsi} is oversold, which can precede a bounce. `
     : rsi >= 50 ? `and momentum is firm (RSI ${rsi}). ` : `but momentum is soft (RSI ${rsi}). `;
   const volTxt = t.volatility ? `Volatility is ${t.volatility.annual < 25 ? 'low' : t.volatility.annual < 45 ? 'moderate' : 'elevated'} (~${Math.round(t.volatility.annual)}% annualized). ` : '';
-  const closer = `It's a mechanical blend of trend, momentum, and volatility: a starting point for the trade, not the whole decision.`;
+  const closer = `It's a mechanical blend of trend, momentum, and volatility, so treat it as one input to the trade decision.`;
   return `${lead}${trend}${mom}${volTxt}${closer}`;
 }
 // Rule-based bull/bear/conclusion from the computed technicals (no AI needed).
@@ -1617,7 +1617,7 @@ const MAIL_DOWN = 'We could not send the email just now, so we could not finish 
 // marketing, so there is no list to unsubscribe from. The footer says so.
 // MAIL_POSTAL_ADDRESS is printed under it once set (needed before any
 // promotional email is ever sent).
-const MAIL_WHY = 'You are getting this because of your ChartGauge account. It is an account email, not marketing, and ChartGauge sends no newsletters.';
+const MAIL_WHY = 'You are getting this because of your ChartGauge account. It is an account email. ChartGauge sends no marketing or newsletters.';
 const MAIL_POSTAL_ADDRESS = (process.env.MAIL_POSTAL_ADDRESS || '').trim();
 const MAIL_FONT = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
 function emailHtml(o) {
@@ -3840,9 +3840,9 @@ const VIEW_SEO = {
   '': { view: 'home', title: 'ChartGauge | Buy, Sell or Hold Calls for Stocks and Crypto',
     desc: 'A buy, sell or hold call on any stock or crypto pair, with stop and target already set, plus a candlestick chart and 13 indicators. Not financial advice.' },
   'analyze': { view: 'analyze', title: 'Analyze a stock or crypto pair | ChartGauge',
-    desc: 'Enter a stock or crypto pair for a candlestick chart, 13 technical indicators, an indicator score, and stop-loss and take-profit levels derived from ATR and recent swing highs and lows.' },
+    desc: 'Enter a stock or crypto pair for a candlestick chart, 13 technical indicators, an indicator score, and stop-loss and take-profit levels from ATR and recent swing highs and lows.' },
   'markets': { view: 'markets', title: 'Market snapshot: indices and trending stocks | ChartGauge',
-    desc: 'Live quotes for the major US indices and the most active stocks, with the percentage move on the day, and where the indicator score sits today across twenty large stocks.' },
+    desc: "Live quotes for the major US indices and the most active stocks with the day's percentage move, plus where the indicator score sits today across twenty large stocks." },
   'compare': { view: 'compare', title: 'Compare stocks side by side | ChartGauge',
     desc: 'Put two or more stocks next to each other on market cap, revenue, P/E, PEG, margins, ROE, debt to equity, dividend yield and beta.' },
   'screener': { view: 'screener', title: 'Stock screener: filter by sector, market cap and price | ChartGauge',
@@ -3852,17 +3852,17 @@ const VIEW_SEO = {
   'watchlist': { view: 'watchlist', noindex: true, title: 'Your watchlist | ChartGauge',
     desc: 'Keep the stocks you follow in one place, with live prices and one-click analysis.' },
   'learn': { view: 'learn', title: 'Learn trading and investing: free lessons with quizzes | ChartGauge',
-    desc: 'Nineteen short lessons covering market basics, technical and fundamental analysis, valuation, financial statements, risk management, order types, candlesticks, volume, trading psychology, costs and index funds, each with a quiz.' },
+    desc: 'Nineteen short lessons, each with a quiz, on market basics, technical and fundamental analysis, valuation, financial statements, risk management, order types, candlesticks, volume, trading psychology, costs and index funds.' },
   'practice': { view: 'practice', title: 'Paper trading: practice with pretend money | ChartGauge',
-    desc: 'A practice account with a starting balance you choose. Fills use the live price, positions are valued in real time, and a risk meter measures the book against limits you set. None of it is real money.' },
+    desc: 'A practice account with a starting balance you choose. Fills use the live price, positions update in real time, and a risk meter checks the book against your limits. No real money.' },
   'verify': { view: 'verify', noindex: true, title: 'Enter your sign-in code | ChartGauge',
     desc: 'Enter the 6-digit code from your email to finish signing in to ChartGauge.' },
   'settings': { view: 'settings', noindex: true, title: 'Settings: choose what the analysis shows | ChartGauge',
     desc: 'Turn any part of the analysis on or off: the indicator score, the measured base rate, exit levels, the thirteen technical readings, the projection, fundamentals, news and the written summary.' },
   'movers': { view: 'movers', title: 'What is moving right now | ChartGauge',
-    desc: 'A live scan of the most active US stocks ranked by unusual volume, the size of the move and where price sits in the day range. A description of what is happening, not a prediction of what happens next.' },
+    desc: 'A live scan of the most active US stocks, ranked by unusual volume, size of the move and where price sits in the day range. It describes what is happening and does not predict what comes next.' },
   'pricing': { view: 'pricing', title: 'Plans and billing | ChartGauge',
-    desc: 'What a free ChartGauge account includes, what Pro adds, and what each billing period costs per month. Charts, indicators, stop-loss and take-profit levels and the measured base rate are free on any account.' },
+    desc: 'What a free ChartGauge account includes, what Pro adds, and the monthly cost of each billing period. Charts, indicators, stop-loss and take-profit levels and the measured base rate are free on any account.' },
 };
 
 function lessonSeo(id) {
@@ -3906,7 +3906,7 @@ const FEATURED = ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AMD','NFLX'
 // When the lessons were first published and last revised (git history of
 // public/lessons.js). Update LESSONS_MODIFIED when the lessons change.
 const LESSONS_PUBLISHED = '2026-07-27';
-const LESSONS_MODIFIED = '2026-10-28';
+const LESSONS_MODIFIED = '2026-11-08';
 
 const esc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -4115,7 +4115,7 @@ function llmsTxt(origin) {
   const L = (p, t, d) => `- [${t}](${origin}${p})${d ? ': ' + d : ''}`;
   return [
     `# ${SITE_NAME}`, '',
-    `> A trading tool for stocks and crypto pairs. Enter a stock and get a mechanical buy, sell or hold call with the stop-loss and take-profit levels already set, a candlestick chart and 13 technical indicators. Trading can lose money, including everything you put in; everything on the site is for educational purposes only, nothing on it is financial advice, and it does not promise or quote returns.`, '',
+    `> A trading tool for stocks and crypto pairs. Enter a stock and get a mechanical buy, sell or hold call with the stop-loss and take-profit levels already set, a candlestick chart and 13 technical indicators. Trading can lose money, including everything you put in. Everything on the site is for educational purposes only, nothing on it is financial advice, and it does not promise or quote returns.`, '',
     '## Main pages',
     L('/', 'Home', 'what the tool does and a live example reading'),
     L('/analyze', 'Analyze', 'the call, chart, indicators and levels for any stock'),

@@ -470,7 +470,7 @@
   const PREFS_KEY = 'chartgauge_prefs';
   const PREF_DEFS = [
     { k: 'baserate',     on: true,  sel: '.edge-line',      name: 'Measured base rate',
-      desc: 'What actually happened, historically, at scores like today’s on this symbol.' },
+      desc: 'What happened in the past at scores like today’s on this symbol.' },
     { k: 'score',        on: true,  sel: '.ai-score-card',  name: 'Indicator score',
       desc: 'The 0–100 composite and its buy / sell reading.' },
     { k: 'reason',       on: true,  sel: '.reason',         name: 'One-line summary',
@@ -762,7 +762,7 @@
     { v: 'compare', t: 'Compare',   d: 'Put two or more companies side by side on valuation, margins, growth and debt.' },
     { v: 'screener', t: 'Screener',  d: 'Filter a curated list of stocks by sector, market capitalization and price.' },
     { v: 'markets', t: 'Markets',   d: 'Live quotes for the major US indices and the most active stocks.' },
-    { v: 'movers', t: 'Movers',    d: 'What is actually moving right now, ranked by how unusual the volume and the day\u2019s range are.' },
+    { v: 'movers', t: 'Movers',    d: 'What is moving right now, ranked by how unusual the volume and the day\u2019s range are.' },
     { v: 'watchlist', t: 'Watchlist', d: 'The stocks you follow, with live prices and one-click analysis.' },
     { v: 'alerts', t: 'Alerts',    d: 'Set a target above or below the current price and get flagged when a stock crosses it.', badge: 'alertBadge' },
     { v: 'practice', t: 'Practice',  d: 'A practice account with pretend money, so you can rehearse position sizing against your own risk limits. Nothing here touches a broker.' },
@@ -3295,7 +3295,7 @@
     if (Number.isFinite(r.stop) && Number.isFinite(r.target) && r.stop < r.entry && r.target > r.entry) {
       const risk = r.entry - r.stop, reward = r.target - r.entry;
       rr.textContent = 'Risking ' + pMoney(risk) + ' to make ' + pMoney(reward)
-        + ' — ' + (reward / risk).toFixed(2) + ':1';
+        + ' (' + (reward / risk).toFixed(2) + ':1)';
       rr.className = 'wl-rr muted';
     } else if (Number.isFinite(r.stop) && r.stop >= r.entry) {
       // Easy to do by dragging, and the ratio just vanishing explains nothing.

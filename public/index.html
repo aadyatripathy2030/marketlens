@@ -135,7 +135,7 @@
 
     <!-- What else is here, as a list rather than tiles. -->
     <section class="home-sec">
-      <h2 class="home-h">Practice, learn, and keep watch</h2>
+      <h2 class="home-h">Practice, lessons, alerts and a screener</h2>
       <div class="tools">
         <a class="tool" href="/practice" data-view="practice"><h3 class="tool-h">Practice</h3><p>Trade pretend money at live prices, with a risk meter on the whole account. Nothing touches a broker.</p><span class="tool-go">Open practice &rarr;</span></a>
         <a class="tool" href="/learn" data-view="learn"><h3 class="tool-h">Learn</h3><p>Nineteen short lessons with quizzes, on day trading and on long-term investing. Free, no account needed.</p><span class="tool-go">Start a lesson &rarr;</span></a>
@@ -180,7 +180,7 @@
     <section class="home-sec" id="homeFaq">
       <h2 class="home-h">What people ask before signing up</h2>
       <div class="faq">
-        <details><summary>Why not just use TradingView?</summary><p>Use it if you like reading charts yourself; it is very good at that. ChartGauge does the reading: it turns the indicators into one call with a stop and a target. If you want a conclusion rather than the tools to draw your own, that is the difference.</p></details>
+        <details><summary>Why not just use TradingView?</summary><p>Use it if you like reading charts yourself; it is very good at that. ChartGauge reads the chart for you and turns the indicators into one call with a stop and a target.</p></details>
         <details><summary>How is the call made?</summary><p>Mechanically. Five groups of indicators are scored together from 0 to 100: 58 or more is buy, under 42 is sell, and between is hold, and the call is held back to hold when bars like today&rsquo;s have done clearly worse, or better, than usual on that stock. A written report then explains the reasoning.</p></details>
         <details><summary>What does Pro add, and how do the trial and refund work?</summary><p>Pro adds a written report on every call, extra take-profit levels, screenshot reading, the screener and compare. Your first subscription can start with a free trial, and nothing is charged until it ends. Separately, after any charge you can ask for a full refund within 14 days. Cancel any time from the Plans page.</p></details>
         <details><summary>Where do the prices come from, and is this advice?</summary><p>Prices come from Twelve Data and can be delayed or wrong; if live prices are unavailable the site says so. Everything on ChartGauge is for educational purposes only, and nothing here is financial advice. Trading can lose money, including everything you put in, and the decision is yours.</p></details>
@@ -521,13 +521,13 @@
   <!-- MOVERS -->
   <section class="view hidden" id="view-movers">
     <h1 class="view-h">What&rsquo;s moving right now</h1>
-    <p class="learn-lead">The most active US stocks, ranked by how unusual the activity is: volume against the symbol&rsquo;s own normal, the size of today&rsquo;s move, and how wide the day has been. Every number here describes what <em>has</em> happened. None of it forecasts the next five minutes.</p>
+    <p class="learn-lead">The most active US stocks, ranked by how unusual the activity is: volume against the symbol&rsquo;s own normal, the size of today&rsquo;s move, and how wide the day has been. Every number here describes what <em>has</em> happened, and none of it forecasts the next five minutes.</p>
     <div class="movers-bar">
       <button type="button" class="btn btn-ghost" id="moversRefresh">Refresh</button>
       <span class="movers-status" id="moversStatus"></span>
     </div>
     <div id="moversBody"></div>
-    <p class="movers-note">Unusual volume tells you people are trading it, not which way it goes next. ChartGauge&rsquo;s own score was measured against 36,524 past setups and did not predict direction. Every symbol below links to its chart, where the measured base rate for that setup is shown honestly. Nothing here is a recommendation to buy or sell.</p>
+    <p class="movers-note">Unusual volume tells you people are trading it, not which way it goes next. ChartGauge&rsquo;s own score was measured against 36,524 past setups and did not predict direction. Every symbol below links to its chart, where the measured base rate for that setup is shown. Nothing here is a recommendation to buy or sell.</p>
   </section>
 
   <!-- ADMIN -->
@@ -541,8 +541,8 @@
       <div>
         <div class="view-h" style="margin-bottom:4px">Practice</div>
         <p class="muted" style="margin:0;max-width:56ch;font-size:14.5px">
-          Pretend money, real prices. Rehearse position sizing against your own limits
-          without any of it being real. Nothing here touches a broker.
+          Pretend money, real prices. Practice position sizing against limits you set.
+          Nothing here touches a broker.
         </p>
       </div>
       <span class="prac-tag">Simulated</span>
@@ -591,7 +591,7 @@
                 <path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M12 8v5"/>
               </svg>
             </span>
-            <div><b>Your own risk limits</b><span>Set how much may sit in one position, and see the book measured against it.</span></div>
+            <div><b>Your own risk limits</b><span>Set how much may sit in one position, and see your account measured against it.</span></div>
           </li>
         </ul>
       </div>
@@ -681,7 +681,7 @@
               <label class="tk-lbl" for="rPerTrade">Risk per trade: <b id="rPerTradeV">2%</b></label>
               <input id="rPerTrade" type="range" min="1" max="25" value="2" />
               <p class="muted" style="font-size:12.5px;margin:8px 0 0">
-                Your limits, not a house view. The meter measures against them; nothing is blocked.
+                You set these limits. The meter measures against them but never blocks a trade.
               </p>
             </details>
           </div>
