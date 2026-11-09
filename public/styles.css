@@ -2383,43 +2383,44 @@ html.is-scrolling .home-end-btns::before { animation-play-state: paused; }
 }
 
 /* ---- Nov 9 2026: hero art, top right of the home page ----
-   Green candles climb to a gold coin while dollar signs drift up. One-time
-   draws on load; the loops move only opacity and transform. */
+   Candles climb under a smooth rising line that draws in and ends in an
+   arrow, with a soft glow at the tip. The one loop (the tip glow) moves
+   only opacity and transform. */
 .hero-art { display: none; }
 @media (min-width: 1180px) {
-  .hero-art { display: block; position: absolute; z-index: 0; pointer-events: none; color: var(--good);
+  .hero-art { display: block; position: absolute; z-index: 0; pointer-events: none;
     top: 96px; right: 0; width: min(500px, calc(100% - 720px)); aspect-ratio: 520 / 380; }
   .hero-wrap > .hero { position: relative; z-index: 1; }
 }
 .hero-art svg { display: block; width: 100%; height: 100%; overflow: visible; }
-.ha-grid line { stroke: var(--border); stroke-width: 1; stroke-dasharray: 2 6; }
-.ha-c line { stroke-width: 2; stroke-linecap: round; }
-.ha-c.up line { stroke: var(--good); } .ha-c.up rect { fill: var(--good); }
-.ha-c.dn line { stroke: var(--bad); } .ha-c.dn rect { fill: var(--bad); }
+.ha-grid line { stroke: rgba(255,255,255,.07); stroke-width: 1; }
+.ha-cs { opacity: .6; }
+.ha-c line { stroke-width: 1.5; stroke-linecap: round; opacity: .7; }
+.ha-c.up line { stroke: #4cb262; } .ha-c.dn line { stroke: #ef7268; }
 .ha-c { transform-box: fill-box; transform-origin: center bottom;
-  animation: haRise .7s var(--ease-out-expo) backwards; animation-delay: calc(.45s + var(--ci) * 70ms); }
-@keyframes haRise { from { opacity: 0; transform: translateY(18px) scaleY(.6); } to { opacity: 1; transform: none; } }
-.ha-line { stroke: var(--good); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; fill: none;
-  stroke-dasharray: 1; stroke-dashoffset: 1; animation: haDraw 1.6s var(--ease-out-quart, cubic-bezier(.25,1,.5,1)) .8s forwards; }
+  animation: haRise .8s var(--ease-out-expo) backwards; animation-delay: calc(.4s + var(--ci) * 60ms); }
+@keyframes haRise { from { opacity: 0; transform: translateY(14px) scaleY(.7); } to { opacity: 1; transform: none; } }
+.ha-line, .ha-glow { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1;
+  animation: haDraw 1.8s cubic-bezier(.65,0,.35,1) .7s forwards; }
+.ha-line { stroke: url(#haStroke); stroke-width: 3.5; }
+.ha-glow { stroke: #4cb262; stroke-width: 10; opacity: .35; }
 @keyframes haDraw { to { stroke-dashoffset: 0; } }
-.ha-head { stroke: var(--good); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; fill: none;
-  opacity: 0; animation: lin-fade .3s ease-out 2.2s forwards; }
-.ha-area { opacity: 0; animation: lin-fade 1.2s ease-out 1.4s forwards; }
-.ha-coin { position: absolute; left: 81%; top: 4%; width: 15%; aspect-ratio: 1; margin: -7.5% 0 0 -7.5%; border-radius: 50%;
-  display: grid; place-items: center; color: #5a3d06; font: 700 clamp(22px, 2.6vw, 38px)/1 var(--font-head, inherit);
-  background: radial-gradient(circle at 32% 28%, #fff3c4 0%, #f3c552 38%, #d99a1e 72%, #b07812 100%);
-  box-shadow: inset 0 0 0 3px rgba(255,236,170,.55), inset 0 -4px 8px rgba(120,70,0,.35), 0 14px 30px -12px rgba(217,154,30,.6);
-  animation: haCoinIn .8s var(--ease-out-expo) 2.1s backwards, haBob 4s ease-in-out 2.9s infinite; will-change: transform; }
-.ha-coin span { transform: translateY(-1px); }
-@keyframes haCoinIn { from { opacity: 0; transform: translateY(24px) scale(.5) rotate(-30deg); } to { opacity: 1; transform: none; } }
-@keyframes haBob { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-10px) rotate(6deg); } }
-.ha-float { position: absolute; left: var(--fx); bottom: 6%; color: var(--good); font: 700 22px/1 var(--font-head, inherit);
-  opacity: 0; animation: haFloat 5.1s ease-out infinite; animation-delay: calc(2.4s + var(--fd)); will-change: transform, opacity; }
-@keyframes haFloat { 0% { opacity: 0; transform: translateY(0) scale(.8); } 15% { opacity: .75; }
-  100% { opacity: 0; transform: translateY(-160px) scale(1.15); } }
-html.is-scrolling .ha-coin, html.is-scrolling .ha-float { animation-play-state: paused; }
+.ha-tip path { fill: #9af0ad; }
+.ha-tip { opacity: 0; animation: lin-fade .35s ease-out 2.35s forwards; }
+.ha-area { opacity: 0; animation: lin-fade 1.4s ease-out 1.5s forwards; }
+.ha-pulse { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(120,230,150,.35) 0%, rgba(76,178,98,.12) 35%, transparent 70%);
+  opacity: 0; animation: haPulse 3.6s ease-in-out 2.5s infinite; will-change: opacity, transform; }
+@keyframes haPulse { 0%, 100% { opacity: .5; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.1); } }
+html.is-scrolling .ha-pulse { animation-play-state: paused; }
+html[data-theme="light"] .ha-grid line { stroke: rgba(0,0,0,.08); }
 @media (prefers-reduced-motion: reduce) {
-  .ha-c, .ha-area, .ha-head, .ha-coin { animation: none; opacity: 1; }
-  .ha-line { animation: none; stroke-dashoffset: 0; }
-  .ha-float { display: none; }
+  .ha-c, .ha-area, .ha-tip { animation: none; opacity: 1; }
+  .ha-line, .ha-glow { animation: none; stroke-dashoffset: 0; }
+  .ha-pulse { animation: none; opacity: .7; }
 }
+html[data-theme="light"] #haStroke stop:nth-child(2) { stop-color: #2f9a4c; }
+html[data-theme="light"] #haStroke stop:nth-child(3) { stop-color: #1f7a38; }
+html[data-theme="light"] .ha-tip path { fill: #1f7a38; }
+html[data-theme="light"] .ha-cs { opacity: .75; }
+html[data-theme="light"] .ha-glow { opacity: .2; }
