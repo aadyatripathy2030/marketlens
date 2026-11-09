@@ -899,7 +899,7 @@
   })();
 
   // ---- Scroll reveal ----
-  // Sections and cards rise into place every time they scroll into sight,
+  // Home page only. Sections and cards rise into place every time they scroll into sight,
   // and are quietly reset once they are fully off screen, so scrolling back
   // plays them again. The motion follows the scroll: scrolling down, a block
   // comes up from below on an ease-in (slow, then faster); scrolling up, it
@@ -956,7 +956,7 @@
     requestAnimationFrame(() => {
       revealQueued = false;
       const all = revealFull; revealFull = false;
-      document.querySelectorAll('#main ' + REVEAL_SEL.split(', ').join(', #main ')).forEach(el => {
+      document.querySelectorAll('#view-home ' + REVEAL_SEL.split(', ').join(', #view-home ')).forEach(el => {
         if (!all && revealSeen.has(el)) return;
         if (!el.getClientRects().length) return;
         revealSeen.add(el);

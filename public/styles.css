@@ -2424,3 +2424,7 @@ html[data-theme="light"] #haStroke stop:nth-child(3) { stop-color: #1f7a38; }
 html[data-theme="light"] .ha-tip path { fill: #1f7a38; }
 html[data-theme="light"] .ha-cs { opacity: .75; }
 html[data-theme="light"] .ha-glow { opacity: .2; }
+
+/* ---- Nov 9 2026: the background glow is for the home page only ----
+   Every other page sits on the plain background. */
+body:not([data-view="home"]) .bg-blobs { display: none; }

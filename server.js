@@ -4205,6 +4205,9 @@ function serveDocument(req, res, urlPath) {
       const label = seo.symbolName ? `${seo.symbolName} (${seo.symbol})` : seo.symbol;
       out = out.replace(/(<h1 class="view-h" id="analyzeH">)[\s\S]*?(<\/h1>)/, (m, a, b) => `${a}${esc(label)}: chart and trade levels${b}`);
     }
+    // The view is on <body> from the first paint, so page-specific styles
+    // (the home page's background glow) don't flash before app.js runs.
+    out = out.replace('<body>', () => `<body data-view="${esc(seo.view || 'home')}">`);
     if (seo.view === 'learn' && !seo.lesson) out = out.replace('<div id="learnHost"></div>', () => `<div id="learnHost">${learnListHtml()}</div>`);
     // Lesson prose goes into the document itself so it indexes without JS.
     if (seo.lesson) out = out.replace('<div id="learnHost"></div>', () => `<div id="learnHost"></div>${lessonHtml(seo.lesson)}`);
