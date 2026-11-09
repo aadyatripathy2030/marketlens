@@ -969,6 +969,22 @@
   }
   if (revealIO) new MutationObserver(() => revealScan()).observe($('main'), { childList: true, subtree: true });
 
+  // Home headline: each word rises in on load, one after another. The words
+  // stay plain text with spaces between, so wrapping and reading are unchanged.
+  (function splitHero() {
+    const h = document.querySelector('#view-home .hero-h');
+    if (!h || h.querySelector('.hw') || h.children.length) return;
+    const words = h.textContent.trim().split(/\s+/);
+    h.textContent = '';
+    words.forEach((w, i) => {
+      const s = document.createElement('span');
+      s.className = 'hw'; s.textContent = w; s.style.setProperty('--wi', i);
+      h.appendChild(s);
+      if (i < words.length - 1) h.appendChild(document.createTextNode(' '));
+    });
+    h.classList.add('hero-split');
+  })();
+
   function sma(a, n) { return a.map((_, i) => i >= n - 1 ? a.slice(i - n + 1, i + 1).reduce((x, y) => x + y, 0) / n : null); }
 
   function resetView() {
@@ -1921,7 +1937,10 @@
         + `<span class="muted">${L.direction === 'short' ? 'if you sell short' : 'if you buy'}</span>`
       : '';
     $('homeCallWhy').textContent = call.why || '';
-    $('homeCall').classList.remove('hidden');
+    // First time the call shows, it plays in; live refreshes after that don't.
+    const hc = $('homeCall');
+    if (hc.classList.contains('hidden') && !hc.dataset.played) { hc.dataset.played = '1'; hc.classList.add('hc-in'); }
+    hc.classList.remove('hidden');
   }
   $('homeFull').addEventListener('click', () => goAnalyze(HOME_SYMBOL));
 

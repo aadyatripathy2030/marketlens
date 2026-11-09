@@ -2333,3 +2333,51 @@ html.is-scrolling .bg-blobs i { animation-play-state: paused; }
   .tool:hover, .learn-card:hover, a.card:hover, .plan-card:hover, .wl-card:hover, .quote-card:hover, .plan2:hover, .btn:active:not(:disabled) { transform: none; }
   .cg-settle { animation: none; }
 }
+
+/* ---- Nov 9 2026: more motion on the home page ----
+   All of it moves only opacity and transform (scale/translate), so it runs
+   on the compositor and costs no repaint. */
+/* Headline: words rise one by one instead of the whole line at once. */
+.hero-wrap .hero > .hero-h.hero-split { animation: none; }
+.hero-split .hw { display: inline-block; animation: lin-in .8s var(--ease-out-expo) backwards;
+  animation-delay: calc(.05s + var(--wi, 0) * 45ms); }
+/* Search: the field widens its ring on focus, the button arrow-nudges. */
+.hero-search .input { transition: box-shadow .25s var(--ease-out-expo), border-color .2s; }
+.hero-search .input:focus { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
+/* Today's call: the verdict pops in, then stop, target and the reason follow. */
+@keyframes hcPop { 0% { opacity: 0; transform: scale(.86); } 60% { opacity: 1; transform: scale(1.04); } 100% { opacity: 1; transform: none; } }
+@keyframes hcUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.home-call.hc-in .home-call-v { display: inline-block; transform-origin: left center; animation: hcPop .6s var(--ease-out-expo) .1s backwards; }
+.home-call.hc-in .home-call-k { animation: hcUp .5s var(--ease-out-expo) backwards; }
+.home-call.hc-in .home-call-lv > * { animation: hcUp .5s var(--ease-out-expo) backwards; }
+.home-call.hc-in .home-call-lv > :nth-child(1) { animation-delay: .3s; }
+.home-call.hc-in .home-call-lv > :nth-child(2) { animation-delay: .4s; }
+.home-call.hc-in .home-call-lv > :nth-child(3) { animation-delay: .5s; }
+.home-call.hc-in .home-call-why { animation: hcUp .6s var(--ease-out-expo) .6s backwards; }
+/* Steps: a short accent bar draws in above each step as it scrolls in. */
+.steps > li::before { content: ""; display: block; width: 32px; height: 2px; margin-bottom: 16px; border-radius: 2px;
+  background: var(--accent); transform-origin: left center; transition: transform .8s var(--ease-out-expo) .25s; }
+.steps > li.rv:not(.in)::before { transform: scaleX(0); transition: none; }
+.steps > li.rv.in::before { transition-delay: calc(var(--rd, 0ms) + .25s); }
+/* Tools: the "Open ... →" line slides right on hover. */
+.tool-go { display: inline-block; transition: transform .3s var(--ease-out-expo); }
+@media (hover: hover) { .tool:hover .tool-go { transform: translateX(5px); } }
+/* FAQ: an opened answer slides down into place. */
+.faq details[open] p { animation: hcUp .4s var(--ease-out-expo); }
+/* Marquee chips lift on hover. */
+.marquee a { transition: transform .25s var(--ease-out-expo), color .2s; }
+@media (hover: hover) { .marquee a:hover { transform: translateY(-2px); } }
+/* Closing call to action: a soft glow breathes behind the button. */
+.home-end-btns { position: relative; }
+.home-end-btns .btn-primary { position: relative; z-index: 1; }
+.home-end-btns::before { content: ""; position: absolute; left: 50%; top: 50%; width: 240px; height: 64px; z-index: 0;
+  margin: -32px 0 0 -120px; border-radius: 999px; pointer-events: none; filter: blur(22px);
+  background: var(--accent); opacity: .18; animation: ctaGlow 3.2s ease-in-out infinite; will-change: opacity, transform; }
+@keyframes ctaGlow { 0%, 100% { opacity: .12; transform: scale(.9); } 50% { opacity: .3; transform: scale(1.08); } }
+html.is-scrolling .home-end-btns::before { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .hero-split .hw, .home-call.hc-in *, .faq details[open] p { animation: none !important; }
+  .steps > li::before, .tool-go, .marquee a, .hero-search .input { transition: none; }
+  .tool:hover .tool-go, .marquee a:hover { transform: none; }
+  .home-end-btns::before { animation: none; }
+}
