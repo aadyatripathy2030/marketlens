@@ -2428,3 +2428,21 @@ html[data-theme="light"] .ha-glow { opacity: .2; }
 /* ---- Nov 9 2026: the background glow is for the home page only ----
    Every other page sits on the plain background. */
 body:not([data-view="home"]) .bg-blobs { display: none; }
+
+/* ---- Nov 9 2026: polish pass ----
+   Intro paragraphs keep a readable line length instead of running the full
+   width of a wide screen. */
+.learn-lead { max-width: 70ch; }
+.plan-renew { max-width: 90ch; }
+/* Sign-in wall: a solid quiet panel. A dashed outline reads as a drop zone. */
+.wall { border: 1px solid var(--border); background: var(--bg2, rgba(255,255,255,.02)); border-radius: 16px; padding: 48px 32px; }
+.wall-h { font-size: 22px; letter-spacing: -.02em; }
+.wall-p { font-size: 15px; max-width: 44ch; margin-left: auto; margin-right: auto; }
+/* Bull and bear: the colored heading carries the side; no thick side rules. */
+.thesis { gap: 32px; }
+.thesis-col { padding: 0; border-left: 0; }
+.thesis-h { font-size: 14px; }
+.thesis-col li { font-size: 14px; color: var(--text); }
+.thesis-col.bull li::before { color: var(--good); }
+.thesis-col.bear li::before { color: var(--bad); }
+.wall-p, .wall-h { text-wrap: balance; }

@@ -1970,6 +1970,7 @@
     $('bullList').innerHTML = skelLi;
     $('bearList').innerHTML = skelLi;
     $('conclusion').textContent = '';
+    $('thesisCard').classList.remove('hidden');
   }
 
   // A plain fetch has no deadline, so a stalled request would leave the panel
@@ -1989,6 +1990,8 @@
     $('aiBody').appendChild(retry);
     $('aiTag').textContent = '';
     $('bullList').innerHTML = ''; $('bearList').innerHTML = ''; $('conclusion').textContent = '';
+    // Nothing to show: hide the card instead of leaving two empty columns.
+    $('thesisCard').classList.add('hidden');
   }
 
   // Identity, not symbol: switching strategy re-runs the same symbol with a
@@ -2007,6 +2010,7 @@
     $('bullList').innerHTML = (j.bull && j.bull.length ? j.bull : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
     $('bearList').innerHTML = (j.bear && j.bear.length ? j.bear : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
     $('conclusion').textContent = j.conclusion || '';
+    $('thesisCard').classList.remove('hidden');
   }
 
   // Streams the summary so the panel fills as Claude writes rather than sitting
