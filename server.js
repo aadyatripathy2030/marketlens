@@ -3838,7 +3838,7 @@ function siteOrigin(req) {
 
 const VIEW_SEO = {
   '': { view: 'home', title: 'ChartGauge | Buy, Sell or Hold Calls for Stocks and Crypto',
-    desc: 'A buy, sell or hold call on any stock or crypto pair, with the stop and target already set, and a candlestick chart and 13 indicators. Trading can lose money; not financial advice.' },
+    desc: 'A buy, sell or hold call on any stock or crypto pair, with stop and target already set, plus a candlestick chart and 13 indicators. Not financial advice.' },
   'analyze': { view: 'analyze', title: 'Analyze a stock or crypto pair | ChartGauge',
     desc: 'Enter a stock or crypto pair for a candlestick chart, 13 technical indicators, an indicator score, and stop-loss and take-profit levels derived from ATR and recent swing highs and lows.' },
   'markets': { view: 'markets', title: 'Market snapshot: indices and trending stocks | ChartGauge',
