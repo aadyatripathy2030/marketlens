@@ -3120,7 +3120,7 @@
     interval = '1day'; viewCandles = null; syncIntervalButtons();
   }
   function goAnalyze(sym) { showView('analyze'); if (sym) { $('symbol').value = sym; sampleDaily(sym); run(sym); } }
-  document.querySelectorAll('[data-view]').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); showView(el.dataset.view); }));
+  document.querySelectorAll('[data-view]:not(body)').forEach(el => el.addEventListener('click', (e) => { e.preventDefault(); showView(el.dataset.view); }));
 
   // The server renders the lesson into the document so it indexes without
   // JavaScript. Once the app is running it renders the same lesson itself, so
