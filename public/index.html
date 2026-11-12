@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ChartGauge | AI Trading App: Buy, Sell or Hold Calls with Stops</title>
-<meta name="description" content="An AI trading app for stocks and crypto: a buy, sell or hold call with the stop and target set, an AI-written analysis, and AI that reads your chart screenshots. Not financial advice." />
+<title>ChartGauge | AI Trading App: Stops, Targets and the Odds</title>
+<meta name="description" content="An AI trading app for stocks and crypto: the stop and target already set, the odds of reaching each, a tested 8-in-10 price range, AI-written analysis, and AI that reads your chart screenshots. Not financial advice." />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <!-- 180px is what iOS asks for. This used to point at avatar.png, the
      4096px original, so every device saving the site pulled 490KB for an icon. -->
@@ -107,7 +107,7 @@
       </div>
       <div class="hero">
         <p class="hero-kicker">The AI trading app for stocks and crypto</p>
-        <h1 class="hero-h">Buy, sell or hold, with the stop and target already set.</h1>
+        <h1 class="hero-h">The stop, the target, and the odds of hitting each.</h1>
         <p class="hero-sub">Search any stock or crypto pair. ChartGauge reads the chart, makes the call, and sets the exits from how far the price really moves. Claude AI writes up why, and can read a screenshot of any chart you upload.</p>
         <form class="hero-search" id="heroForm">
           <input id="heroInput" class="input" aria-label="Search for a stock or crypto pair" placeholder="Apple, NVDA, BTC/USD" autocomplete="off" maxlength="16" />
@@ -131,7 +131,7 @@
         </div>
         <div class="home-call hidden" id="homeCall">
           <div class="home-call-main">
-            <span class="home-call-k">Today&rsquo;s call</span>
+            <span class="home-call-k">Today&rsquo;s reading</span>
             <span class="home-call-v" id="homeCallV"></span>
           </div>
           <div class="home-call-lv" id="homeCallLv"></div>
@@ -153,7 +153,7 @@
       <h2 class="home-h">From a symbol to a trade plan in one search</h2>
       <ol class="steps">
         <li><span class="step-n">1</span><h3 class="step-h">Pick a stock</h3><p>Any of nearly four thousand US-listed companies, or a crypto pair such as BTC/USD. Choose day trading or long-term.</p></li>
-        <li><span class="step-n">2</span><h3 class="step-h">Get the call</h3><p>Buy, sell or hold, scored from five groups of indicators: short trend (20- and 50-day averages, MACD), long trend (50 against 200-day), RSI momentum, stretch from the Bollinger bands, and trend quality.</p></li>
+        <li><span class="step-n">2</span><h3 class="step-h">Get the reading</h3><p>Which way the indicators lean, and how often setups like it rose before, scored from five groups of indicators: short trend (20- and 50-day averages, MACD), long trend (50 against 200-day), RSI momentum, stretch from the Bollinger bands, and trend quality.</p></li>
         <li><span class="step-n">3</span><h3 class="step-h">See the exits</h3><p>The stop goes 1.5 times the average daily range (ATR) from the price, or just past the recent swing low when that is within three ATRs. Targets sit at one, two and three times that risk.</p></li>
       </ol>
     </section>
@@ -256,7 +256,7 @@
             <!-- The headline call. The indicators make it; the measured record
                  can hold it back when the history clearly disagrees. The gauge
                  card below shows both parts with their evidence. -->
-            <div class="verdict-kicker" id="vKicker">Verdict</div>
+            <div class="verdict-kicker" id="vKicker">Indicators</div>
             <div class="verdict-action" id="vAction"></div>
             <div class="verdict-meta" id="vMeta"></div>
           </div>
@@ -275,7 +275,7 @@
                  the measurement it was checked against, then the indicator
                  score it came from. One word, stated once, explained twice. -->
             <div class="signal-row hidden" id="signalRow">
-              <span class="signal-kicker">Verdict</span>
+              <span class="signal-kicker">Indicators</span>
               <span class="signal-badge" id="signalBadge"></span>
               <span class="signal-why" id="signalWhy"></span>
             </div>
@@ -293,7 +293,6 @@
               <button type="button" class="ov active" data-k="type" id="ovType">Candles</button>
               <button type="button" class="ov" data-k="fast"><i style="background:var(--sma20)"></i><span id="ovFast">SMA</span></button>
               <button type="button" class="ov" data-k="slow"><i style="background:var(--sma50)"></i><span id="ovSlow">SMA</span></button>
-              <button type="button" class="ov" data-k="proj"><i class="dashed" style="background:var(--forecast)"></i>Projection</button>
               <button type="button" class="ov" data-k="levels"><i style="background:var(--bad)"></i>Stop / target</button>
               <button type="button" class="ov" data-k="volume">Volume</button>
               <button type="button" class="ov" id="ovColors">Colors</button>
@@ -802,6 +801,7 @@
   <footer class="site-foot">
     <nav class="foot-links">
       <a href="/contact">Contact</a>
+      <a href="/accuracy">Track record</a>
       <a href="/terms">Terms</a>
       <a href="/privacy">Privacy</a>
       <a href="/refunds">Refunds</a>

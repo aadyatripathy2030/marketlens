@@ -297,12 +297,15 @@
           ? `just beyond the 60-bar ${dirWord === 'long' ? 'low' : 'high'} (ATR method would say ${f(L.stopAtr)})`
           : `${L.atrMult}x ATR (swing level at ${f(L.stopStructure)} was too far to use)`)),
     ];
+    // Chance of reaching each level before the stop (see stopTargetOdds).
+    const O = d.odds && d.odds.targets ? d.odds : null;
+    const oddsFor = (r, structure) => { const o = O && O.targets.find(x => structure ? x.structure : (!x.structure && x.r === r)); return o ? ` · reached before the stop in about ${o.hit} of 100 similar cases within ${O.days} trading days (stop first in ${o.stop})` : ''; };
     for (const t of targetsFor(L)) {
-      rows.push(cell(`Take profit ${t.r}R`, f(t.price), 'target', `${f(t.pct)}% away · ${t.r}x the risk taken`));
+      rows.push(cell(`Take profit ${t.r}R`, f(t.price), 'target', `${f(t.pct)}% away · ${t.r}x the risk taken${oddsFor(t.r)}`));
     }
     rows.push(L.structureTarget
       ? cell('Swing level ahead', f(L.structureTarget.price), 'target',
-          `${f(L.structureTarget.pct)}% away · ${f(L.structureTarget.r)}R, the 60-bar ${dirWord === 'long' ? 'high' : 'low'}, where price has turned before`)
+          `${f(L.structureTarget.pct)}% away · ${f(L.structureTarget.r)}R, the 60-bar ${dirWord === 'long' ? 'high' : 'low'}, where price has turned before${oddsFor(0, true)}`)
       : cell('Swing level ahead', 'none', '',
           `Price is already outside its 60-bar range, so there is no prior level ahead of it to aim at`));
 
@@ -316,7 +319,8 @@
     }).join('');
     $('levelsBody').innerHTML =
       `<div class="tp-row"><span class="tp-label">Take-profit levels</span><div class="tp-group">${tpBtns}</div></div>` +
-      `<div class="levels-grid">${rows.join('')}</div>`;
+      `<div class="levels-grid">${rows.join('')}</div>`
+      + (O ? `<p class="lv-odds-note">The chances are simulated from this symbol's own past daily moves at today's volatility. They measure distance, not direction: a far target is reached less often. Checked on 2016 to 2026 prices, the stated chances matched what happened to within 3 points. Past moves do not guarantee future ones.</p>` : '');
     $('levelsBody').querySelectorAll('.tp-btn').forEach(b => b.addEventListener('click', () => {
       const n = parseInt(b.dataset.tp, 10);
       if (n > maxTp()) { showView('pricing'); return; }
@@ -1740,8 +1744,7 @@
   function tiles(d) {
     const r = d.indicators.rsi;
     const rsiCls = r == null ? '' : r >= 70 ? 'hot' : r <= 30 ? 'down' : '';
-    const proj = d.forecast && d.forecast.length ? d.forecast[d.forecast.length - 1] : null;
-    const projCls = proj == null ? '' : proj > d.latest ? 'up' : 'down';
+    const month = (d.bands || []).find(b => b.days === 21);
     const fmt = (v) => v == null ? '—' : v.toFixed(2);
     const fastLbl = d.maFast ? d.maFast.label : 'SMA 20';
     const slowLbl = d.maSlow ? d.maSlow.label : 'SMA 50';
@@ -1749,7 +1752,7 @@
       <div class="tile"><div class="tile-val ${rsiCls}">${r == null ? '—' : r}</div><div class="tile-lbl">RSI (${d.indicators.rsiPeriod})</div></div>
       <div class="tile"><div class="tile-val">${fmt(d.indicators.maFast)}</div><div class="tile-lbl">${fastLbl}</div></div>
       <div class="tile"><div class="tile-val">${fmt(d.indicators.maSlow)}</div><div class="tile-lbl">${slowLbl}</div></div>
-      <div class="tile"><div class="tile-val ${projCls}">${fmt(proj)}</div><div class="tile-lbl">${(d.forecast || []).length}-bar proj.</div></div>`;
+      <div class="tile"><div class="tile-val">${month ? `${month.low.toFixed(2)}–${month.high.toFixed(2)}` : '—'}</div><div class="tile-lbl">1-month range (8 in 10)</div></div>`;
   }
 
   let runSeq = 0;           // guards against a slow request landing after a newer one
@@ -1841,13 +1844,13 @@
       const v = d.verdict || {};
       const call = d.call;
       if (call && call.action) {
-        // The headline call: the indicators' lean as a Buy, Sell or Hold,
+        // The headline reading: the indicators' lean, described, not advised,
         // held back only when the measured record clearly disagrees. The
         // score rides along as the small line beneath it.
-        $('vKicker').textContent = call.vetoed ? 'Verdict, held back' : 'Verdict';
+        $('vKicker').textContent = 'Indicators';
         $('vAction').textContent = call.label || call.action;
-        const unbacked = call.confirmed === false && call.action !== 'Hold';
-        $('vMeta').textContent = [rt.score != null ? `indicators ${rt.score}/100` : '', unbacked ? 'no measured edge' : ''].filter(Boolean).join(' · ');
+        const fq = call.freq;
+        $('vMeta').textContent = [rt.score != null ? `score ${rt.score}/100` : '', fq ? `higher after ${fq.up} of 100 similar setups (any day: ${fq.base})` : ''].filter(Boolean).join(' · ');
         $('verdict').className = 'verdict ' + (call.tone || 'neutral');
       } else {
         $('vKicker').textContent = 'Indicators';
@@ -3040,7 +3043,7 @@
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
   let currentView = 'home';
   const VIEWS = ['home', 'analyze', 'compare', 'screener', 'markets', 'movers', 'watchlist', 'alerts', 'practice', 'learn', 'settings', 'pricing', 'admin', 'legal', 'verify'];
-  const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact', 'affiliate-terms', 'accessibility', 'security', 'copyright',
+  const LEGAL_PATHS = ['accuracy', 'terms', 'privacy', 'refunds', 'contact', 'affiliate-terms', 'accessibility', 'security', 'copyright',
     'ai-chart-analysis', 'best-ai-trading-apps', 'chartgauge-vs-trendspider', 'chartgauge-vs-trade-ideas', 'tradingview-alternative'];
   // Each view has a real URL now, so navigation updates the address bar and
   // the back button works. pushUrl is skipped when we are *reacting* to a URL

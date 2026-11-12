@@ -576,30 +576,33 @@ function edgeSignal(e) {
 // disagree with each other.
 function headlineCall(rating, e) {
   if (!rating || rating.score == null) return null;
+  // The indicators' lean, described rather than prescribed. Tested on
+  // 2016-2026 prices, neither the lean nor any of six textbook chart rules
+  // told you which way a large stock would go better than chance, so this
+  // never says Buy or Sell. What it can say honestly is how often the price
+  // rose after setups like this on this symbol, next to how often it rose on
+  // any day: the reader sees the gap, or that there is none.
+  // `action` stays Buy/Sell/Hold for code that keys on the lean.
   const lean = rating.score >= 58 ? 'Buy' : rating.score < 42 ? 'Sell' : 'Hold';
-  const dir = lean === 'Buy' ? 'up' : 'down';
+  const label = lean === 'Buy' ? 'Leans up' : lean === 'Sell' ? 'Leans down' : 'Mixed';
+  const tone = lean === 'Buy' ? 'bullish' : lean === 'Sell' ? 'bearish' : 'neutral';
+  const ind = lean === 'Hold' ? 'Trend and momentum point different ways.'
+    : `Trend and momentum point ${lean === 'Buy' ? 'up' : 'down'}.`;
+  if (!e || !(e.n >= 30)) {
+    return { action: lean, label, tone, confirmed: false, vetoed: false, freq: null,
+      why: `${ind} There is not enough history on this symbol to say how setups like this turned out.` };
+  }
+  const up = Math.round(e.winRate), base = Math.round(e.baseWinRate);
   const sig = edgeSignal(e);
-  // Plain words here; the numbers behind the history check (sample size,
-  // margin of error) are in the measured line of the full reading.
-  if (lean === 'Hold') {
-    return { action: 'Hold', tone: 'neutral', vetoed: false,
-      why: 'Trend and momentum point different ways, so there is no clear trade.' + (sig && sig.action !== 'Hold'
-        ? ` In the past, setups like this did ${sig.action === 'Buy' ? 'better' : 'worse'} than usual on this symbol, but the indicators do not back that up.` : '') };
-  }
-  if (sig && ((lean === 'Buy' && sig.action === 'Sell') || (lean === 'Sell' && sig.action === 'Buy'))) {
-    return { action: 'Hold', tone: 'neutral', vetoed: true,
-      why: `The indicators point ${dir}, but in the past setups like this did ${lean === 'Buy' ? 'worse' : 'better'} than usual on this symbol, so the call is held back.` };
-  }
-  const tone = lean === 'Buy' ? 'bullish' : 'bearish';
-  // A lean the record does not back (or cannot check yet) is shown as
-  // "Lean buy" / "Lean sell", so the chip and the measured sentence under it
-  // say the same thing. action stays Buy / Sell for everything that keys on it.
-  const confirmed = !!(sig && sig.action === lean);
-  const label = confirmed ? lean : 'Lean ' + lean.toLowerCase();
-  const why = !sig ? `The indicators point ${dir}. There is not enough history on this symbol yet to check that against its past.`
-    : sig.action === 'Hold' ? `The indicators point ${dir}. In the past, setups like this did about as well as an average day on this symbol, so treat it as a lean rather than a strong signal.`
-    : `The indicators point ${dir}, and in the past setups like this did ${lean === 'Buy' ? 'better' : 'worse'} than usual on this symbol.`;
-  return { action: lean, label, confirmed, tone, vetoed: false, why };
+  const gap = sig && sig.action !== 'Hold'
+    ? (sig.action === 'Buy' ? ' That is more often than usual.' : ' That is less often than usual.')
+    : ' That is about the same as any day, so the setup has not told you much here.';
+  return {
+    action: lean, label, tone, vetoed: false,
+    confirmed: !!(sig && sig.action === lean),
+    freq: { up, base, n: e.n, horizon: e.horizon },
+    why: `${ind} After ${e.n} past setups like this on this symbol, the price was higher ${e.horizon} ${e.unit || 'bars'} later about ${up} times in 100. On any day it was ${base} in 100.${gap}`,
+  };
 }
 
 // Where the price is likely to be, as a range that holds 8 times in 10.
@@ -612,6 +615,16 @@ function headlineCall(rating, e) {
 // landed inside 77.5% to 82.3% of the time across the six horizons.
 // Daily bars only; the multipliers mean nothing on other intervals.
 const BAND80 = { 1: [-1.184, 1.248], 5: [-1.191, 1.205], 21: [-1.187, 1.184], 63: [-1.156, 1.219], 126: [-1.17, 1.283], 252: [-1.068, 1.379] };
+// The 80% range for any horizon in trading days, using the multipliers of
+// the nearest tested horizon. Used by the forward record (20 days).
+function rangeAt(closes, days) {
+  const b = forecastBands(closes);
+  if (!b.length) return null;
+  const keys = Object.keys(BAND80).map(Number);
+  const k = keys.reduce((a, x) => Math.abs(x - days) < Math.abs(a - days) ? x : a, keys[0]);
+  const ref = b.find(x => x.days === k), last = ref.mid, w = Math.sqrt(days / k);
+  return { low: last * Math.pow(ref.low / last, w), high: last * Math.pow(ref.high / last, w) };
+}
 function forecastBands(closes) {
   const n = closes ? closes.length : 0;
   if (n < 61) return [];
@@ -632,6 +645,70 @@ function forecastBands(closes) {
     const [lo, hi] = BAND80[d], w = v * Math.sqrt(d);
     return { label, days: d, low: last * Math.exp(lo * w), mid: last, high: last * Math.exp(hi * w), chance: 80 };
   });
+}
+
+// ---- Stop-versus-target odds ----
+// The chance price reaches each target before the stop, within 60 trading
+// days. Simulated from this symbol's own past daily bars: each bar's close,
+// high and low as moves from the prior close (so gaps and intraday touches
+// count), scaled by the volatility of its time and replayed at today's
+// volatility. A bar that touches both counts as a stop. Checked on 145,218
+// setups from 2016-2026: predicted and actual rates were within 3 points
+// for every target, long and short. It measures distance and volatility,
+// not direction. Daily bars only.
+const ODDS_DAYS = 60, ODDS_PATHS = 800;
+function stopTargetOdds(candles, levels, maxR) {
+  if (!levels || !Array.isArray(candles) || candles.length < 300) return null;
+  const n = candles.length;
+  const lr = (a, b) => Math.log(a / b);
+  const sdAt = (end, len) => {
+    const r = [];
+    for (let k = end - len + 1; k <= end; k++) { const a = candles[k].close, b = candles[k - 1].close; if (a > 0 && b > 0) r.push(lr(a, b)); }
+    if (r.length < 10) return null;
+    const m = r.reduce((x, y) => x + y, 0) / r.length;
+    return Math.sqrt(r.reduce((x, y) => x + (y - m) * (y - m), 0) / (r.length - 1));
+  };
+  // Standardized bars from the last ~1000 sessions, each divided by the
+  // trailing 60-day volatility before it. Rolled forward in one pass.
+  const res = [];
+  const start = Math.max(61, n - 1000);
+  for (let k = start; k < n; k++) {
+    const v = sdAt(k - 1, 60), b = candles[k], p = candles[k - 1].close;
+    if (v > 0 && p > 0 && b.close > 0 && b.high > 0 && b.low > 0) res.push([lr(b.close, p) / v, lr(b.high, p) / v, lr(b.low, p) / v]);
+  }
+  const s20 = sdAt(n - 1, 20), s252 = sdAt(n - 1, Math.min(252, n - 1));
+  if (res.length < 200 || !s20 || !s252) return null;
+  const v = 0.5 * s20 + 0.5 * s252;
+  const long = levels.direction !== 'short';
+  const entry = levels.entry, stopL = lr(levels.stop, entry);
+  const risk = levels.riskPerShare;
+  const R = Math.max(1, Math.min(5, maxR || 5));
+  const goals = [];
+  for (let r = 1; r <= R; r++) goals.push({ r, price: long ? entry + r * risk : entry - r * risk });
+  if (levels.structureTarget) goals.push({ r: levels.structureTarget.r, price: levels.structureTarget.price, structure: true });
+  const tg = goals.map(g => g.price > 0 ? lr(g.price, entry) : null);
+  // Seeded from the data, so the same chart always shows the same odds.
+  let seed = (Math.round(entry * 1e4) ^ n) >>> 0 || 1;
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+  const hit = goals.map(() => 0), stop = goals.map(() => 0);
+  for (let p = 0; p < ODDS_PATHS; p++) {
+    let x = 0, best = 0, stopped = false;   // best = furthest move toward the targets so far
+    const done = goals.map(() => false);
+    for (let d = 0; d < ODDS_DAYS && !stopped; d++) {
+      const b = res[(rnd() * res.length) | 0];
+      const hi = x + b[1] * v, lo = x + b[2] * v; x += b[0] * v;
+      const adverse = long ? lo <= stopL : hi >= stopL;
+      const fav = long ? hi : -lo;
+      if (adverse) { stopped = true; for (let g = 0; g < goals.length; g++) if (!done[g]) { stop[g]++; done[g] = true; } break; }
+      best = Math.max(best, fav);
+      for (let g = 0; g < goals.length; g++) if (!done[g] && tg[g] != null && best >= (long ? tg[g] : -tg[g])) { hit[g]++; done[g] = true; }
+    }
+  }
+  const pct = (k) => Math.round(k / ODDS_PATHS * 100);
+  return {
+    days: ODDS_DAYS,
+    targets: goals.map((g, i) => ({ r: g.r, structure: !!g.structure, hit: pct(hit[i]), stop: pct(stop[i]), neither: Math.max(0, 100 - pct(hit[i]) - pct(stop[i])) })),
+  };
 }
 
 // ---- Exit levels ----
@@ -684,6 +761,6 @@ function tradeLevels(candles, direction, atrMult = 1.5) {
 module.exports = {
   sma, rsi, linearForecast, computeSignal, demoCloses, demoCandles, analyze, verdict, STRAT, RISK,
   ema, macd, bollinger, atr, vwap, supportResistance, fibonacci, volatility, trendStrength,
-  techReport, overallRating, forecastBands, tradeLevels, historicalEdge, edgeSignal, headlineCall,
+  techReport, overallRating, forecastBands, tradeLevels, historicalEdge, edgeSignal, headlineCall, stopTargetOdds, rangeAt,
 };
 

@@ -180,6 +180,13 @@ async function init() {
         out_price DOUBLE PRECISION, out_day TEXT, ret DOUBLE PRECISION, graded BIGINT)`);
       await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS predictions_sym_day ON predictions (symbol, day)');
       await pool.query('CREATE INDEX IF NOT EXISTS predictions_ungraded ON predictions (symbol) WHERE graded IS NULL');
+      // Added Nov 2026 for the public record: the stated chance of being
+      // higher (prob, out of 100) and the base rate it was set against, and
+      // the 80% range for the grading horizon, all written before the outcome.
+      await pool.query('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS prob INTEGER');
+      await pool.query('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS base_prob INTEGER');
+      await pool.query('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS band_lo DOUBLE PRECISION');
+      await pool.query('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS band_hi DOUBLE PRECISION');
       // Lookups the webhook, the affiliate pages and the purge make by
       // something other than the primary key.
       for (const ix of [
@@ -1198,9 +1205,10 @@ async function recordPrediction(p) {
     // Do nothing on conflict: the first reading of the day is the one that
     // counts, so a later view cannot quietly revise it.
     await pool.query(
-      `INSERT INTO predictions (id, symbol, day, score, label, price, created)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (symbol, day) DO NOTHING`,
-      [crypto.randomUUID(), p.symbol, p.day, p.score, p.label, p.price, Date.now()]);
+      `INSERT INTO predictions (id, symbol, day, score, label, price, created, prob, base_prob, band_lo, band_hi)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (symbol, day) DO NOTHING`,
+      [crypto.randomUUID(), p.symbol, p.day, p.score, p.label, p.price, Date.now(),
+       p.prob == null ? null : p.prob, p.base == null ? null : p.base, p.lo == null ? null : p.lo, p.hi == null ? null : p.hi]);
     return;
   }
   if (!mem.preds.has(key)) mem.preds.set(key, { id: key, ...p, created: Date.now(), graded: null });
@@ -1240,7 +1248,7 @@ async function latestPrediction(symbol) {
 async function accuracyStats() {
   let rows, oldestPending = null;
   if (mode === 'postgres') {
-    const r = await pool.query('SELECT label, ret FROM predictions WHERE graded IS NOT NULL');
+    const r = await pool.query('SELECT label, ret, price, out_price, prob, base_prob, band_lo, band_hi FROM predictions WHERE graded IS NOT NULL');
     rows = r.rows;
     const t = await pool.query('SELECT COUNT(*)::int AS n FROM predictions');
     var total = t.rows[0].n;
@@ -1250,7 +1258,7 @@ async function accuracyStats() {
     const o = await pool.query('SELECT MIN(day) AS d FROM predictions WHERE graded IS NULL');
     oldestPending = (o.rows[0] && o.rows[0].d) || null;
   } else {
-    rows = [...mem.preds.values()].filter(p => p.graded).map(p => ({ label: p.label, ret: p.ret }));
+    rows = [...mem.preds.values()].filter(p => p.graded).map(p => ({ label: p.label, ret: p.ret, price: p.price, out_price: p.out_price, prob: p.prob, base_prob: p.base, band_lo: p.lo, band_hi: p.hi }));
     var total = mem.preds.size;
     for (const p of mem.preds.values()) {
       if (!p.graded && (!oldestPending || p.day < oldestPending)) oldestPending = p.day;
@@ -1263,8 +1271,35 @@ async function accuracyStats() {
   for (const r of rows) (byLabel[LEGACY_LABEL[r.label] || r.label] ||= []).push(Number(r.ret));
   const mean = (a) => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
   const all = rows.map(r => Number(r.ret));
+  // The price range: how often the real price landed inside, and on which
+  // side it missed.
+  const banded = rows.filter(r => r.band_lo != null && r.band_hi != null && r.out_price != null);
+  const op = (r) => Number(r.out_price);
+  const range = banded.length ? {
+    n: banded.length,
+    inside: banded.filter(r => op(r) >= Number(r.band_lo) && op(r) <= Number(r.band_hi)).length / banded.length * 100,
+    below: banded.filter(r => op(r) < Number(r.band_lo)).length / banded.length * 100,
+    above: banded.filter(r => op(r) > Number(r.band_hi)).length / banded.length * 100,
+  } : null;
+  // The stated chance of being higher, scored. Brier: mean squared gap
+  // between the chance and what happened (0 is perfect). Skill compares it
+  // with always stating the base rate: above 0 means the setups added
+  // something, below 0 means they did worse than the plain base rate.
+  const probd = rows.filter(r => r.prob != null && r.base_prob != null && r.ret != null);
+  let chance = null;
+  if (probd.length) {
+    const y = (r) => Number(r.ret) > 0 ? 1 : 0;
+    const bs = probd.reduce((s, r) => s + (r.prob / 100 - y(r)) ** 2, 0) / probd.length;
+    const bb = probd.reduce((s, r) => s + (r.base_prob / 100 - y(r)) ** 2, 0) / probd.length;
+    const bins = [];
+    for (let lo = 0; lo < 100; lo += 10) {
+      const a = probd.filter(r => r.prob >= lo && r.prob < lo + 10);
+      if (a.length) bins.push({ from: lo, to: lo + 10, n: a.length, said: a.reduce((s, r) => s + r.prob, 0) / a.length, happened: a.filter(r => y(r)).length / a.length * 100 });
+    }
+    chance = { n: probd.length, brier: bs, baseBrier: bb, skill: bb > 0 ? 1 - bs / bb : null, bins };
+  }
   return {
-    recorded: total, graded: rows.length, oldestPending,
+    recorded: total, graded: rows.length, oldestPending, range, chance,
     baseline: mean(all),
     labels: Object.entries(byLabel).map(([label, a]) => ({
       label, n: a.length, mean: mean(a),

@@ -31,7 +31,7 @@ const trial = TRIAL_DAYS > 0 ? `, with a ${TRIAL_DAYS}-day free trial on a first
 // What ChartGauge is, in the same words everywhere, so a summary of any one
 // page describes it correctly.
 const CG = {
-  what: `${SITE} is an AI trading app for US stocks and crypto pairs. Search a stock and it gives a buy, sell or hold call with the stop-loss and take-profit already set, on a candlestick chart with 13 technical indicators.`,
+  what: `${SITE} is an AI trading app for US stocks and crypto pairs. Search a stock and it shows which way 13 technical indicators lean, how often similar setups rose before, and the stop-loss and take-profit levels with the odds of reaching each.`,
   ai: `The call itself is mechanical: a score built from trend, momentum and a short projection, so the same chart always gets the same call. The AI part is Claude, from Anthropic, which writes the analysis of each reading in plain sentences and, on Pro, reads a screenshot of any chart you upload.`,
   price: `A free account includes charts, indicators, the call, the stop and target levels, paper trading, lessons and 3 AI-written reports a day. Pro is $4.99 a week, $14.99 a month or $149.99 a year${trial}, and adds up to 150 AI reports and 40 chart-image readings a day.`,
   limits: `It does not place trades or connect to a broker, it covers US-listed stocks and major crypto pairs rather than options or forex, and it has no backtesting engine or scanners of the kind built for full-time traders.`,
@@ -41,7 +41,7 @@ const CG = {
 const buildChartAnalysis = () => h('AI that reads a chart screenshot',
   `How ${SITE}'s chart-image reading works, what it can and cannot see, and what it costs.`, [
   s('What it does',
-    `Upload a screenshot of a price chart, from any broker, app or website, and ${SITE} sends it to Claude, Anthropic's AI model, with instructions to read it the way a cautious technical analyst would. In a few seconds you get back a short read: the trend, the support and resistance levels it can see, any chart pattern, what the momentum suggests, and a one-word lean of buy, sell or mixed with one sentence on why.`,
+    `Upload a screenshot of a price chart, from any broker, app or website, and ${SITE} sends it to Claude, Anthropic's AI model, with instructions to read it the way a cautious technical analyst would. In a few seconds you get back a short read: the trend, the support and resistance levels it can see, any chart pattern, what the momentum suggests, and whether the visible price action leans up, leans down or is mixed, with one sentence on why. That describes the chart; it is not a prediction.`,
     `If the image is not a price chart, it says so instead of inventing a read.`),
   s('What it can and cannot see',
     ul([
@@ -71,9 +71,9 @@ const SRC = {
 
 const buildVsTrendSpider = () => h(`${SITE} vs TrendSpider`, BIAS, [
   s('The short answer',
-    `TrendSpider is a full charting and automated-analysis platform for active traders: backtesting, scanners, alerts, options and futures data, and an AI assistant. ${SITE} does one narrower job: you search a stock or crypto pair and get a buy, sell or hold call with the stop and target already set, written up by AI. If you want to build and test your own strategies, TrendSpider is the bigger tool. If you want a quick, clear read on one chart, ${SITE} is simpler and costs much less.`),
+    `TrendSpider is a full charting and automated-analysis platform for active traders: backtesting, scanners, alerts, options and futures data, and an AI assistant. ${SITE} does one narrower job: you search a stock or crypto pair and get the stop and target already set, the odds of reaching each, and an AI write-up of the chart. If you want to build and test your own strategies, TrendSpider is the bigger tool. If you want a quick, clear read on one chart, ${SITE} is simpler and costs much less.`),
   s('Side by side', table(['', SITE, 'TrendSpider'], [
-    ['What it is', 'A buy, sell or hold call with stop and target on any US stock or major crypto pair', 'Charting and automated technical-analysis platform'],
+    ['What it is', 'A chart reading with stop, target and their odds on any US stock or major crypto pair', 'Charting and automated technical-analysis platform'],
     ['AI', 'Claude writes the analysis of each reading; on Pro it reads chart screenshots', '"Sidekick" AI assistant (25 messages a month included, more as a paid add-on), AI backtesting, machine-vision chart analysis'],
     ['Markets', 'US stocks, major crypto pairs', 'US stocks and ETFs, forex, crypto; futures and options data as add-ons'],
     ['Backtesting and scanners', 'No', 'Yes'],
@@ -96,7 +96,7 @@ const buildVsTrendSpider = () => h(`${SITE} vs TrendSpider`, BIAS, [
 
 const buildVsTradeIdeas = () => h(`${SITE} vs Trade Ideas`, BIAS, [
   s('The short answer',
-    `Trade Ideas is a real-time scanner built for US day traders, with an AI called Holly that issues buy and sell signals with entries and stops on its top plan, and links to several brokers. ${SITE} gives a buy, sell or hold call with the stop and target on whichever stock or crypto pair you choose, with an AI-written explanation. Trade Ideas finds trades across the market for you; ${SITE} reads the one you are looking at.`),
+    `Trade Ideas is a real-time scanner built for US day traders, with an AI called Holly that issues buy and sell signals with entries and stops on its top plan, and links to several brokers. ${SITE} gives the stop, the target and the odds of reaching each on whichever stock or crypto pair you choose, with an AI-written explanation. Trade Ideas finds trades across the market for you; ${SITE} reads the one you are looking at.`),
   s('Side by side', table(['', SITE, 'Trade Ideas'], [
     ['What it is', 'A call with stop and target on the stock or crypto pair you search', 'Real-time stock scanner and AI trade signals'],
     ['AI', 'Claude writes the analysis; on Pro it reads chart screenshots', '"Holly" AI signals with entry and stop (Premium plan); an assistant that builds scans from plain English'],
@@ -122,7 +122,7 @@ const buildTvAlt = () => h('A TradingView alternative for beginners', BIAS, [
   s('Why people look for one',
     `TradingView is the best-known charting site, with a free plan and almost every market. It is also a blank canvas: hundreds of indicators and drawing tools, and no answer to the question a newer trader actually has, which is "so should I buy this, and where do I get out?" Its AI, on the pricing page, is a screener; it does not write a verdict for you.`),
   s(`What ${SITE} does differently`, ul([
-    'Search a stock or crypto pair and the chart arrives already read: buy, sell or hold.',
+    'Search a stock or crypto pair and the chart arrives already read: the lean, the stop, the target and the odds.',
     'The stop-loss and take-profit are marked on the chart, set from how far that price normally moves.',
     'Claude, an AI, writes out why in plain sentences, so you learn to read the chart as you go.',
     '19 free lessons with quizzes, and a paper-trading account to practice with pretend money.',
@@ -143,7 +143,7 @@ const buildBest = () => h('The best AI trading apps in 2026, compared', BIAS, [
   s('How to pick one',
     `"AI trading app" covers very different tools. Some scan the market for setups, some score stocks for the months ahead, some answer questions in a chat window, and some read a single chart. Pick by the job you need done, not the label. Be wary of any app that leads with a return figure: backtests and simulations are not results anyone actually earned.`),
   s('At a glance', table(['App', 'Best for', 'What the AI does', 'Markets', 'Starting price'], [
-    [a('/', SITE), 'A clear buy, sell or hold call with stop and target on one chart', 'Writes the analysis of each reading; reads chart screenshots (Pro)', 'US stocks, crypto', 'Free; Pro $14.99/mo'],
+    [a('/', SITE), 'Stop, target and the odds of each on one chart', 'Writes the analysis of each reading; reads chart screenshots (Pro)', 'US stocks, crypto', 'Free; Pro $14.99/mo'],
     [a(SRC.trendspider, 'TrendSpider'), 'Active traders who backtest and scan', 'Chat assistant, AI backtesting, chart pattern recognition', 'Stocks, ETFs, forex, crypto; options and futures add-ons', 'No free plan; from $89/mo list'],
     [a(SRC.tradeideas, 'Trade Ideas'), 'Full-time US day traders', '"Holly" signals with entry and stop; plain-English scan builder', 'US stocks and ETFs', 'Free (delayed); $89/mo yearly'],
     [a(SRC.danelfin, 'Danelfin'), 'Investors ranking stocks for the next few months', 'A 1 to 10 score of the odds of beating the market over 3 months', 'US and European stocks, ETFs', 'Free; Plus $29/mo'],
@@ -168,16 +168,16 @@ function buildPages() {
       desc: `ChartGauge, TrendSpider, Trade Ideas, Danelfin, Incite AI, Kavout, Tickeron and TradingView: what each one's AI actually does, which markets it covers, who it suits and what it costs.`,
       html: buildBest(), guide: true },
     'chartgauge-vs-trendspider': { title: `ChartGauge vs TrendSpider: AI Trading App Comparison | ${SITE}`, heading: `${SITE} vs TrendSpider`,
-      desc: `ChartGauge vs TrendSpider: a buy, sell or hold call with stop and target and AI-written analysis, against a full charting, backtesting and scanning platform. Features, markets and prices side by side.`,
+      desc: `ChartGauge vs TrendSpider: stop, target and their odds with AI-written analysis, against a full charting, backtesting and scanning platform. Features, markets and prices side by side.`,
       html: buildVsTrendSpider(), guide: true },
     'chartgauge-vs-trade-ideas': { title: `ChartGauge vs Trade Ideas: AI Trading App Comparison | ${SITE}`, heading: `${SITE} vs Trade Ideas`,
-      desc: `ChartGauge vs Trade Ideas: a call with stop and target on the stock or crypto pair you choose, against a real-time scanner with Holly AI signals. Features, markets, platforms and prices.`,
+      desc: `ChartGauge vs Trade Ideas: stop, target and their odds on the stock or crypto pair you choose, against a real-time scanner with Holly AI signals. Features, markets, platforms and prices.`,
       html: buildVsTradeIdeas(), guide: true },
     'tradingview-alternative': { title: `A TradingView Alternative for Beginners | ${SITE}`, heading: 'A TradingView alternative for beginners',
-      desc: `Looking for a simpler TradingView alternative? ChartGauge reads the chart for you: a buy, sell or hold call, stop and target levels, and AI-written analysis, plus free lessons and paper trading.`,
+      desc: `Looking for a simpler TradingView alternative? ChartGauge reads the chart for you: the indicators' lean, stop and target levels with their odds, and AI-written analysis, plus free lessons and paper trading.`,
       html: buildTvAlt(), guide: true },
     'ai-chart-analysis': { title: `AI That Reads a Chart Screenshot | ${SITE}`, heading: 'AI that reads a chart screenshot',
-      desc: `Upload a screenshot of any stock or crypto chart and Claude AI reads the trend, support and resistance, patterns and momentum, with a buy, sell or mixed lean. What it sees, its limits and its price.`,
+      desc: `Upload a screenshot of any stock or crypto chart and Claude AI reads the trend, support and resistance, patterns and momentum, and which way the visible price action leans. What it sees, its limits and its price.`,
       html: buildChartAnalysis(), guide: true },
   };
 }

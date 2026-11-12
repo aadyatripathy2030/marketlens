@@ -2479,3 +2479,4 @@ body:not([data-view="home"]) .bg-blobs { display: none; }
 .sub-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .sub-foot { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 14px; }
 @media (max-width: 520px) { .sub-row .btn { flex: 1 1 100%; } }
+.lv-odds-note { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 12px 0 0; }
