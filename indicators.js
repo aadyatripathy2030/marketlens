@@ -602,19 +602,35 @@ function headlineCall(rating, e) {
   return { action: lean, label, confirmed, tone, vetoed: false, why };
 }
 
+// Where the price is likely to be, as a range that holds 8 times in 10.
+// Centred on today's price: a trend line extended forward was tested and
+// missed by more than "no change" at every horizon, by 20x at a year.
+// Width = a blend of the last 20 days' and the last year's daily volatility
+// (volatility is the part of a chart that does carry forward), times
+// multipliers measured on daily bars of 134 stocks, funds and coins over
+// 2006-2015. Checked on 2016-2026, which they never saw: the real price
+// landed inside 77.5% to 82.3% of the time across the six horizons.
+// Daily bars only; the multipliers mean nothing on other intervals.
+const BAND80 = { 1: [-1.184, 1.248], 5: [-1.191, 1.205], 21: [-1.187, 1.184], 63: [-1.156, 1.219], 126: [-1.17, 1.283], 252: [-1.068, 1.379] };
 function forecastBands(closes) {
-  const last = closes[closes.length - 1];
-  const v = volatility(closes, Math.min(60, closes.length - 1));
-  if (!v || !last) return [];
-  const sd = v.daily / 100;                       // daily stdev (fraction)
-  // mild drift from recent slope, clamped so it can't run away
-  const { slope } = linearForecast(closes.slice(-30), 1);
-  const driftPerDay = clamp((slope || 0) / last, -0.004, 0.004);
+  const n = closes ? closes.length : 0;
+  if (n < 61) return [];
+  const last = closes[n - 1];
+  if (!(last > 0)) return [];
+  const sd = (len) => {
+    const r = [];
+    for (let k = n - len; k < n; k++) if (closes[k] > 0 && closes[k - 1] > 0) r.push(Math.log(closes[k] / closes[k - 1]));
+    if (r.length < 10) return null;
+    const m = r.reduce((a, b) => a + b, 0) / r.length;
+    return Math.sqrt(r.reduce((a, b) => a + (b - m) * (b - m), 0) / (r.length - 1));
+  };
+  const short = sd(20), long = sd(Math.min(252, n - 1));
+  if (!short || !long) return [];
+  const v = 0.5 * short + 0.5 * long;
   const H = [['Tomorrow', 1], ['1 week', 5], ['1 month', 21], ['3 months', 63], ['6 months', 126], ['1 year', 252]];
   return H.map(([label, d]) => {
-    const mid = last * (1 + driftPerDay * d);
-    const band = last * sd * Math.sqrt(d);
-    return { label, days: d, low: Math.max(0, mid - band), mid, high: mid + band };
+    const [lo, hi] = BAND80[d], w = v * Math.sqrt(d);
+    return { label, days: d, low: last * Math.exp(lo * w), mid: last, high: last * Math.exp(hi * w), chance: 80 };
   });
 }
 

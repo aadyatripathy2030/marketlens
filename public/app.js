@@ -233,7 +233,7 @@
 
   // Probabilistic forecast bands.
   function renderBands(bands) {
-    if (!bands || !bands.length) { $('bands').innerHTML = ''; return; }
+    if (!bands || !bands.length) { $('bands').innerHTML = `<p class="compare-note">Ranges are worked out from daily prices. Switch the chart to 1 day to see them.</p>`; return; }
     const lo = Math.min(...bands.map(b => b.low)), hi = Math.max(...bands.map(b => b.high));
     const span = (hi - lo) || 1, pct = (v) => (v - lo) / span * 100;
     $('bands').innerHTML = bands.map(b => {
@@ -482,7 +482,7 @@
     { k: 'tech',         on: true,  sel: '#techCard',       name: 'Technical readings',
       desc: 'All thirteen indicators in a grid, each with a one-line read.' },
     { k: 'projection',   on: true,  sel: '#bandsCard',      name: 'Price projection',
-      desc: 'The forecast cone. It is a volatility band, not a prediction.' },
+      desc: 'Where the price is likely to be, as a range that has held 8 times in 10. It says how far the price may move, not which way.' },
     { k: 'thesis',       on: true,  sel: '#thesisCard',     name: 'Bull and bear case',
       desc: 'The strongest points either way, drawn from the indicators.' },
     { k: 'fundamentals', on: true,  sel: '#fundCard',       name: 'Fundamentals',

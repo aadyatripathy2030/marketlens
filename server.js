@@ -574,7 +574,8 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   // Fire-and-forget: bumpStreak swallows its own errors, and a streak must
   // never be the reason a chart fails.
   if (user) bumpStreak(user).catch(() => {});
-  const bands = I.forecastBands(closes);
+  // Calibrated on daily bars only (see forecastBands).
+  const bands = interval === '1day' ? I.forecastBands(closes) : [];
   const levels = I.tradeLevels(candles, a.direction);
   // What actually happened, historically, at scores like today's. Roughly 50ms
   // on a full series; null when there is not enough history to say anything.
