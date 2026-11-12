@@ -498,7 +498,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 /* .color-panel's display:flex would otherwise beat .hidden on source order */
 .color-panel.hidden { display: none; }
 /* the Colors pill opens a panel, so it must not read as a disabled layer */
-#ovColors:not(.active) { opacity: .8; text-decoration: none; }
+#ovColors:not(.active) { opacity: 1; text-decoration: none; }
 .chart-hint { font-size: 11px; color: var(--muted); margin-top: 8px; }
 
 .tiles { display: grid; grid-template-columns: repeat(4, 1fr); margin-bottom: 20px; border-radius: var(--radius); overflow: hidden; }
@@ -689,8 +689,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 }
 
 /* A take-profit level that is Pro-only: still shown, visibly unavailable. */
-.tp-btn.locked { opacity: .38; }
-.tp-btn.locked:hover { opacity: .55; }
+.tp-btn.locked { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+.tp-btn.locked:hover { color: var(--text); }
 /* The message shown where a Pro-only feature would have rendered. */
 .pro-gate { font-size: 13px; line-height: 1.55; color: var(--muted); margin: 0; padding: 20px 0; }
 .pro-gate .link-btn { font-size: 13px; }
@@ -848,7 +848,7 @@ body.drawer-open .drawer { transform: translateX(0); }
 .drawer-link:hover .drawer-link-name { color: var(--text); }
 .drawer-link.active .drawer-link-name { color: var(--dl); }
 .drawer-link-desc { display: block; font-size: 12px; line-height: 1.5; color: var(--muted);
-  opacity: .78; margin-top: 4px; }
+  margin-top: 4px; }
 .btn-sm { padding: 6px 12px; font-size: 12px; }
 
 /* ---- Launch countdown ---- */
@@ -1546,16 +1546,15 @@ body { background-color: var(--bg); background-image: var(--speckle), radial-gra
   background-image:
     var(--speckle),
     linear-gradient(to bottom, var(--bg) 0%, rgba(24,25,27,0) 14%, rgba(24,25,27,0) 60%, var(--bg) 100%),
-    linear-gradient(90deg, rgba(24,25,27,.9) 0%, rgba(24,25,27,.8) 40%, rgba(24,25,27,.64) 100%),
-    url("/hero-painting.jpg");
-  background-size: auto, auto, auto, cover;
-  background-position: 0 0, 0 0, 0 0, 70% 40%;
+    linear-gradient(90deg, rgba(24,25,27,.9) 0%, rgba(24,25,27,.8) 40%, rgba(24,25,27,.64) 100%);
+  background-size: auto, auto, auto;
+  background-position: 0 0, 0 0, 0 0;
   pointer-events: none;
 }
 @media (max-width: 560px) { :root { --app-pad-x: 16px; --app-pad-top: 20px; } }
 @media (max-width: 1100px) {
   /* Stacked: the headline sits over the brightest part, so more shade. */
-  .hero-wrap::before { background-image: var(--speckle), linear-gradient(to bottom, rgba(24,25,27,.82) 0%, rgba(24,25,27,.7) 50%, var(--bg) 100%), url("/hero-painting.jpg"); background-size: auto, auto, cover; background-position: 0 0, 0 0, 70% 40%; }
+  .hero-wrap::before { background-image: var(--speckle), linear-gradient(to bottom, rgba(24,25,27,.82) 0%, rgba(24,25,27,.7) 50%, var(--bg) 100%); background-size: auto, auto; background-position: 0 0, 0 0; }
 }
 
 /* ===================================================================
@@ -2480,3 +2479,24 @@ body:not([data-view="home"]) .bg-blobs { display: none; }
 .sub-foot { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 14px; }
 @media (max-width: 520px) { .sub-row .btn { flex: 1 1 100%; } }
 .lv-odds-note { font-size: 12px; color: var(--muted); line-height: 1.5; margin: 12px 0 0; }
+
+/* Founder line and one-line promise in the footer */
+.foot-promise { font-size: 14px; margin: 12px 0 4px; }
+.foot-built { font-size: 13px; color: var(--muted); margin: 4px 0; }
+.founder-photo { display: inline-block; margin-right: 8px; color: var(--muted); }
+
+/* The footer and disclaimer used to paint at the top of an empty view and
+   then get pushed down when the chart arrived (a 0.26 layout shift on a slow
+   phone). Every view now takes at least a screen. */
+main.app { min-height: 100vh; min-height: 100svh; }
+
+/* Lesson and practice links under a reading's sections. */
+.lv-links { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin: 14px 0 0; font-size: 13px; color: var(--muted); }
+.lv-links a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--border-strong); }
+.lv-links a:hover { text-decoration-color: currentColor; }
+.lv-links .lv-practice { font-weight: 600; text-decoration: none; }
+.lv-links .lv-practice:hover { text-decoration: underline; }
+
+/* A stock page before its chart has loaded: keep the space the chart and its
+   sign-in card or reading will take, so nothing below shifts when it lands. */
+.result.hidden.pre { display: block; visibility: hidden; min-height: 900px; }

@@ -31,7 +31,7 @@ const trial = TRIAL_DAYS > 0 ? `, with a ${TRIAL_DAYS}-day free trial on a first
 // What ChartGauge is, in the same words everywhere, so a summary of any one
 // page describes it correctly.
 const CG = {
-  what: `${SITE} is an AI trading app for US stocks and crypto pairs. Search a stock and it shows which way 13 technical indicators lean, how often similar setups rose before, and the stop-loss and take-profit levels with the odds of reaching each.`,
+  what: `${SITE} is a trading-plan tool for US stocks and crypto pairs: every chart comes with a stop, a target and the reason. Search a stock and it shows which way 13 technical indicators lean, how often similar setups rose before, and the stop-loss and take-profit levels with the odds of reaching each.`,
   ai: `The call itself is mechanical: a score built from trend, momentum and a short projection, so the same chart always gets the same call. The AI part is Claude, from Anthropic, which writes the analysis of each reading in plain sentences and, on Pro, reads a screenshot of any chart you upload.`,
   price: `A free account includes charts, indicators, the call, the stop and target levels, paper trading, lessons and 3 AI-written reports a day. Pro is $4.99 a week, $14.99 a month or $149.99 a year${trial}, and adds up to 150 AI reports and 40 chart-image readings a day.`,
   limits: `It does not place trades or connect to a broker, it covers US-listed stocks and major crypto pairs rather than options or forex, and it has no backtesting engine or scanners of the kind built for full-time traders.`,

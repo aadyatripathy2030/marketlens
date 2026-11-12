@@ -4291,8 +4291,8 @@ function siteOrigin(req) {
 }
 
 const VIEW_SEO = {
-  '': { view: 'home', title: 'ChartGauge | AI Trading App: Stops, Targets and the Odds',
-    desc: 'An AI trading app for stocks and crypto: the stop and target already set, the odds of reaching each, a tested 8-in-10 price range, AI-written analysis, and AI that reads your chart screenshots. Not financial advice.' },
+  '': { view: 'home', title: 'ChartGauge | The Stop, the Target and the Reason, for Every Chart',
+    desc: 'Every chart comes with a stop, a target and the reason, in plain English, for any US stock or crypto pair. Free lessons and a practice account to try it with pretend money. Educational, not financial advice.' },
   'analyze': { view: 'analyze', title: 'Analyze a stock or crypto pair | ChartGauge',
     desc: 'Enter a stock or crypto pair for a candlestick chart, 13 technical indicators, an indicator score, and stop-loss and take-profit levels from ATR and recent swing highs and lows.' },
   'markets': { view: 'markets', title: 'Market snapshot: indices and trending stocks | ChartGauge',
@@ -4316,7 +4316,7 @@ const VIEW_SEO = {
   'movers': { view: 'movers', title: 'What is moving right now | ChartGauge',
     desc: 'A live scan of the most active US stocks, ranked by unusual volume, size of the move and where price sits in the day range. It describes what is happening and does not predict what comes next.' },
   'pricing': { view: 'pricing', title: 'Plans and billing | ChartGauge',
-    desc: 'What a free ChartGauge account includes, what Pro adds, and the monthly cost of each billing period. Charts, indicators, stop-loss and take-profit levels and the measured base rate are free on any account.' },
+    desc: 'Every chart comes with a stop, a target and the reason, in plain English. What a free ChartGauge account includes, what Pro adds (starting with a written report on every call), and the monthly cost of each billing period.' },
 };
 
 function lessonSeo(id) {
@@ -4439,7 +4439,7 @@ function seoFor(urlPath, req) {
     if (sym) return {
       view: 'analyze', symbol: sym, symbolName: name, noindex: !name,
       title: `${label} ${mode === 'long-term' ? 'long-term' : mode === 'day-trading' ? 'day-trading' : ''} chart, stop-loss levels and odds | ${SITE_NAME}`.replace(/\s+/g, ' '),
-      desc: `${label}: stop-loss and take-profit levels with the odds of reaching each, a tested price range, a candlestick chart and 13 technical indicators. Trading can lose money; not financial advice.`,
+      desc: `${label}: every chart comes with a stop, a target and the reason, in plain English. The odds of reaching each, a tested price range, a candlestick chart and 13 technical indicators. Trading can lose money; not financial advice.`,
       canonical: `${origin}/stock/${sym}`,
     };
   }
@@ -4511,7 +4511,7 @@ function seoHead(seo, origin) {
   // which every platform either letterboxed into a thumbnail or declined to
   // fetch. Paired with twitter:card=summary_large_image below, a shared link
   // now renders as a banner instead of a favicon.
-  const img = origin + '/og.png';
+  const img = origin + '/og.png?v=2';
   return [
     `<link rel="canonical" href="${esc(seo.canonical)}" />`,
     `<meta property="og:type" content="website" />`,
@@ -4522,7 +4522,7 @@ function seoHead(seo, origin) {
     `<meta property="og:image" content="${esc(img)}" />`,
     `<meta property="og:image:width" content="1200" />`,
     `<meta property="og:image:height" content="630" />`,
-    `<meta property="og:image:alt" content="ChartGauge: charts that show their work" />`,
+    `<meta property="og:image:alt" content="ChartGauge: every chart comes with a stop, a target and the reason" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:title" content="${esc(seo.title)}" />`,
     `<meta name="twitter:description" content="${esc(seo.desc)}" />`,
@@ -4623,7 +4623,7 @@ function llmsTxt(origin) {
   const L = (p, t, d) => `- [${t}](${origin}${p})${d ? ': ' + d : ''}`;
   return [
     `# ${SITE_NAME}`, '',
-    `> An AI trading app for US stocks and crypto pairs. Enter a stock and get which way the indicators lean (with how often similar setups rose before), the stop-loss and take-profit levels with the odds of reaching each, a price range that has held 8 times in 10, a candlestick chart and 13 technical indicators. Claude (Anthropic's AI) writes the analysis of each reading, and on Pro it reads a screenshot of any chart you upload. Free account; Pro is $14.99 a month. Includes paper trading and 19 free lessons. Trading can lose money, including everything you put in. Everything on the site is for educational purposes only, nothing on it is financial advice, and it does not promise or quote returns.`, '',
+    `> A trading-plan tool for people learning to trade US stocks and crypto pairs. Every chart comes with a stop, a target and the reason, in plain English. Enter a stock and get which way the indicators lean (with how often similar setups rose before), the stop-loss and take-profit levels with the odds of reaching each, a price range that has held 8 times in 10, a candlestick chart and 13 technical indicators. Claude (Anthropic's AI) writes the analysis of each reading, and on Pro it reads a screenshot of any chart you upload. Free account; Pro is $14.99 a month. Includes paper trading and 19 free lessons. Trading can lose money, including everything you put in. Everything on the site is for educational purposes only, nothing on it is financial advice, and it does not promise or quote returns.`, '',
     '## Main pages',
     L('/', 'Home', 'what the tool does and a live example reading'),
     L('/analyze', 'Analyze', 'the call, chart, indicators and levels for any stock'),
@@ -4729,6 +4729,10 @@ function serveDocument(req, res, urlPath) {
     if (seo.legal || seo.lesson || seo.view === 'learn') {
       out = out.replace('<div class="gate" id="gate">', '<div class="gate hidden" id="gate">');
     }
+    // A stock page's chart arrives after app.js fetches it. Until then the
+    // result block holds its space (see .result.pre), so the intro and the
+    // footer below it do not jump down when the chart lands.
+    if (seo.symbol) out = out.replace('<section class="result hidden" id="result">', '<section class="result hidden pre" id="result">');
     if (seo.symbol) {
       return db.latestPrediction(seo.symbol).catch(() => null)
         .then(last => finish(out.replace('<!--STOCK_INTRO-->', () => stockHtml(seo, last))));

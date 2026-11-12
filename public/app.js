@@ -278,6 +278,10 @@
     $('signalWhy').textContent = call.why || '';
   }
 
+  // Set by "Practice this trade" so the practice view opens on that symbol
+  // and repeats the plan. Practice orders have no stop or target of their
+  // own, so the plan is shown as a reminder, not placed.
+  let practicePlan = null, practicePending = null, planMsg = '';
   function renderLevels(d) {
     const L = d && d.levels;
     if (!L) { $('levelsCard').classList.add('hidden'); return; }
@@ -320,7 +324,11 @@
     $('levelsBody').innerHTML =
       `<div class="tp-row"><span class="tp-label">Take-profit levels</span><div class="tp-group">${tpBtns}</div></div>` +
       `<div class="levels-grid">${rows.join('')}</div>`
-      + (O ? `<p class="lv-odds-note">The chances are simulated from this symbol's own past daily moves at today's volatility. They measure distance, not direction: a far target is reached less often. Checked on 2016 to 2026 prices, the stated chances matched what happened to within 3 points. Past moves do not guarantee future ones.</p>` : '');
+      + (O ? `<p class="lv-odds-note">The chances are simulated from this symbol's own past daily moves at today's volatility. They measure distance, not direction: a far target is reached less often. Checked on 2016 to 2026 prices, the stated chances matched what happened to within 3 points. Past moves do not guarantee future ones.</p>` : '')
+      + `<p class="lv-links"><a href="/practice" class="lv-practice" id="lvPractice">Practice this trade with pretend money &rarr;</a>`
+      + `<span>New to stops and R? <a href="/learn/risk" data-lesson="risk">Risk Management</a> · <a href="/learn/levels" data-lesson="levels">Support and Resistance</a></span></p>`;
+    const t1 = targetsFor(L)[0];
+    practicePlan = { symbol: d.symbol, side: dirWord, stop: f(L.stop), target: t1 ? f(t1.price) : null };
     $('levelsBody').querySelectorAll('.tp-btn').forEach(b => b.addEventListener('click', () => {
       const n = parseInt(b.dataset.tp, 10);
       if (n > maxTp()) { showView('pricing'); return; }
@@ -330,6 +338,20 @@
     }));
     $('levelsCard').classList.remove('hidden');
   }
+
+  // Lesson links and "Practice this trade" inside the reading open in place.
+  $('view-analyze').addEventListener('click', (e) => {
+    const a = e.target.closest('a[data-lesson], #lvPractice');
+    if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button > 0) return;
+    e.preventDefault();
+    if (a.id === 'lvPractice') {
+      practicePending = practicePlan;
+      return showView('practice');
+    }
+    try { history.pushState({ view: 'learn' }, '', '/learn/' + a.dataset.lesson); } catch (err) {}
+    showView('learn', { fromUrl: true });
+    if (typeof openLesson === 'function') openLesson(a.dataset.lesson);
+  });
 
   const EXAMPLES = ['AAPL', 'TSLA', 'MSFT', 'NVDA', 'AMZN', 'GOOGL'];
   $('examples').innerHTML = EXAMPLES.map(s => `<button class="chip" data-s="${s}">${s}</button>`).join('');
@@ -485,7 +507,7 @@
       desc: 'The row of headline numbers above the indicator grid.' },
     { k: 'tech',         on: true,  sel: '#techCard',       name: 'Technical readings',
       desc: 'All thirteen indicators in a grid, each with a one-line read.' },
-    { k: 'projection',   on: true,  sel: '#bandsCard',      name: 'Price projection',
+    { k: 'projection',   on: true,  sel: '#bandsCard',      name: 'Likely price range',
       desc: 'Where the price is likely to be, as a range that has held 8 times in 10. It says how far the price may move, not which way.' },
     { k: 'thesis',       on: true,  sel: '#thesisCard',     name: 'Bull and bear case',
       desc: 'The strongest points either way, drawn from the indicators.' },
@@ -772,7 +794,7 @@
     { v: 'practice', t: 'Practice',  d: 'A practice account with pretend money, so you can rehearse position sizing against your own risk limits. Nothing here touches a broker.' },
     { v: 'learn', t: 'Learn',     d: 'Nineteen short lessons with quizzes, split by whether they apply to day trading or long-term investing.' },
     { v: 'pricing', t: 'Billing',   d: 'What a free account includes, what Pro adds, and what each billing period works out to per month.' },
-    { v: 'settings', t: 'Settings',  d: 'Turn any part of the analysis on or off: the score, the indicators, the projection, the summary.' },
+    { v: 'settings', t: 'Settings',  d: 'Turn any part of the analysis on or off: the score, the indicators, the price range, the summary.' },
     { v: 'admin', t: 'Admin',     d: 'Registered accounts, service status, usage and recent errors.', admin: true },
   ];
 
@@ -1799,6 +1821,7 @@
       const r = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&strategy=${encodeURIComponent(strategy)}&direction=${encodeURIComponent(direction)}&interval=${encodeURIComponent(interval)}`);
       const d = await r.json();
       if (seq !== runSeq) return;                    // superseded by a newer ticker
+      $('result').classList.remove('pre');
       if (!r.ok) throw new Error(d.error || 'Could not load');
       lastData = d; liveBar = null;
       chartOk();
@@ -1895,7 +1918,7 @@
       startLive();
     } catch (e) {
       if (seq !== runSeq) return;                    // a newer request owns the UI now
-      $('error').textContent = e.message; $('error').classList.remove('hidden'); $('result').classList.add('hidden');
+      $('error').textContent = e.message; $('error').classList.remove('hidden'); $('result').classList.add('hidden'); $('result').classList.remove('pre');
       // #error lives inside the analyze view. The chart panel also hangs in
       // practice and the watchlist, and on those a failed load wrote the
       // reason into a hidden element: the chart just went blank and said
@@ -2149,6 +2172,15 @@
       paperState = j;
       paperMsg('');          // clear anything left over from an earlier attempt
       renderPaper();
+      if (practicePending) {
+        const pp = practicePending; practicePending = null;
+        if (j.account) { chartSym = null; selectChart(pp.symbol); planMsg = ''; } else chartSym = pp.symbol;
+        planMsg = `Your plan from the reading: ${pp.side} ${pp.symbol}, stop ${pp.stop}${pp.target ? ', first target ' + pp.target : ''}. `
+          + 'Practice orders do not place a stop or target for you, so watch those levels yourself.';
+        paperMsg(planMsg);
+        if (j.account) startPaperLive();
+        return;
+      }
       if (j.account) {
         const first = (j.account.positions[0] || {}).symbol || chartSym || 'AAPL';
         // The chart panel is shared, so analyze or the watchlist may have
@@ -2490,7 +2522,7 @@
         // button looked like it had done nothing at all.
         if (!res.ok || !j.account) return paperMsg(j.message || j.error || 'Could not start the account.', true);
         paperState = { account: j.account, fills: j.fills || [], defaults: paperState && paperState.defaults };
-        renderPaper(); paperMsg('');
+        renderPaper(); paperMsg(planMsg); planMsg = '';
         selectChart(chartSym || 'AAPL'); startPaperLive();
       } catch (e) { paperMsg('Could not start the account.', true); }
     });
@@ -3597,7 +3629,7 @@
   // What the daily allowance becomes once the launch period ends. The server
   // reports null while everything is open, so this cannot be read from limits.
   const AI_FALLBACK_N = 3;
-  const PRICING_LEAD_AFTER = 'The chart is open to anyone. Every indicator, the stop-loss and take-profit levels and the measured base rate are free with an account. Pro adds the parts that cost money to run each time: unlimited written reports, chart-image reading, the screener and side-by-side compare, and more take-profit levels.';
+  const PRICING_LEAD_AFTER = 'Every chart comes with a stop, a target and the reason, in plain English. The chart is open to anyone; every indicator, the stop-loss and take-profit levels and the measured base rate are free with an account. Pro starts with a written report on every call, so you understand the reasoning behind it, not just the levels. It also adds chart-image reading, the screener and side-by-side compare, and more take-profit levels.';
   // The front page's two-plan summary: the allowance and the prices come
   // from the server, so the page never quotes a number Stripe disagrees with.
   function renderHomePlans() {

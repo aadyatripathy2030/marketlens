@@ -5,7 +5,7 @@
 // drops. It caches NOTHING that can go stale and be wrong: no API responses,
 // no prices, no HTML. Serving a cached chart would be indistinguishable from a
 // live one, which is the failure mode this project keeps having to remove.
-const CACHE = 'chartgauge-shell-v1';
+const CACHE = 'chartgauge-shell-v2';
 const SHELL = ['/offline.html', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (e) => {

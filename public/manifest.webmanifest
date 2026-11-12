@@ -1,7 +1,7 @@
 {
   "name": "ChartGauge — stock charts and indicators",
   "short_name": "ChartGauge",
-  "description": "Price charts, technical indicators, stop-loss and take-profit levels, and a measured record of how the readings have actually performed.",
+  "description": "Every chart comes with a stop, a target and the reason, in plain English.",
   "start_url": "/?from=app",
   "scope": "/",
   "display": "standalone",

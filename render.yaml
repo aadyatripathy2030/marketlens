@@ -71,7 +71,7 @@ services:
         sync: false
       - key: PRO_EMAILS           # comma-separated emails given complimentary Pro
         sync: false
-      - key: CONTACT_EMAIL        # shown on /contact; defaults to chartgauge@gmail.com
+      - key: CONTACT_EMAIL        # shown on /contact; set it to [CONTACT EMAIL ON CHARTGAUGE.COM]
         sync: false
       - key: PAYOUT_KEY           # encrypts affiliates' payout details; any long random string (openssl rand -hex 32). Never change it once set.
         sync: false

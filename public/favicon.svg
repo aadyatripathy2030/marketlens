@@ -5,7 +5,7 @@
        tab. Wide bodies and eased rather than rounded corners keep the shape at
        small sizes, where a large radius eats most of the body.
        Colours are the app's own chart red and green on the app background. -->
-  <rect width="64" height="64" rx="14" fill="#0e1014"/>
+  <rect width="64" height="64" rx="14" fill="#1c1d1f"/>
   <rect x="19.75" y="15" width="4.5" height="34" rx="1" fill="#ff5f56"/>
   <rect x="14" y="23" width="16" height="18" rx="2" fill="#ff5f56"/>
   <rect x="39.75" y="11" width="4.5" height="40" rx="1" fill="#3ddc84"/>

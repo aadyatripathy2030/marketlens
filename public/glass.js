@@ -15,7 +15,10 @@
   var brands = navigator.userAgentData && navigator.userAgentData.brands;
   var chromium = !!(brands && brands.some(function (b) { return /Chromium/.test(b.brand); }));
   var mq = function (q) { return window.matchMedia && window.matchMedia(q).matches; };
-  if (!chromium || mq('(prefers-reduced-motion: reduce)') || mq('(prefers-reduced-transparency: reduce)')) return;
+  // Also off on phone-width screens: the refraction filter re-renders the
+  // backdrop on every scroll frame, which cost seconds of main-thread time on
+  // a mid-range phone. The frosted glass itself stays.
+  if (!chromium || mq('(prefers-reduced-motion: reduce)') || mq('(prefers-reduced-transparency: reduce)') || mq('(max-width: 760px)')) return;
   document.documentElement.classList.add('lg-refract');
 
   var SEL = '.topbar, .otp-box';

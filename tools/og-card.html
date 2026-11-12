@@ -10,41 +10,33 @@
      stays cached for days.
 
      The chart on the right is a drawing, not a real reading: it has no
-     prices on it, only where the stop and targets sit relative to entry. -->
+     prices on it, only where the stop and targets sit relative to entry.
+     Brand: the two-candle mark (red #ff5f56, green #3ddc84) on #1c1d1f, Inter. -->
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
 <style>
-  @font-face { font-family: "Space Grotesk"; src: url("../public/fonts/space-grotesk-latin.woff2") format("woff2"); font-weight: 300 700; }
+  @font-face { font-family: "Inter"; src: url("../public/fonts/inter-latin-wght-normal.woff2") format("woff2"); font-weight: 100 900; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  /* Same tokens as the site (public/styles.css). */
   :root {
-    --bg: #121211; --card: #1d1d1a; --text: #f0efec; --muted: #b5b0a7;
-    --border: #2e2d28; --accent: #6ea2ff; --good: #44a85a; --bad: #e0564d;
+    --bg: #1c1d1f; --card: #26272a; --text: #f4f4f5; --muted: #b4b7bd;
+    --border: #34363a; --accent: #6ea2ff; --good: #3ddc84; --bad: #ff5f56;
   }
   html, body { width: 1200px; height: 630px; }
   body {
-    background: var(--bg); color: var(--text);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-    display: grid; grid-template-columns: 1fr 420px; gap: 56px;
-    padding: 64px 72px;
+    background: var(--bg); color: var(--text); font-family: "Inter", sans-serif;
+    display: grid; grid-template-columns: 1fr 400px; gap: 56px; padding: 64px 72px;
     -webkit-font-smoothing: antialiased;
   }
   .left { display: flex; flex-direction: column; justify-content: space-between; }
-  .brand { display: flex; align-items: center; gap: 14px; font-size: 28px; font-weight: 700; letter-spacing: -.3px; font-family: "Space Grotesk", sans-serif; }
-  h1 {
-    font-family: "Space Grotesk", sans-serif;
-    font-size: 64px; line-height: 1.06; font-weight: 700; letter-spacing: -1.6px;
-    margin-bottom: 24px;
-  }
-  .sub { font-size: 25px; line-height: 1.45; color: var(--muted); max-width: 30ch; }
+  .brand { display: flex; align-items: center; gap: 14px; font-size: 30px; font-weight: 650; letter-spacing: -.4px; }
+  h1 { font-size: 60px; line-height: 1.08; font-weight: 650; letter-spacing: -1.6px; margin-bottom: 22px; }
+  .sub { font-size: 24px; line-height: 1.45; color: var(--muted); max-width: 32ch; }
   .foot { display: flex; align-items: baseline; gap: 22px; font-size: 20px; color: var(--muted); }
-  .url { font-size: 24px; font-weight: 650; color: var(--accent); }
-
+  .url { font-size: 24px; font-weight: 600; color: var(--accent); }
   .card { align-self: center; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 26px 28px; }
-  .call { display: flex; align-items: center; gap: 12px; font-size: 18px; color: var(--muted); margin-bottom: 14px; }
-  .chip { font-size: 18px; font-weight: 700; color: #fff; background: var(--good); border-radius: 6px; padding: 4px 12px; }
+  .call { font-size: 18px; color: var(--muted); margin-bottom: 14px; }
   .lv { display: grid; grid-template-columns: auto 1fr; row-gap: 10px; column-gap: 18px; margin-top: 16px; font-size: 18px; }
   .lv dt { color: var(--muted); }
   .lv dd { text-align: right; font-weight: 600; }
@@ -52,26 +44,24 @@
 </style>
 </head>
 <body>
-
   <div class="left">
     <div class="brand">
-      <svg width="44" height="44" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#1d1d1a"/><rect x="19.75" y="15" width="4.5" height="34" rx="1" fill="#e0564d"/><rect x="14" y="23" width="16" height="18" rx="2" fill="#e0564d"/><rect x="39.75" y="11" width="4.5" height="40" rx="1" fill="#44a85a"/><rect x="34" y="17" width="16" height="28" rx="2" fill="#44a85a"/></svg>
+      <svg width="48" height="48" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#1c1d1f"/><rect x="19.75" y="15" width="4.5" height="34" rx="1" fill="#ff5f56"/><rect x="14" y="23" width="16" height="18" rx="2" fill="#ff5f56"/><rect x="39.75" y="11" width="4.5" height="40" rx="1" fill="#3ddc84"/><rect x="34" y="17" width="16" height="28" rx="2" fill="#3ddc84"/></svg>
       ChartGauge
     </div>
     <div>
-      <h1>Buy, sell or hold, with the stop and target already set.</h1>
-      <p class="sub">For any stock or crypto pair. Every call is saved and graded in public.</p>
+      <h1>Every chart comes with a stop, a target and the reason.</h1>
+      <p class="sub">In plain English, for any US stock or crypto pair. A plan before you risk money.</p>
     </div>
-    <div class="foot"><span class="url">chartgauge.com</span><span>Not financial advice</span></div>
+    <div class="foot"><span class="url">chartgauge.com</span><span>Educational, not financial advice</span></div>
   </div>
-
   <div class="card">
-    <div class="call"><span class="chip">Buy</span> Example call</div>
-    <svg width="364" height="200" viewBox="0 0 364 200" aria-hidden="true">
-      <line x1="0" y1="14" x2="364" y2="14" stroke="#44a85a" stroke-width="1.5" stroke-dasharray="6 5"/>
-      <line x1="0" y1="64" x2="364" y2="64" stroke="#44a85a" stroke-width="1.5" stroke-dasharray="6 5" opacity=".7"/>
-      <line x1="0" y1="114" x2="364" y2="114" stroke="#b5b0a7" stroke-width="1" opacity=".5"/>
-      <line x1="0" y1="164" x2="364" y2="164" stroke="#e0564d" stroke-width="1.5" stroke-dasharray="6 5"/>
+    <div class="call">Example plan</div>
+    <svg width="344" height="200" viewBox="0 0 364 200" aria-hidden="true">
+      <line x1="0" y1="14" x2="364" y2="14" stroke="#3ddc84" stroke-width="1.5" stroke-dasharray="6 5"/>
+      <line x1="0" y1="64" x2="364" y2="64" stroke="#3ddc84" stroke-width="1.5" stroke-dasharray="6 5" opacity=".7"/>
+      <line x1="0" y1="114" x2="364" y2="114" stroke="#b4b7bd" stroke-width="1" opacity=".5"/>
+      <line x1="0" y1="164" x2="364" y2="164" stroke="#ff5f56" stroke-width="1.5" stroke-dasharray="6 5"/>
       <polyline fill="none" stroke="#6ea2ff" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"
         points="0,156 28,148 52,152 80,140 104,146 132,138 156,146 182,124 206,132 232,112 258,124 284,104 310,118 336,108 364,114"/>
       <circle cx="364" cy="114" r="5" fill="#6ea2ff"/>
@@ -82,6 +72,5 @@
       <dt>Stop</dt><dd class="r">1.5 × ATR</dd>
     </dl>
   </div>
-
 </body>
 </html>

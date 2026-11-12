@@ -85,7 +85,7 @@ const buildTerms = () => h('Terms of Service', [
     launchPara(),
     `Pro is a paid subscription that covers the market-data and model costs of running ${SITE}, and pays for the features that cost money each time they run.`,
     `<strong>Free with any account:</strong> the full chart and every indicator on it, for stocks and crypto; the stop-loss level and one take-profit level; the mechanical score and the measured base rate beside it; a limited number of AI-written reports each day, with the rule-based written read always available after that; a watchlist and a small number of price alerts; and every lesson. The chart itself can be viewed without an account. A free account (an email address and a password) is required for everything read from it and for the other market-data pages; the lessons and these policy pages are readable without one.${MAIL_ON ? ' A new account must confirm its address by opening a link sent to it before it can be used, and every sign-in, including with Google, is completed with a code sent to that address when email can be delivered.' : ''}`,
-    `<strong>Pro adds:</strong> AI-written reports without the daily limit; reading an uploaded chart image; the screener and side-by-side compare; additional take-profit levels; and a watchlist and alerts without limits.`,
+    `<strong>Pro adds:</strong> an AI-written report on every call without the daily limit, so you understand the reasoning behind each one; reading an uploaded chart image; the screener and side-by-side compare; additional take-profit levels; and a watchlist and alerts without limits.`,
     `The daily limits and allowances above may be adjusted as running costs change. Any reduction applies from your next renewal.`,
     `Subscriptions are billed in advance on the period you choose and renew automatically until canceled. Payments are processed by Stripe; ${SITE} never receives or stores your card details. Prices may change, and any change applies from your next renewal, not retroactively.`,
     TRIAL_DAYS > 0
@@ -193,6 +193,9 @@ const buildContact = () => h('Contact', [
   s('Get in touch',
     `Email <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> for anything: billing questions, refunds, account deletion, bug reports, or if something on the site is wrong.`,
     `${SITE} is a small independent project, not a company with a support desk. Expect a reply within a couple of business days.`),
+
+  s('Who builds it',
+    `<span class="founder-photo">[FOUNDER PHOTO]</span>Built by [YOUR NAME]. [ONE TRUE SENTENCE ABOUT YOU].`),
 
   s('For billing and refunds',
     `Include the email address on the account and the date of the charge. See <a href="/refunds">Refunds and Cancellation</a> for what to expect.`),

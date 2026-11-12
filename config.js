@@ -8,7 +8,7 @@ module.exports = {
   AFFILIATE_SHARE: String(AFF_SHARE),
   AFFILIATE_MONTHS: numOr(process.env.AFFILIATE_MONTHS, 12),
   AFFILIATE_MIN_PAYOUT: numOr(process.env.AFFILIATE_MIN_PAYOUT, 25),
-  CONTACT_EMAIL: (process.env.CONTACT_EMAIL || 'chartgauge@gmail.com').trim(),
+  CONTACT_EMAIL: (process.env.CONTACT_EMAIL || '[CONTACT EMAIL ON CHARTGAUGE.COM]').trim(),
   TRIAL_DAYS: Number(process.env.TRIAL_DAYS || 14),
   FREE_UNTIL: Date.parse(process.env.FREE_UNTIL || '2026-10-18T00:00:00Z'),
 };

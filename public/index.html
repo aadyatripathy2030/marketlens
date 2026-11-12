@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ChartGauge | AI Trading App: Stops, Targets and the Odds</title>
-<meta name="description" content="An AI trading app for stocks and crypto: the stop and target already set, the odds of reaching each, a tested 8-in-10 price range, AI-written analysis, and AI that reads your chart screenshots. Not financial advice." />
+<title>ChartGauge | The Stop, the Target and the Reason, for Every Chart</title>
+<meta name="description" content="Every chart comes with a stop, a target and the reason, in plain English, for any US stock or crypto pair. Free lessons and a practice account to try it with pretend money. Educational, not financial advice." />
 <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 <!-- 180px is what iOS asks for. This used to point at avatar.png, the
      4096px original, so every device saving the site pulled 490KB for an icon. -->
@@ -106,9 +106,9 @@
         <span class="ha-pulse" style="left:86.15%;top:15.26%"></span>
       </div>
       <div class="hero">
-        <p class="hero-kicker">The AI trading app for stocks and crypto</p>
+        <p class="hero-kicker">A trading plan before you risk money</p>
         <h1 class="hero-h">The stop, the target, and the odds of hitting each.</h1>
-        <p class="hero-sub">Search any stock or crypto pair. ChartGauge reads the chart, makes the call, and sets the exits from how far the price really moves. Claude AI writes up why, and can read a screenshot of any chart you upload.</p>
+        <p class="hero-sub">Every chart comes with a stop, a target and the reason, in plain English. Search any stock or crypto pair: ChartGauge scores the indicators, sets the exits from how far the price really moves, and shows the odds of reaching each. Claude AI writes up the reasoning (a few reports a day free, every call on Pro), and on Pro it can read a screenshot of any chart you upload.</p>
         <form class="hero-search" id="heroForm">
           <input id="heroInput" class="input" aria-label="Search for a stock or crypto pair" placeholder="Apple, NVDA, BTC/USD" autocomplete="off" maxlength="16" />
           <button type="submit" class="btn btn-primary">Get a free reading</button>
@@ -207,7 +207,7 @@
       <div class="faq">
         <details><summary>Why not just use TradingView?</summary><p>Use it if you like reading charts yourself; it is very good at that. ChartGauge reads the chart for you and turns the indicators into one call with a stop and a target.</p></details>
         <details><summary>How is the call made?</summary><p>Mechanically. Five groups of indicators are scored together from 0 to 100: 58 or more is buy, under 42 is sell, and between is hold, and the call is held back to hold when bars like today&rsquo;s have done clearly worse, or better, than usual on that stock. A written report then explains the reasoning.</p></details>
-        <details><summary>What does Pro add, and how do the trial and refund work?</summary><p>Pro adds a written report on every call, extra take-profit levels, screenshot reading, the screener and compare. Your first subscription can start with a free trial, and nothing is charged until it ends. Separately, after any charge you can ask for a full refund within 14 days. Cancel any time from the Plans page.</p></details>
+        <details><summary>What does Pro add, and how do the trial and refund work?</summary><p>Pro starts with a written report on every call, so you understand the reasoning behind it. It also adds extra take-profit levels, screenshot reading, the screener and compare. Your first subscription can start with a free trial, and nothing is charged until it ends. Separately, after any charge you can ask for a full refund within 14 days. Cancel any time from the Plans page.</p></details>
         <details><summary>Where do the prices come from, and is this advice?</summary><p>Prices come from Twelve Data and can be delayed or wrong; if live prices are unavailable the site says so. Everything on ChartGauge is for educational purposes only, and nothing here is financial advice. Trading can lose money, including everything you put in, and the decision is yours.</p></details>
       </div>
     </section>
@@ -360,6 +360,7 @@
         <div class="card" id="techCard">
           <div class="section-h">Technical analysis <span class="sub">what each indicator reads right now</span></div>
           <div class="tech-grid" id="techGrid"></div>
+          <p class="lv-links"><span>What these mean: <a href="/learn/technical" data-lesson="technical">Technical Analysis</a> (RSI, moving averages, MACD) · <a href="/learn/levels" data-lesson="levels">Support and Resistance</a> · <a href="/learn/volume" data-lesson="volume">Volume and Liquidity</a></span></p>
         </div>
 
         <div class="card" id="bandsCard">
@@ -536,7 +537,7 @@
   <!-- PRICING -->
   <section class="view hidden" id="view-pricing">
     <h1 class="view-h">Plans and billing</h1>
-    <p class="learn-lead" id="pricingLead">The chart is open to anyone. Every indicator, the stop-loss and take-profit levels and the measured base rate are free with an account. Pro adds the parts that cost money to run each time: unlimited written reports, chart-image reading, the screener and side-by-side compare, and more take-profit levels.</p>
+    <p class="learn-lead" id="pricingLead">Every chart comes with a stop, a target and the reason, in plain English. The chart is open to anyone; every indicator, the stop-loss and take-profit levels and the measured base rate are free with an account. Pro starts with a written report on every call, so you understand the reasoning behind it, not just the levels. It also adds chart-image reading, the screener and side-by-side compare, and more take-profit levels.</p>
     <div class="pricing" id="pricingBody"></div>
     <p class="plan-renew">Pro renews automatically at the price shown, at the end of each period, until you cancel. Cancel any time with <strong>Manage subscription</strong> on this page; canceling stops all future charges. See <a href="/refunds">Refunds and Cancellation</a>.</p>
   </section>
@@ -796,7 +797,7 @@
     </div>
   </section>
 
-  <p class="disclaimer"><strong>Everything on ChartGauge is for educational purposes only.</strong> It is built to help you learn to find and time trades. <strong>Trading carries real risk</strong>: you can lose money, including everything you put in, and the risk is yours to take. The Buy / Sell / Hold verdict is taken from the indicator score (Strongly up, Leans up, Mixed, Leans down, Strongly down), which describes how far the past-price indicators agree, and it is held back to Hold whenever bars like the current one went on to perform clearly worse, or better, than that symbol&rsquo;s own base rate. For images the read comes from one picture alone. None of this is financial advice or a personal recommendation. The decision, and its outcome, is yours.</p>
+  <p class="disclaimer"><strong>Everything on ChartGauge is for educational purposes only.</strong> It is built to help you learn to find and time trades. <strong>Trading carries real risk</strong>: you can lose money, including everything you put in, and the risk is yours to take. The reading (Leans up, Mixed or Leans down) is taken from the indicator score, which describes how far the past-price indicators agree. It is shown next to how often the price rose after similar setups on that symbol and how often it rose on any day; it is not a buy or sell recommendation, and in tests on past prices it did not predict direction better than chance. For images the read comes from one picture alone. None of this is financial advice or a personal recommendation. The decision, and its outcome, is yours.</p>
 
   <footer class="site-foot">
     <nav class="foot-links">
@@ -809,14 +810,16 @@
       <a href="/security">Security</a>
       <a href="/copyright">Copyright</a>
       <a href="/affiliate-terms">Affiliates</a>
-      <a href="/best-ai-trading-apps">Best AI trading apps</a>
+      <a href="/best-ai-trading-apps">AI trading apps compared</a>
       <a href="/chartgauge-vs-trendspider">vs TrendSpider</a>
       <a href="/chartgauge-vs-trade-ideas">vs Trade Ideas</a>
       <a href="/tradingview-alternative">TradingView alternative</a>
       <a href="/ai-chart-analysis">AI chart reading</a>
       <button type="button" class="foot-btn" id="cookieSettings">Cookie settings</button>
     </nav>
+    <p class="foot-promise">Every chart comes with a stop, a target and the reason, in plain English.</p>
     <p class="foot-note">Everything on ChartGauge is for educational purposes only. Trading can lose money, including everything you put in, and nothing on it is financial advice.</p>
+    <p class="foot-built">Built by [YOUR NAME]. [ONE TRUE SENTENCE ABOUT YOU]. <!-- [FOUNDER PHOTO] --></p>
     <p class="foot-copy">&copy; <span id="footYear">2026</span> ChartGauge · <a href="mailto:<!--CONTACT_EMAIL-->"><!--CONTACT_EMAIL--></a></p>
   </footer>
 
