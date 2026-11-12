@@ -385,6 +385,33 @@
             your costs, or whether the trade is worth taking. Gaps and fast markets can skip straight past a stop.</p>
         </div>
 
+        <!-- Asked once, after a person's fifth reading. The quote box starts
+             unticked; nothing is published from it automatically. -->
+        <div class="card hidden" id="fbCard">
+          <div class="section-h">How useful are these readings? <span class="sub">Two questions, then it goes away.</span></div>
+          <div class="fb-rate" role="radiogroup" aria-label="How useful, from 1 (not at all) to 5 (very)">
+            <span class="fb-end">Not at all</span>
+            <button type="button" class="fb-n" role="radio" aria-checked="false" data-r="1">1</button>
+            <button type="button" class="fb-n" role="radio" aria-checked="false" data-r="2">2</button>
+            <button type="button" class="fb-n" role="radio" aria-checked="false" data-r="3">3</button>
+            <button type="button" class="fb-n" role="radio" aria-checked="false" data-r="4">4</button>
+            <button type="button" class="fb-n" role="radio" aria-checked="false" data-r="5">5</button>
+            <span class="fb-end">Very</span>
+          </div>
+          <label class="fb-lbl" for="fbBody">What helped, or what was missing? <span class="sub">Optional</span></label>
+          <textarea id="fbBody" class="input fb-body" rows="3" maxlength="2000"></textarea>
+          <label class="fb-check"><input type="checkbox" id="fbQuote" /> ChartGauge may quote this on its site</label>
+          <div class="fb-name hidden" id="fbNameRow">
+            <label class="fb-lbl" for="fbName">Name to show with the quote <span class="sub">Optional, e.g. a first name and initial</span></label>
+            <input type="text" id="fbName" class="input" maxlength="60" autocomplete="off" />
+          </div>
+          <div class="fb-btns">
+            <button type="button" class="btn btn-primary btn-sm" id="fbSend">Send</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="fbLater">Not now</button>
+          </div>
+          <p class="fb-msg" id="fbMsg" role="status"></p>
+        </div>
+
         <div class="card hidden" id="fundCard">
           <div class="section-h">Fundamentals <span class="sub" id="fundProfile"></span></div>
           <div class="tech-grid" id="fundGrid"></div>

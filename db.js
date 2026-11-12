@@ -13,7 +13,7 @@ let lastErr = null;
 const mem = { users: new Map(), byEmail: new Map(), sessions: new Map(), watch: new Map(),
   alerts: new Map(), usage: new Map(), preds: new Map(), etokens: new Map(), codes: new Map(),
   paper: new Map(), pos: new Map(), fills: new Map(), payouts: new Map(), ledger: [], settings: new Map(),
-  marks: [] };
+  marks: [], feedback: [] };
 
 // Render's INTERNAL Postgres host has no dot (e.g. dpg-xxxx-a) and speaks plain
 // TCP; hosted/external hosts (Neon, Render external) are dotted and need SSL.
@@ -226,6 +226,12 @@ async function init() {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_risk_why TEXT');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_risk_at BIGINT');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS trial_sig TEXT');
+      // Feedback from the prompt after a few readings. may_quote is false
+      // unless the person ticked the box; quote_name is what they asked to be
+      // shown as, if anything.
+      await pool.query(`CREATE TABLE IF NOT EXISTS feedback (
+        id SERIAL PRIMARY KEY, uid TEXT NOT NULL, rating INTEGER, body TEXT NOT NULL,
+        may_quote BOOLEAN NOT NULL DEFAULT FALSE, quote_name TEXT, symbol TEXT, created BIGINT NOT NULL)`);
       await pool.query(`CREATE TABLE IF NOT EXISTS usage_daily (
         k TEXT NOT NULL, kind TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (k, kind, day))`);
@@ -323,6 +329,7 @@ async function clearPaper(uid) {
     await pool.query('DELETE FROM paper_accounts WHERE uid=$1', [uid]);
   } else {
     mem.paper.delete(uid); mem.pos.delete(uid); mem.fills.delete(uid);
+  mem.feedback = mem.feedback.filter(f => f.uid !== uid);
   }
 }
 async function setCash(uid, cash) {
@@ -1114,6 +1121,7 @@ async function deleteUser(uid) {
     await pool.query('DELETE FROM paper_trades WHERE uid=$1', [uid]);
     await pool.query('DELETE FROM paper_positions WHERE uid=$1', [uid]);
     await pool.query('DELETE FROM paper_accounts WHERE uid=$1', [uid]);
+    await pool.query('DELETE FROM feedback WHERE uid=$1', [uid]);
     await pool.query('DELETE FROM users WHERE id=$1', [uid]);
     return;
   }
@@ -1129,6 +1137,25 @@ async function deleteUser(uid) {
   mem.paper.delete(uid); mem.pos.delete(uid); mem.fills.delete(uid);
   for (const [t, s] of mem.sessions) if (s && (s.uid === uid || s === uid)) mem.sessions.delete(t);
   for (const k of [...mem.usage.keys()]) if (k.startsWith('u:' + uid + '|')) mem.usage.delete(k);
+}
+
+// ---- feedback ----
+async function addFeedback(f) {
+  const row = { uid: f.uid, rating: f.rating, body: f.body, may_quote: !!f.mayQuote, quote_name: f.quoteName || null, symbol: f.symbol || null, created: Date.now() };
+  if (mode === 'postgres') {
+    await pool.query('INSERT INTO feedback (uid, rating, body, may_quote, quote_name, symbol, created) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+      [row.uid, row.rating, row.body, row.may_quote, row.quote_name, row.symbol, row.created]);
+    return;
+  }
+  mem.feedback.push({ id: mem.feedback.length + 1, ...row });
+}
+async function listFeedback(limit) {
+  const n = Math.min(Number(limit) || 100, 500);
+  if (mode === 'postgres') {
+    const r = await pool.query('SELECT f.*, u.email FROM feedback f LEFT JOIN users u ON u.id = f.uid ORDER BY f.created DESC LIMIT $1', [n]);
+    return r.rows.map(x => ({ ...x, created: Number(x.created) }));
+  }
+  return mem.feedback.slice().reverse().slice(0, n).map(x => ({ ...x, email: (mem.users.get(x.uid) || {}).email || null }));
 }
 
 async function findByStripeSub(sub) {
@@ -1309,7 +1336,7 @@ async function accuracyStats() {
 }
 
 module.exports = {
-  deleteUser,
+  deleteUser, addFeedback, listFeedback,
   recordPrediction, ungradedFor, gradePrediction, accuracyStats, latestPrediction,
   bumpUsage, peekUsage,
   getUserByGoogleId, linkGoogleId, createGoogleUser,

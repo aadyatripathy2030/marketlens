@@ -164,6 +164,7 @@ const KNOWN_API = new Set([
   // sentiment read over the headlines that were already being fetched
   '/api/paper', '/api/paper/open', '/api/paper/trade', '/api/paper/reset',
   '/api/risk', '/api/sentiment',
+  '/api/feedback', '/api/admin/feedback',
 ]);
 const errorLog = [];                   // recent server errors (ring buffer)
 // Kept in memory for the admin page AND printed in full, so a failed payout,
@@ -2486,8 +2487,8 @@ async function handleMe(req, res) {
   // stripe_customer, so testing it for one would answer "never subscribed"
   // for everybody and offer a trial the checkout would then refuse to give.
   // Read the row checkout reads.
-  let everSubscribed = false, needsAge = false;
-  if (u) { try { const full = await db.getUserById(u.id); everSubscribed = !!(full && full.stripe_customer); needsAge = !!full && !full.adult_at && !isAdmin(u); } catch (e) { logError(e); } }
+  let everSubscribed = false, needsAge = false, since = null;
+  if (u) { try { const full = await db.getUserById(u.id); everSubscribed = !!(full && full.stripe_customer); needsAge = !!full && !full.adult_at && !isAdmin(u); since = full ? Number(full.created) || null : null; } catch (e) { logError(e); } }
   return json(res, 200, {
     user: u ? { ...u, plan: shownPlan(u), admin: isAdmin(u) } : null,
     // Set for an affiliate: their code, how many accounts came through it,
@@ -2500,6 +2501,9 @@ async function handleMe(req, res) {
     googleAuth: googleEnabled(),
     // An account from before sign-up asked for age; the page asks once.
     needsAge,
+    // When the account was made, so the page can send the sign_up and
+    // return_7d analytics events (only with analytics consent).
+    since,
     streak,
     launch: { free: inLaunchPeriod(),
       until: Number.isFinite(FREE_UNTIL) ? FREE_UNTIL : null,
@@ -2525,6 +2529,28 @@ async function handleMe(req, res) {
     // the "first subscription" qualifier rather than promise it outright.
     trialFirstOnly: !u,
   });
+}
+// Feedback from the prompt shown after a person's fifth reading. Nothing is
+// published from here: may_quote only records that they allowed it.
+async function handleFeedback(req, res) {
+  const u = await currentUser(req);
+  if (!u) return json(res, 401, { error: 'Please sign in.' });
+  const b = await readBody(req, 2e4) || {};
+  const body = String(b.body || '').trim().slice(0, 2000);
+  const rating = Number.isInteger(b.rating) && b.rating >= 1 && b.rating <= 5 ? b.rating : null;
+  if (!body && !rating) return json(res, 400, { error: 'Add a rating or a few words first.' });
+  const mayQuote = b.mayQuote === true;
+  const quoteName = mayQuote ? String(b.quoteName || '').trim().slice(0, 60) || null : null;
+  const symbol = /^[A-Z0-9./-]{1,16}$/.test(String(b.symbol || '')) ? String(b.symbol) : null;
+  const use = await db.bumpUsage('u:' + u.id, 'feedback', 5);
+  if (use.over) return json(res, 429, { error: 'Thanks, that is plenty for today.' });
+  await db.addFeedback({ uid: u.id, rating, body, mayQuote, quoteName, symbol });
+  return json(res, 200, { ok: true });
+}
+async function handleAdminFeedback(req, res) {
+  const u = await currentUser(req);
+  if (!isAdmin(u)) return json(res, 403, { error: 'Admin access only.' });
+  return json(res, 200, { feedback: await db.listFeedback(200) });
 }
 async function handleAdmin(req, res) {
   const u = await currentUser(req);
@@ -4936,6 +4962,7 @@ const server = http.createServer(async (req, res) => {
       if (await requireAccount(req, res)) return;
     }
     if (url === '/api/admin' && req.method === 'GET') return await handleAdmin(req, res);
+    if (url === '/api/admin/feedback' && req.method === 'GET') return await handleAdminFeedback(req, res);
     if (url === '/api/admin/plan' && req.method === 'POST') return await handleAdminPlan(req, res);
     if (url === '/api/admin/affiliate' && req.method === 'POST') return await handleAdminAffiliate(req, res);
     if (url === '/api/admin/payout' && req.method === 'GET') return await handleAdminPayout(req, res);
@@ -4980,6 +5007,7 @@ const server = http.createServer(async (req, res) => {
       const run = () => url === '/api/watchlist' ? handleWatchlist(req, res) : handleAlerts(req, res);
       return await (me ? db.withLock('cap:' + me.id, run) : run());
     }
+    if (url === '/api/feedback' && req.method === 'POST') return await handleFeedback(req, res);
     if (url === '/api/watchlist') return await handleWatchlist(req, res);
     if (url === '/api/paper' || url === '/api/paper/open' || url === '/api/paper/trade'
         || url === '/api/paper/reset' || url === '/api/risk' || url === '/api/sentiment') {

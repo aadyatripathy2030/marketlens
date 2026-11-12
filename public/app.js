@@ -339,6 +339,44 @@
     $('levelsCard').classList.remove('hidden');
   }
 
+  // ---- Feedback prompt ----
+  // Shown once a signed-in person has had five readings on this browser, and
+  // never again after Send or Not now. The quote box starts unticked.
+  const FB_AFTER = 5;
+  let fbRating = null, fbSymbol = null;
+  const fbKey = (k) => 'cg_fb_' + k + '_' + (currentUser ? currentUser.id : 'anon');
+  function countReading(symbol) {
+    if (!currentUser) return;
+    let n = 0, done = false;
+    try { n = (parseInt(localStorage.getItem(fbKey('n')), 10) || 0) + 1; localStorage.setItem(fbKey('n'), String(n)); done = !!localStorage.getItem(fbKey('done')); } catch (e) { return; }
+    fbSymbol = symbol;
+    if (!done && n >= FB_AFTER) $('fbCard').classList.remove('hidden');
+  }
+  function fbClose(msg) {
+    try { localStorage.setItem(fbKey('done'), '1'); } catch (e) {}
+    if (msg) { $('fbMsg').textContent = msg; setTimeout(() => $('fbCard').classList.add('hidden'), 2500); }
+    else $('fbCard').classList.add('hidden');
+  }
+  document.querySelectorAll('#fbCard .fb-n').forEach(b => b.addEventListener('click', () => {
+    fbRating = parseInt(b.dataset.r, 10);
+    document.querySelectorAll('#fbCard .fb-n').forEach(x => x.setAttribute('aria-checked', String(x === b)));
+  }));
+  $('fbQuote').addEventListener('change', () => $('fbNameRow').classList.toggle('hidden', !$('fbQuote').checked));
+  $('fbLater').addEventListener('click', () => fbClose());
+  $('fbSend').addEventListener('click', async () => {
+    const body = $('fbBody').value.trim();
+    if (!fbRating && !body) { $('fbMsg').textContent = 'Pick a number or write a few words first.'; return; }
+    $('fbSend').disabled = true;
+    try {
+      const r = await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rating: fbRating, body, mayQuote: $('fbQuote').checked, quoteName: $('fbName').value.trim(), symbol: fbSymbol }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { $('fbMsg').textContent = j.error || 'That did not send. Please try again.'; return; }
+      fbClose('Thank you. It goes straight to the person who builds ChartGauge.');
+    } catch (e) { $('fbMsg').textContent = 'That did not send. Please try again.'; }
+    finally { $('fbSend').disabled = false; }
+  });
+
   // Lesson links and "Practice this trade" inside the reading open in place.
   $('view-analyze').addEventListener('click', (e) => {
     const a = e.target.closest('a[data-lesson], #lvPractice');
@@ -785,14 +823,14 @@
   const DESTINATIONS = [
     { v: 'home', t: 'Home',      d: 'Look up any stock, and see where the major indices sit today.' },
     { v: 'analyze', t: 'Analyze',   d: 'The full read on one symbol: candlestick chart, thirteen indicators, exit levels and the measured base rate.' },
-    { v: 'compare', t: 'Compare',   d: 'Put two or more companies side by side on valuation, margins, growth and debt.' },
-    { v: 'screener', t: 'Screener',  d: 'Filter a curated list of stocks by sector, market capitalization and price.' },
     { v: 'markets', t: 'Markets',   d: 'Live quotes for the major US indices and the most active stocks.' },
     { v: 'movers', t: 'Movers',    d: 'What is moving right now, ranked by how unusual the volume and the day\u2019s range are.' },
     { v: 'watchlist', t: 'Watchlist', d: 'The stocks you follow, with live prices and one-click analysis.' },
     { v: 'alerts', t: 'Alerts',    d: 'Set a target above or below the current price and get flagged when a stock crosses it.', badge: 'alertBadge' },
     { v: 'practice', t: 'Practice',  d: 'A practice account with pretend money, so you can rehearse position sizing against your own risk limits. Nothing here touches a broker.' },
     { v: 'learn', t: 'Learn',     d: 'Nineteen short lessons with quizzes, split by whether they apply to day trading or long-term investing.' },
+    { v: 'compare', t: 'Compare',   d: 'Put two or more companies side by side on valuation, margins, growth and debt.' },
+    { v: 'screener', t: 'Screener',  d: 'Filter a curated list of stocks by sector, market capitalization and price.' },
     { v: 'pricing', t: 'Billing',   d: 'What a free account includes, what Pro adds, and what each billing period works out to per month.' },
     { v: 'settings', t: 'Settings',  d: 'Turn any part of the analysis on or off: the score, the indicators, the price range, the summary.' },
     { v: 'admin', t: 'Admin',     d: 'Registered accounts, service status, usage and recent errors.', admin: true },
@@ -1829,6 +1867,7 @@
       // After the ok-check and the sequence guard, so a failed lookup or a
       // superseded request is never counted as one.
       if (!quiet) track('analyze', { symbol: d.symbol, strategy, interval, locked: !!d.locked });
+      if (!quiet && !d.locked) countReading(d.symbol);
       lastVals.price = d.latest; lastVals.homeLast = d.latest;
       // The server just extended the streak; pick the new number up so the
       // badge moves on the visit that earned it, not the next page load.
@@ -2492,6 +2531,7 @@
       renderPaper();
       const f = j.filled;
       paperMsg((f.side === 'buy' ? 'Bought ' : 'Sold ') + f.qty + ' ' + f.symbol + ' at ' + pMoney(f.price));
+      track('practice_trade', { side: f.side, symbol: f.symbol });
       $('pQty').value = ''; estimate();
       if (f.symbol !== chartSym) selectChart(f.symbol);
     } catch (e) { paperMsg('That did not go through.', true); }
@@ -2682,9 +2722,37 @@
     // A full page of its own, outside the app's router.
     $('affPayout').onclick = () => { location.href = '/affiliate/payout'; };
   }
+  // Account analytics events. track() is a no-op without analytics consent,
+  // so these only ever reach Google Analytics for visitors who allowed it.
+  // Each fires once per account on this browser (a flag in localStorage).
+  let accountSince = 0, paidCheckDone = false;
+  // Without consent nothing is sent and nothing is marked sent, so allowing
+  // analytics later still counts the milestone.
+  const once = (key, fn) => { if (typeof window.gtag !== 'function') return; try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch (e) { return; } fn(); };
+  const DAY = 864e5;
+  function trackAccountMilestones() {
+    if (!currentUser || !accountSince) return;
+    const age = Date.now() - accountSince, id = currentUser.id;
+    // A new account: within its first day.
+    if (age < DAY) once('cg_ev_signup_' + id, () => track('sign_up', { method: 'account' }));
+    // Back a week or more after signing up.
+    if (age >= 7 * DAY) once('cg_ev_r7_' + id, () => track('return_7d', { days: Math.floor(age / DAY) }));
+    // A trial that has since turned into a paid subscription.
+    let trialPending = false; try { trialPending = !!localStorage.getItem('cg_ev_trial_' + id); } catch (e) {}
+    if (trialPending && !paidCheckDone && currentUser.plan === 'pro') {
+      paidCheckDone = true;
+      fetch('/api/billing/manage').then(r => r.json()).then(d => {
+        if (d && !d.error && !d.trialing && d.plan) {
+          try { localStorage.removeItem('cg_ev_trial_' + id); } catch (e) {}
+          once('cg_ev_paid_' + id, () => { track('pro_paid', { plan: d.plan, from: 'trial' }); track('purchase', { currency: 'USD' }); });
+        }
+      }).catch(() => {});
+    }
+  }
   async function checkAuth() {
-    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; affiliateInfo = j.affiliate || null; currentStreak = j.streak || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; trialDays = Number(j.trialDays) || 0; trialFirstOnly = !!j.trialFirstOnly; launch = j.launch || launch; showGoogleButtons(!!j.googleAuth); askAge(!!j.needsAge); billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; currentStreak = null; }
+    try { const j = await (await fetch('/api/auth/me')).json(); currentUser = j.user || null; accountSince = Number(j.since) || 0; affiliateInfo = j.affiliate || null; currentStreak = j.streak || null; billingPlans = j.billing || {}; if (j.limits) limits = j.limits; trialDays = Number(j.trialDays) || 0; trialFirstOnly = !!j.trialFirstOnly; launch = j.launch || launch; showGoogleButtons(!!j.googleAuth); askAge(!!j.needsAge); billingOn = !!(billingPlans.weekly || billingPlans.monthly || billingPlans.yearly); } catch { currentUser = null; currentStreak = null; }
     authResolved = true;
+    trackAccountMilestones();
     renderAcct();
     renderAffiliate();
     renderStreakSaver();
@@ -3969,8 +4037,20 @@
           + `<ul>${(tr.why || []).map(w => `<li>${esc(w)}</li>`).join('') || '<li>No risk signals.</li>'}</ul></details>`;
       return `<tr><td>${esc(u.email)}${pills}</td><td>${esc(plan)}</td><td>${esc(ymd(u.created))}${u.referred_by ? ` <span class="admin-aff-code">via ${esc(u.referred_by)}</span>` : ''}</td><td>${risk}</td></tr>`;
     }).join('') + `</tbody></table></div></div>`;
+    html += `<div class="admin-sec" id="adminFeedback"><div class="mkt-h">Feedback</div><p class="compare-note">Loading…</p></div>`;
     html += `<div class="admin-sec"><div class="mkt-h">Recent errors (${(d.errors || []).length})</div>` + ((d.errors || []).length ? d.errors.map(e => `<div class="err-line">${esc(hms(e.t))}: ${esc(e.msg)}</div>`).join('') : `<p class="compare-note">No errors logged.</p>`) + `</div>`;
     $('adminBody').innerHTML = html;
+    // Feedback from the prompt after the fifth reading. "May quote" is only
+    // what the person allowed; check the wording with them before using it.
+    fetch('/api/admin/feedback').then(r => r.json()).then(fb => {
+      const host = $('adminFeedback'); if (!host) return;
+      const rows = (fb && fb.feedback) || [];
+      host.innerHTML = `<div class="mkt-h">Feedback (${rows.length})</div>` + (rows.length
+        ? `<div class="compare-scroll"><table class="admin-table"><thead><tr><th>When</th><th>Who</th><th>Rating</th><th>What they said</th><th>May quote</th></tr></thead><tbody>`
+          + rows.map(f => `<tr><td>${esc(ymd(f.created))}</td><td>${esc(f.email || '')}</td><td>${f.rating ? esc(f.rating) + '/5' : ''}</td><td>${esc(f.body || '')}${f.symbol ? ` <span class="admin-aff-code">${esc(f.symbol)}</span>` : ''}</td><td>${f.may_quote ? 'Yes' + (f.quote_name ? ', as ' + esc(f.quote_name) : ', no name given') : 'No'}</td></tr>`).join('')
+          + `</tbody></table></div>`
+        : `<p class="compare-note">No feedback yet.</p>`);
+    }).catch(() => {});
 
     const setPlan = async (plan) => {
       const email = ($('planEmail').value || '').trim();
@@ -4526,7 +4606,8 @@
   const params = new URLSearchParams(location.search);
   const deep = params.get('symbol'), billing = params.get('billing');
   if (billing === 'success') {
-    track('purchase', { currency: 'USD' });
+    // Whether this checkout began a free trial or a paid plan is known once
+    // the subscription is visible; see the poll below.
     showView('pricing');
     $('pricingLead').textContent = 'Thanks for upgrading. Your Pro plan is activating; this can take a few seconds.';
     let tries = 0;
@@ -4534,6 +4615,17 @@
       await checkAuth(); tries++;
       if ((currentUser && currentUser.plan === 'pro') || tries > 6) {
         clearInterval(iv); renderPricing();
+        if (currentUser && currentUser.plan === 'pro') {
+          const id = currentUser.id;
+          fetch('/api/billing/manage').then(r => r.json()).then(d => {
+            if (!d || d.error) return;
+            if (d.trialing) once('cg_ev_trialstart_' + id, () => {
+              try { localStorage.setItem('cg_ev_trial_' + id, '1'); } catch (e) {}
+              track('trial_start', { plan: d.plan });
+            });
+            else once('cg_ev_paid_' + id, () => { track('pro_paid', { plan: d.plan, from: 'checkout' }); track('purchase', { currency: 'USD' }); });
+          }).catch(() => {});
+        }
         if (currentUser && currentUser.plan === 'pro') $('pricingLead').textContent = 'You’re on Pro. Thank you for supporting ChartGauge.';
       }
     }, 2500);

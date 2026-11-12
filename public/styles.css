@@ -58,7 +58,7 @@ html, body { height: 100%; max-width: 100%; overflow-x: hidden; }
 .result.locked #chartWall { display: block; }
 .result.locked .head .verdict, .result.locked #reason, .result.locked .ai-score-card,
 .result.locked #tiles, .result.locked #risk, .result.locked #techCard, .result.locked #bandsCard,
-.result.locked #thesisCard, .result.locked #levelsCard, .result.locked #fundCard, .result.locked #newsCard,
+.result.locked #thesisCard, .result.locked #levelsCard, .result.locked #fbCard, .result.locked #fundCard, .result.locked #newsCard,
 .result.locked .sidebar { display: none; }
 .result.locked .ov[data-k="fast"], .result.locked .ov[data-k="slow"],
 .result.locked .ov[data-k="proj"], .result.locked .ov[data-k="levels"] { display: none; }
@@ -2500,3 +2500,23 @@ main.app { min-height: 100vh; min-height: 100svh; }
 /* A stock page before its chart has loaded: keep the space the chart and its
    sign-in card or reading will take, so nothing below shifts when it lands. */
 .result.hidden.pre { display: block; visibility: hidden; min-height: 900px; }
+
+/* Feedback prompt after the fifth reading. */
+.fb-rate { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0 14px; }
+.fb-end { font-size: 12px; color: var(--muted); }
+.fb-n { font-family: var(--font-num); font-size: 14px; min-width: 40px; min-height: 40px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong); background: none; color: var(--text); cursor: pointer; }
+.fb-n:hover { border-color: var(--text); }
+.fb-n[aria-checked="true"] { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.fb-lbl { display: block; font-size: 13px; color: var(--text); margin: 0 0 6px; }
+.fb-lbl .sub { color: var(--muted); font-size: 12px; margin-left: 4px; }
+.fb-body { width: 100%; resize: vertical; min-height: 72px; font: inherit; }
+.fb-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); margin: 12px 0; cursor: pointer; }
+.fb-name { margin-bottom: 12px; }
+.fb-name .input { width: 100%; }
+.fb-btns { display: flex; gap: 8px; }
+.fb-msg { font-size: 13px; color: var(--muted); margin-top: 10px; }
+.fb-msg:empty { display: none; }
+#fbCard .input { text-transform: none; letter-spacing: normal; font-size: 15px; }
+.fb-rate { flex-wrap: nowrap; gap: 4px; }
+.fb-n { min-width: 36px; flex: 0 0 auto; }
+@media (max-width: 360px) { .fb-end { display: none; } }
