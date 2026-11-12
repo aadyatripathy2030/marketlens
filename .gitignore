@@ -2,3 +2,5 @@ node_modules/
 .env
 .DS_Store
 tools/.for-resolve-bin
+# audit reports: may describe unfixed weaknesses, keep out of the public repo
+*-report*.md

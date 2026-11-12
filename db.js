@@ -117,6 +117,16 @@ async function init() {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_count INTEGER NOT NULL DEFAULT 0');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_best INTEGER NOT NULL DEFAULT 0');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_day TEXT');
+      // Streak saver. streak_lost is a run that broke by exactly one missed
+      // session, recoverable on streak_lost_day by finishing a lesson;
+      // streak_repair_at limits that to once a week. streak_mail turns the
+      // reminder emails off; streak_nudge is the last one sent (kind:day), so
+      // a restart or a second instance cannot send the same one twice.
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_lost INTEGER');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_lost_day TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_repair_at BIGINT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_mail BOOLEAN NOT NULL DEFAULT TRUE');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_nudge TEXT');
 
       // Risk limits the user sets, applied to paper trades and shown against
       // real positions. Percentages of account value.
@@ -351,16 +361,50 @@ async function listFills(uid, limit) {
 async function getStreak(uid) {
   const u = await getUserById(uid);
   if (!u) return null;
-  return { count: u.streak_count || 0, best: u.streak_best || 0, day: u.streak_day || null };
+  return { count: u.streak_count || 0, best: u.streak_best || 0, day: u.streak_day || null,
+    lost: u.streak_lost || 0, lostDay: u.streak_lost_day || null, repairAt: Number(u.streak_repair_at) || 0,
+    mail: u.streak_mail !== false };
 }
-async function saveStreak(uid, count, best, day) {
+// extra: { lost, lostDay, repairAt } when the saver's fields change too.
+async function saveStreak(uid, count, best, day, extra) {
+  const x = extra || null;
   if (mode === 'postgres') {
-    await pool.query('UPDATE users SET streak_count=$2, streak_best=$3, streak_day=$4 WHERE id=$1',
-      [uid, count, best, day]);
+    if (x) await pool.query('UPDATE users SET streak_count=$2, streak_best=$3, streak_day=$4, streak_lost=$5, streak_lost_day=$6, streak_repair_at=COALESCE($7, streak_repair_at) WHERE id=$1',
+      [uid, count, best, day, x.lost || null, x.lostDay || null, x.repairAt || null]);
+    else await pool.query('UPDATE users SET streak_count=$2, streak_best=$3, streak_day=$4 WHERE id=$1', [uid, count, best, day]);
   } else {
     const u = mem.users.get(uid);
-    if (u) { u.streak_count = count; u.streak_best = best; u.streak_day = day; }
+    if (u) {
+      u.streak_count = count; u.streak_best = best; u.streak_day = day;
+      if (x) { u.streak_lost = x.lost || null; u.streak_lost_day = x.lostDay || null; if (x.repairAt) u.streak_repair_at = x.repairAt; }
+    }
   }
+}
+async function setStreakMail(uid, on) {
+  if (mode === 'postgres') { await pool.query('UPDATE users SET streak_mail=$2 WHERE id=$1', [uid, !!on]); return; }
+  const u = mem.users.get(uid); if (u) u.streak_mail = !!on;
+}
+// Accounts whose run was last extended on one of the given days, with
+// reminders on and a confirmed address. Two sessions or more: a one-day
+// "streak" is not worth an email.
+async function streakCandidates(days, limit) {
+  if (mode === 'postgres') {
+    const r = await pool.query(`SELECT id, email, streak_count, streak_best, streak_day, streak_repair_at, streak_nudge FROM users
+      WHERE streak_day = ANY($1) AND streak_count >= 2 AND streak_mail AND email_verified ORDER BY streak_count DESC LIMIT $2`, [days, limit]);
+    return r.rows;
+  }
+  return [...mem.users.values()].filter(u => days.includes(u.streak_day) && (u.streak_count || 0) >= 2 && u.streak_mail !== false && u.email_verified !== false)
+    .sort((a, b) => b.streak_count - a.streak_count).slice(0, limit);
+}
+// Claims a reminder before it is sent: true only for the first caller with
+// this key, so the same email never goes out twice.
+async function claimStreakNudge(uid, key) {
+  if (mode === 'postgres') {
+    const r = await pool.query('UPDATE users SET streak_nudge=$2 WHERE id=$1 AND streak_nudge IS DISTINCT FROM $2 RETURNING id', [uid, key]);
+    return r.rowCount > 0;
+  }
+  const u = mem.users.get(uid); if (!u || u.streak_nudge === key) return false;
+  u.streak_nudge = key; return true;
 }
 
 // ---- Google-linked accounts ----
@@ -489,6 +533,10 @@ async function peekToken(raw, kind) {
   if (!rec || Number(rec.expires) < Date.now()) return null;
   return rec.uid;
 }
+async function deleteTokens(uid, kind) {
+  if (mode === 'postgres') return void await pool.query('DELETE FROM email_tokens WHERE uid=$1 AND kind=$2', [uid, kind]);
+  for (const [h, t] of mem.etokens) if (t.uid === uid && (t.kind || 'verify') === kind) mem.etokens.delete(h);
+}
 async function markVerified(uid) {
   if (mode === 'postgres') {
     await pool.query('UPDATE users SET email_verified=TRUE WHERE id=$1', [uid]);
@@ -501,10 +549,60 @@ async function markVerified(uid) {
 // For a sign-up over an address that is registered but never confirmed: the
 // new password replaces the old, so whoever can open the inbox ends up with
 // the account rather than whoever typed the address first.
+// Only while the address is still unconfirmed: a confirm landing between the
+// caller's read and this write must not have its password replaced. Returns
+// false when the account had been confirmed in the meantime.
 async function setPassword(uid, pw) {
   const hashed = await hashPw(pw);
-  if (mode === 'postgres') { await pool.query('UPDATE users SET pw=$1 WHERE id=$2', [hashed, uid]); return; }
-  const u = mem.users.get(uid); if (u) u.pw = hashed;
+  if (mode === 'postgres') {
+    const r = await pool.query('UPDATE users SET pw=$1 WHERE id=$2 AND email_verified=FALSE RETURNING id', [hashed, uid]);
+    return r.rowCount > 0;
+  }
+  const u = mem.users.get(uid); if (!u || u.email_verified !== false) return false;
+  u.pw = hashed; return true;
+}
+
+// ---- Serialising work on one key ----
+// Check-then-act sequences that await other services in between (Stripe,
+// price feeds) run one at a time per key. In Postgres the lock is an advisory
+// lock, so it also holds across instances (deploy overlap); in memory it is a
+// promise chain. The lock is held on its own client and released in finally.
+const memLocks = new Map();
+// Each held lock occupies a pool client while its work needs others, so at
+// most LOCK_SLOTS are held at once; the rest queue here rather than drain the
+// pool (10 clients) and stall every request.
+const LOCK_SLOTS = 4;
+let lockHeld = 0; const lockQueue = [];
+async function lockSlot() {
+  if (lockHeld < LOCK_SLOTS) { lockHeld++; return; }
+  await new Promise(r => lockQueue.push(r));   // the slot is handed over, not re-counted
+}
+function lockSlotFree() { const next = lockQueue.shift(); if (next) next(); else lockHeld--; }
+async function withLock(key, fn) {
+  if (mode === 'postgres') {
+    await lockSlot();
+    try { return await withPgLock(key, fn); } finally { lockSlotFree(); }
+  }
+  return withMemLock(key, fn);
+}
+async function withPgLock(key, fn) {
+  {
+    const c = await pool.connect();
+    try {
+      await c.query('SELECT pg_advisory_lock(hashtext($1))', [key]);
+      try { return await fn(); }
+      finally { await c.query('SELECT pg_advisory_unlock(hashtext($1))', [key]).catch(() => {}); }
+    } finally { c.release(); }
+  }
+}
+async function withMemLock(key, fn) {
+  const prev = memLocks.get(key) || Promise.resolve();
+  let done; const mine = new Promise(r => { done = r; });
+  const tail = prev.then(() => mine);
+  memLocks.set(key, tail);
+  await prev;
+  try { return await fn(); }
+  finally { done(); if (memLocks.get(key) === tail) memLocks.delete(key); }
 }
 
 // ---- sign-in codes ----
@@ -744,8 +842,12 @@ async function makeAffiliate(uid) {
   for (let i = 0; i < 5; i++) {
     const code = newAffiliateCode();
     if (await getUserByAffiliateCode(code)) continue;
-    if (mode === 'postgres') await pool.query('UPDATE users SET affiliate_code=$2, affiliate_since=$3 WHERE id=$1', [uid, code, Date.now()]);
-    else { u.affiliate_code = code; u.affiliate_since = Date.now(); }
+    if (mode === 'postgres') {
+      // Only if none was given in the meantime (a double click), so the code
+      // already emailed stays the one that works.
+      const r = await pool.query('UPDATE users SET affiliate_code=$2, affiliate_since=$3 WHERE id=$1 AND affiliate_code IS NULL RETURNING affiliate_code', [uid, code, Date.now()]);
+      if (!r.rowCount) { const now = await getUserById(uid); return now ? now.affiliate_code : null; }
+    } else { if (u.affiliate_code) return u.affiliate_code; u.affiliate_code = code; u.affiliate_since = Date.now(); }
     return code;
   }
   throw new Error('could not allot an affiliate code');
@@ -959,6 +1061,23 @@ async function listSubscribers() {
   if (mode === 'postgres') { const r = await pool.query("SELECT id, email, plan, stripe_customer, stripe_sub FROM users WHERE stripe_sub IS NOT NULL"); return r.rows; }
   return [...mem.users.values()].filter(u => u.stripe_sub);
 }
+// Pro, leaving the Stripe columns alone: for paths that only re-assert the
+// plan and must not write back a subscription id they read earlier.
+async function setPlanPro(uid) {
+  if (mode === 'postgres') { await pool.query("UPDATE users SET plan='pro' WHERE id=$1", [uid]); return; }
+  const u = mem.users.get(uid); if (u) u.plan = 'pro';
+}
+// Points the row at a subscription only if it still holds the one the caller
+// read; false means another event moved it first and the caller re-decides.
+async function setProIf(uid, customer, sub, expectedSub) {
+  if (mode === 'postgres') {
+    const r = await pool.query("UPDATE users SET plan='pro', stripe_customer=$2, stripe_sub=$3 WHERE id=$1 AND stripe_sub IS NOT DISTINCT FROM $4 RETURNING id",
+      [uid, customer || null, sub || null, expectedSub || null]);
+    return r.rowCount > 0;
+  }
+  const u = mem.users.get(uid); if (!u || (u.stripe_sub || null) !== (expectedSub || null)) return false;
+  u.plan = 'pro'; u.stripe_customer = customer; u.stripe_sub = sub; return true;
+}
 async function setFree(uid) {
   if (mode === 'postgres') await pool.query("UPDATE users SET plan='free' WHERE id=$1", [uid]);
   else { const u = mem.users.get(uid); if (u) u.plan = 'free'; }
@@ -1022,6 +1141,31 @@ async function bumpUsage(k, kind, limit) {
   // Memory mode has no eviction elsewhere; drop yesterday's keys as we go.
   if (mem.usage.size > 5000) for (const kk of mem.usage.keys()) if (!kk.endsWith('|' + day)) mem.usage.delete(kk);
   return { n, remaining: Math.max(0, limit - n), over: n > limit };
+}
+
+// Takes one unit of today's allowance only if one is left, in one statement,
+// so parallel requests cannot all see room and all go ahead. False = none left.
+async function reserveUsage(k, kind, limit) {
+  const day = usageDay();
+  if (mode === 'postgres') {
+    const r = await pool.query(
+      `INSERT INTO usage_daily (k, kind, day, n) VALUES ($1, $2, $3, 1)
+       ON CONFLICT (k, kind, day) DO UPDATE SET n = usage_daily.n + 1 WHERE usage_daily.n < $4 RETURNING n`,
+      [k, kind, day, limit]);
+    return r.rowCount > 0;
+  }
+  const key = k + '|' + kind + '|' + day;
+  const n = mem.usage.get(key) || 0;
+  if (n >= limit) return false;
+  mem.usage.set(key, n + 1);
+  return true;
+}
+// Gives a reserved unit back when the work it paid for did not happen.
+async function releaseUsage(k, kind) {
+  const day = usageDay();
+  if (mode === 'postgres') { await pool.query('UPDATE usage_daily SET n = n - 1 WHERE k=$1 AND kind=$2 AND day=$3 AND n > 0', [k, kind, day]); return; }
+  const key = k + '|' + kind + '|' + day;
+  const n = mem.usage.get(key) || 0; if (n > 0) mem.usage.set(key, n - 1);
 }
 
 async function peekUsage(k, kind) {
@@ -1126,7 +1270,7 @@ module.exports = {
   init, storeMode, hasUrl, lastError, verifyPw,
   createUser, getUserByEmail, getUserById,
   createSession, getSessionUser, deleteSession, deleteUserSessions, purgeExpiredSessions, DUMMY_PW,
-  createVerifyToken, consumeVerifyToken, peekToken, markVerified, setPassword,
+  createVerifyToken, consumeVerifyToken, peekToken, markVerified, deleteTokens, setPassword, withLock, setStreakMail, streakCandidates, claimStreakNudge, setPlanPro, setProIf, reserveUsage, releaseUsage,
   makeAffiliate, dropAffiliate, getUserByAffiliateCode, setReferrer, countReferrals,
   affiliateInfo, listAffiliates, getPayout, savePayout, payoutSummary,
   confirmAdult, findByStripeCustomer, setFirstPaid, addLedger, ledgerByRef, ledgerGroupSum, ledgerTotals, ledgerRows,

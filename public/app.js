@@ -2652,6 +2652,8 @@
     authResolved = true;
     renderAcct();
     renderAffiliate();
+    renderStreakSaver();
+    renderStreakMail();
     $('watchBtn').classList.toggle('hidden', !currentUser);
     renderLaunchBar();
     const dz = $('dangerZone');
@@ -2981,7 +2983,7 @@
   });
   async function logout() {
     try { await fetch('/api/auth/logout', { method: 'POST' }); } catch {}
-    currentUser = null; affiliateInfo = null; watchSymbols = []; renderAcct(); renderAffiliate(); renderWatchStrip();
+    currentUser = null; affiliateInfo = null; watchSymbols = []; currentStreak = null; renderAcct(); renderAffiliate(); renderWatchStrip(); renderStreakSaver(); renderStreakMail();
     $('watchBtn').classList.add('hidden');
     // Whatever is on screen was drawn for an account. Draw it again for a
     // visitor: the chart loses its reading, the data pages get the wall.
@@ -3038,7 +3040,8 @@
   // ---- Views (Home / Analyze / Markets / Watchlist) ----
   let currentView = 'home';
   const VIEWS = ['home', 'analyze', 'compare', 'screener', 'markets', 'movers', 'watchlist', 'alerts', 'practice', 'learn', 'settings', 'pricing', 'admin', 'legal', 'verify'];
-  const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact', 'affiliate-terms', 'accessibility', 'security', 'copyright'];
+  const LEGAL_PATHS = ['terms', 'privacy', 'refunds', 'contact', 'affiliate-terms', 'accessibility', 'security', 'copyright',
+    'ai-chart-analysis', 'best-ai-trading-apps', 'chartgauge-vs-trendspider', 'chartgauge-vs-trade-ideas', 'tradingview-alternative'];
   // Each view has a real URL now, so navigation updates the address bar and
   // the back button works. pushUrl is skipped when we are *reacting* to a URL
   // (initial load, popstate) to avoid pushing a duplicate entry.
@@ -3102,7 +3105,7 @@
     hideWall(name);
     if (name === 'markets') { loadMarkets(); loadRanked(); }
     if (name === 'movers') loadMovers();
-    if (name === 'settings') renderSettings();
+    if (name === 'settings') { renderSettings(); renderStreakMail(); }
     if (name === 'watchlist') renderWatchView();
     if (name === 'learn') renderLearnGrid();
     if (name === 'compare') { renderCompareChips(); if (compareSymbols.length >= 2 && !$('compareResult').innerHTML) loadCompare(); }
@@ -3952,7 +3955,7 @@
       if (!confirm(`Record that you have paid ${b.dataset.email} ${usd(owed)}?\n\nSend the money first, from your bank or PayPal, then confirm. This only writes it down.`)) return;
       b.disabled = true;
       let r;
-      try { r = await (await fetch('/api/admin/affiliate/pay', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: b.dataset.email }) })).json(); }
+      try { r = await (await fetch('/api/admin/affiliate/pay', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: b.dataset.email, amount: owed / 100 }) })).json(); }
       catch { r = { error: 'Couldn’t reach the server.' }; }
       adminAffNote = r.error ? r.error : `Recorded ${usd(r.paid)} paid to ${r.email}. Balance is now ${usd(r.totals.owed)}.`;
       await loadAdmin();
@@ -4231,9 +4234,61 @@
     $('learnBack').addEventListener('click', renderLearnGrid);
     renderQuiz(l);
   }
+  // A finished lesson counts as today's visit and, the day after a missed
+  // session, brings the old streak back. The server grades the answers.
+  async function saveStreakWithLesson(l, score) {
+    if (!currentUser) return;
+    let j;
+    try {
+      j = await (await fetch('/api/streak/lesson', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lesson: l.id, answers: score.answers }) })).json();
+    } catch (e) { return; }
+    if (!j || !j.streak) return;
+    currentStreak = j.streak; renderAcct(); renderStreakSaver();
+    const s = $('quizScore');
+    if (!s) return;
+    const note = j.restored
+      ? `Streak saved. You are back on ${j.restored} trading days in a row.`
+      : (j.passed === false && currentStreak.repair)
+        ? `Get at least half right to save your streak. Try the quiz again, or pick another lesson.`
+        : '';
+    if (note) s.insertAdjacentHTML('afterbegin', `<div class="quiz-streak">${esc(note)}</div>`);
+  }
+  // The bar under the header the day after a missed session.
+  function renderStreakSaver() {
+    const el = $('streakSave');
+    if (!el) return;
+    const r = currentUser && currentStreak && currentStreak.repair;
+    let off = false; try { off = sessionStorage.getItem('streakSaveOff') === '1'; } catch (e) {}
+    if (!r || off) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+    el.innerHTML = `<span>You missed the last session. Finish one lesson today to get your ${r.count}-day streak back.</span>`
+      + `<a class="btn btn-primary" href="/learn" id="streakSaveGo">Pick a lesson</a>`
+      + `<button type="button" class="link-btn" id="streakSaveX" aria-label="Hide this">Not now</button>`;
+    el.classList.remove('hidden');
+    $('streakSaveGo').addEventListener('click', (e) => { e.preventDefault(); showView('learn'); });
+    $('streakSaveX').addEventListener('click', () => { try { sessionStorage.setItem('streakSaveOff', '1'); } catch (e) {} renderStreakSaver(); });
+  }
+  function renderStreakMail() {
+    const el = $('streakMailCard');
+    if (!el) return;
+    if (!currentUser || !currentStreak) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+    const on = currentStreak.mail !== false;
+    el.innerHTML = `<h2 class="set-mail-h">Streak reminders</h2>`
+      + `<label class="set-mail-row"><input type="checkbox" id="streakMailOn"${on ? ' checked' : ''} />`
+      + `<span>Email me after the close if my streak is still open that day, and the next day if a lesson can save it. At most one a day.</span></label>`;
+    el.classList.remove('hidden');
+    $('streakMailOn').addEventListener('change', async (e) => {
+      const want = e.target.checked;
+      try {
+        const r = await fetch('/api/streak/mail', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: want }) });
+        if (!r.ok) throw new Error();
+        currentStreak.mail = want;
+      } catch (err) { e.target.checked = !want; }
+    });
+  }
   function renderQuiz(l) {
     const host = $('quiz');
-    const score = { right: 0, done: 0 };
+    const score = { right: 0, done: 0, answers: [] };
     host.innerHTML = `<div class="quiz-h">Quick quiz</div>` + l.quiz.map((q, qi) =>
       `<div class="quiz-q" data-qi="${qi}"><div class="quiz-question">${qi + 1}. ${esc(q.q)}</div><div class="quiz-opts">${q.options.map((o, oi) => `<button type="button" class="quiz-opt" data-qi="${qi}" data-oi="${oi}">${esc(o)}</button>`).join('')}</div><div class="quiz-why hidden" data-why="${qi}"></div></div>`).join('') + `<div class="quiz-score hidden" id="quizScore"></div>`;
     host.querySelectorAll('.quiz-opt').forEach(btn => btn.addEventListener('click', () => {
@@ -4244,7 +4299,7 @@
       qEl.querySelectorAll('.quiz-opt').forEach((b, i) => { if (i === q.correct) b.classList.add('correct'); else if (i === oi) b.classList.add('wrong'); b.disabled = true; });
       const why = host.querySelector(`[data-why="${qi}"]`);
       why.textContent = (oi === q.correct ? '✓ Correct. ' : '✗ Not quite. ') + q.why; why.classList.remove('hidden');
-      score.done++; if (oi === q.correct) score.right++;
+      score.done++; if (oi === q.correct) score.right++; score.answers[qi] = oi;
       if (score.done === l.quiz.length) finishQuiz(l, score);
     }));
   }
@@ -4271,6 +4326,7 @@
         : `<div class="quiz-next-wrap"><div class="quiz-next-label">That is the last lesson in this track.</div>`
           + `<button type="button" class="btn btn-ghost" id="quizAll">Back to all lessons</button></div>`);
     s.classList.remove('hidden');
+    saveStreakWithLesson(l, score);
     if ($('quizNext')) $('quizNext').addEventListener('click', () => {
       try { history.pushState({ view: 'learn' }, '', '/learn/' + next.id); } catch (e) {}
       openLesson(next.id);
@@ -4344,6 +4400,9 @@
       if (v === 'ok') {
         showConfirmed();
         window.setTimeout(resumePlan, 1500);
+      } else if (v === 'signin') {
+        $('authErr').textContent = 'Your address is confirmed. Sign in to continue.';
+        $('authErr').classList.remove('hidden');
       } else {
         $('authErr').textContent = 'That confirmation link has expired or was already used. Sign in to get a new one.';
         $('authErr').classList.remove('hidden');

@@ -136,7 +136,7 @@ const buildPrivacy = () => h('Privacy Policy', [
       '<strong>Google Analytics</strong>: page views and general usage, to see which parts of the site get used. Only after you accept the cookie banner; if you decline, nothing is sent to Google.',
       '<strong>Google (sign-in)</strong>: only if you choose "Continue with Google". You sign in on Google\u2019s own page; ' + SITE + ' never sees your Google password. ' + SITE + ' asks Google for two things: your email address and your account identifier. Nothing else is requested, and nothing is written back to your Google account.',
       '<strong>Render</strong>: the hosting provider, which processes requests and stores the database.',
-      ...(MAIL_ON ? ['<strong>Resend</strong>: your email address, to deliver the confirmation link when you create an account and the code at each sign-in.'] : []),
+      ...(MAIL_ON ? ['<strong>Resend</strong>: your email address, to deliver the confirmation link when you create an account, the code at each sign-in, and streak reminders. Streak reminders are at most one a day, only while you have a streak of two or more trading days, and can be turned off from a link in each one or in Settings.'] : []),
     ]),
     `Your data is not sold, and is not shared with advertisers or data brokers.`),
 
@@ -212,7 +212,8 @@ const AFF_MONTHS = CFG.AFFILIATE_MONTHS;
 const AFF_MIN = CFG.AFFILIATE_MIN_PAYOUT;
 const buildAffiliateTerms = () => h('Affiliate Terms', [
   s('Who this is for',
-    `The ${SITE} affiliate programme is by invitation. An account becomes an affiliate when ${SITE} marks it as one, at which point it receives a referral link of its own and the terms below apply. Accepting the link, sharing it, or entering payout details counts as agreeing to them.`),
+    `The ${SITE} affiliate program is by invitation. An account becomes an affiliate when ${SITE} marks it as one, at which point it receives a referral link of its own and the terms below apply. Accepting the link, sharing it, or entering payout details counts as agreeing to them.`,
+    `<strong>To ask to join</strong>, email <a href="mailto:${esc(CONTACT_EMAIL)}">${esc(CONTACT_EMAIL)}</a> with where you publish: a site, a newsletter, a YouTube or social channel, or a roundup of trading apps. Reviewers get a free Pro account to test with.`),
 
   s('What you get',
     ul([

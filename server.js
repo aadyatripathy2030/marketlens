@@ -33,7 +33,12 @@ const FINNHUB_API_KEY = (process.env.FINNHUB_API_KEY || '').replace(/\s/g, ''); 
 // instead of sending it, for working on the flow locally.
 const RESEND_API_KEY = (process.env.RESEND_API_KEY || '').replace(/\s/g, '');
 const MAIL_FROM = (process.env.MAIL_FROM || 'ChartGauge <noreply@chartgauge.com>').trim();
-const MAIL_TRANSPORT = (process.env.MAIL_TRANSPORT || (RESEND_API_KEY ? 'resend' : 'off')).trim().toLowerCase();
+// Local-test switches (MAIL_TRANSPORT=log prints sign-in codes to the log,
+// STRIPE_API_HOST points billing at a stub) are ignored in production.
+const IS_PROD = !!process.env.RENDER || process.env.NODE_ENV === 'production';
+const MAIL_TRANSPORT_RAW = (process.env.MAIL_TRANSPORT || (RESEND_API_KEY ? 'resend' : 'off')).trim().toLowerCase();
+const MAIL_TRANSPORT = (IS_PROD && MAIL_TRANSPORT_RAW === 'log') ? (RESEND_API_KEY ? 'resend' : 'off') : MAIL_TRANSPORT_RAW;
+if (MAIL_TRANSPORT !== MAIL_TRANSPORT_RAW) console.warn('MAIL_TRANSPORT=log ignored in production');
 const mailEnabled = () => MAIL_TRANSPORT === 'resend' || MAIL_TRANSPORT === 'log';
 if (!mailEnabled()) console.log('email: off (set RESEND_API_KEY to require a confirmed address; until then accounts are created confirmed)');
 // Affiliate programme. PAYOUT_KEY encrypts the payout details an affiliate
@@ -107,7 +112,11 @@ const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || 'atriuminstitutereal@gmail.com
 // that inbox, so an account whose email is still unconfirmed gets neither
 // admin nor complimentary Pro. Session users carry `verified`, rows from the
 // users table carry `email_verified`; either being false is enough to refuse.
-const emailConfirmed = (u) => !!u && u.email_verified !== false && u.verified !== false;
+// With mail off, sign-ups are created already confirmed, so in production
+// nothing is treated as confirmed for admin or comp Pro: an address on the
+// lists below could otherwise be claimed by whoever signs up with it first.
+const emailConfirmed = (u) => !!u && u.email_verified !== false && u.verified !== false
+  && !(IS_PROD && !mailEnabled());
 const isAdmin = (u) => !!(u && emailConfirmed(u) && ADMIN_EMAILS.includes(String(u.email || '').toLowerCase()));
 // Accounts that get Pro without paying — the operator's own, and anyone else
 // listed. Held here rather than written into the users table so it survives a
@@ -761,18 +770,20 @@ async function handleAnalyzeStream(req, res) {
   }
   const { pro, key } = await plan(req);
   let streamModel = AI_MODEL;
+  const slot = await aiSlot(res, key, pro ? 'ai_pro' : 'ai', pro ? PRO_AI_DAILY : AI_FREE_DAILY);
   if (!pro) {
-    if (!(await aiSlot(res, key, 'ai', AI_FREE_DAILY))) {
+    if (!slot) {
       send({ t: 'done', ...ruleBasedReport(p), source: 'rule', limited: true, note: aiLimitNote() });
       return res.end();
     }
     streamModel = AI_MODEL_FREE;
-  } else if (!(await aiSlot(res, key, 'ai_pro', PRO_AI_DAILY))) {
+  } else if (!slot) {
     send({ t: 'done', ...ruleBasedReport(p), source: 'rule', limited: true, note: proCapNote() });
     return res.end();
   }
-  // Counted once the report actually parses; a stream that dies is not charged.
-  const chargeStream = async () => { try { await db.bumpUsage(key, pro ? 'ai_pro' : 'ai', pro ? PRO_AI_DAILY : AI_FREE_DAILY); } catch (e) {} };
+  // Kept only once the report actually parses; a stream that dies is refunded.
+  let charged = false;
+  const chargeStream = async () => { charged = true; };
   const { system, user } = reportPrompt(p);
   const body = JSON.stringify({ model: streamModel, max_tokens: 1000, stream: true, system, messages: [{ role: 'user', content: user }] });
   let full = '', sent = 0, sse = '';
@@ -814,9 +825,10 @@ async function handleAnalyzeStream(req, res) {
         note: 'Claude’s reply was cut short, so the bull and bear points below are the rule-based ones.' });
     } else {
       send({ t: 'done', ...rb, source: 'rule',
-        note: 'Claude was unreachable (' + e.message + '); this is the rule-based report.' });
+        note: aiFallbackNote(e, 'stream') });
     }
   }
+  if (!charged) await slot.refund();
   res.end();
 }
 
@@ -829,22 +841,18 @@ function aiFallbackNote(e, where) {
   const bug = e instanceof TypeError || e instanceof ReferenceError || e instanceof SyntaxError;
   return bug
     ? 'The AI report could not be built; this is the rule-based report.'
-    : 'Claude was unreachable (' + (e && e.message ? e.message : 'unknown') + '); this is the rule-based report.';
+    : 'Claude could not be reached just now; this is the rule-based report.';
 }
 
-// Requests already running count against the day's allowance, so firing ten
-// at once cannot spend more than the limit (usage is only charged once a
-// report succeeds). Single process, so a Map is the whole story.
-const aiInflight = new Map();
+// One unit of the day's allowance is taken before the model is called, in a
+// single database statement, so parallel requests (or a client that aborts
+// and retries) cannot all see room and all go ahead. It is given back with
+// refund() when no report came of it. Null means none left today.
 async function aiSlot(res, key, kind, limit) {
-  const k = key + '|' + kind;
-  aiInflight.set(k, (aiInflight.get(k) || 0) + 1);   // taken before the await: no gap to race through
-  let released = false;
-  const release = () => { if (released) return; released = true; const v = (aiInflight.get(k) || 1) - 1; if (v > 0) aiInflight.set(k, v); else aiInflight.delete(k); };
-  const used = await db.peekUsage(key, kind).catch(() => 0);
-  if (used + aiInflight.get(k) > limit) { release(); return false; }
-  res.on('close', release);
-  return true;
+  const ok = await db.reserveUsage(key, kind, limit).catch((e) => { logError(e); return false; });
+  if (!ok) return null;
+  let back = false;
+  return { refund: () => { if (back) return; back = true; return db.releaseUsage(key, kind).catch(logError); } };
 }
 
 async function handleAnalyze(req, res) {
@@ -853,22 +861,22 @@ async function handleAnalyze(req, res) {
   if (ANTHROPIC_API_KEY) {
     const { pro, key } = await plan(req);
     let model = AI_MODEL;
+    // Taken before the call and refunded if it fails, so a failed request
+    // does not spend one of the day's reports.
+    const slot = await aiSlot(res, key, pro ? 'ai_pro' : 'ai', pro ? PRO_AI_DAILY : AI_FREE_DAILY);
     if (!pro) {
-      // Checked before the call and counted only after it succeeds, so a
-      // failed request does not spend one of the day's reports.
-      if (!(await aiSlot(res, key, 'ai', AI_FREE_DAILY))) {
+      if (!slot) {
         return json(res, 200, { ...ruleBasedReport(p), source: 'rule', limited: true, note: aiLimitNote() });
       }
       model = AI_MODEL_FREE;
-    } else if (!(await aiSlot(res, key, 'ai_pro', PRO_AI_DAILY))) {
+    } else if (!slot) {
       return json(res, 200, { ...ruleBasedReport(p), source: 'rule', limited: true, note: proCapNote() });
     }
     try {
       const rep = await callClaudeReport(p, model);
       if (!rep.summary) throw new Error('empty AI report');
-      await db.bumpUsage(key, pro ? 'ai_pro' : 'ai', pro ? PRO_AI_DAILY : AI_FREE_DAILY);
       return json(res, 200, { ...rep, source: 'ai' });
-    } catch (e) { return json(res, 200, { ...ruleBasedReport(p), source: 'rule', note: aiFallbackNote(e, 'analyze') }); }
+    } catch (e) { await slot.refund(); return json(res, 200, { ...ruleBasedReport(p), source: 'rule', note: aiFallbackNote(e, 'analyze') }); }
   }
   return json(res, 200, { ...ruleBasedReport(p), source: 'rule', note: 'Set ANTHROPIC_API_KEY for an AI-written report.' });
 }
@@ -890,12 +898,17 @@ async function callClaudeVision(base64, mediaType) {
   if (!text) throw new Error(j && j.error ? (j.error.message || 'AI error') : 'No AI response');
   return text.trim();
 }
+function sniffImage(b) {
+  if (b.length < 12) return null;
+  if (b[0] === 0x89 && b.toString('latin1', 1, 4) === 'PNG') return 'image/png';
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+  if (b.toString('latin1', 0, 4) === 'GIF8') return 'image/gif';
+  if (b.toString('latin1', 0, 4) === 'RIFF' && b.toString('latin1', 8, 12) === 'WEBP') return 'image/webp';
+  return null;
+}
 async function handleAnalyzeImage(req, res) {
   const { pro, key } = await plan(req);
   if (!pro) return json(res, 402, PRO_ONLY('Reading a chart image'));
-  if (!(await aiSlot(res, key, 'image', PRO_IMAGE_DAILY))) {
-    return json(res, 429, { error: `That is today's ${PRO_IMAGE_DAILY} chart images, the daily ceiling. The count resets tomorrow.` });
-  }
   const p = await readBody(req, 8e6); // allow up to ~8MB base64 payloads
   const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
   if (!p || !p.image || !allowed.includes(p.mediaType)) {
@@ -907,15 +920,20 @@ async function handleAnalyzeImage(req, res) {
     return json(res, 200, { source: 'none',
       summary: 'Image analysis needs Claude vision. Set ANTHROPIC_API_KEY on the server to analyze uploaded charts. (Stock analysis above works without a key.)' });
   }
-  if (typeof p.image !== 'string' || !/^[A-Za-z0-9+/=\s]+$/.test(p.image.slice(0, 2000))) {
+  if (typeof p.image !== 'string' || !/^[A-Za-z0-9+/=\s]+$/.test(p.image)) {
     return json(res, 400, { error: 'Upload a PNG, JPEG, GIF, or WebP image.' });
   }
+  // The declared type is the client's word; the first bytes are the file's.
+  const buf = Buffer.from(p.image, 'base64');
+  if (buf.length > 5 * 1024 * 1024) return json(res, 413, { error: 'Image too large. Please use one under 5 MB.' });
+  if (sniffImage(buf) !== p.mediaType) return json(res, 400, { error: 'Upload a PNG, JPEG, GIF, or WebP image.' });
+  const slot = await aiSlot(res, key, 'image', PRO_IMAGE_DAILY);
+  if (!slot) return json(res, 429, { error: `That is today's ${PRO_IMAGE_DAILY} chart images, the daily ceiling. The count resets tomorrow.` });
   try {
     const summary = await callClaudeVision(p.image, p.mediaType);
-    await db.bumpUsage(key, 'image', PRO_IMAGE_DAILY).catch(() => {});
     return json(res, 200, { summary, source: 'ai' });
   }
-  catch (e) { logError(e); return json(res, 200, { source: 'error', summary: 'Could not analyze the image. Try again in a minute.' }); }
+  catch (e) { logError(e); await slot.refund(); return json(res, 200, { source: 'error', summary: 'Could not analyze the image. Try again in a minute.' }); }
 }
 
 // ---- Streak ----
@@ -941,18 +959,38 @@ function nextStreak(prev, day) {
   return { count: 1, day, changed: true };                                     // missed a session
 }
 // Best effort: a streak is a nicety and must never fail the thing it decorates.
+// One account at a time, so a chart load and a lesson repair cannot overwrite
+// each other's result.
 async function bumpStreak(user) {
   if (!user) return null;
-  try {
-    const prev = await db.getStreak(user.id);
-    const day = streakDayFor(new Date());
-    const next = nextStreak(prev, day);
-    const best = Math.max((prev && prev.best) || 0, next.count);
-    if (next.changed || best !== ((prev && prev.best) || 0)) {
-      await db.saveStreak(user.id, next.count, best, next.day);
-    }
-    return { count: next.count, best, day: next.day };
-  } catch (e) { logError(e); return null; }
+  try { return await db.withLock('streak:' + user.id, () => bumpStreakLocked(user.id)); }
+  catch (e) { logError(e); return null; }
+}
+async function bumpStreakLocked(uid) {
+  const prev = await db.getStreak(uid);
+  const day = streakDayFor(new Date());
+  const next = nextStreak(prev, day);
+  const best = Math.max((prev && prev.best) || 0, next.count);
+  // A run that breaks having missed exactly one session is kept aside: a
+  // lesson finished today brings it back (the streak saver).
+  let extra = null;
+  if (next.changed && prev && prev.day && next.count === 1) {
+    const gap = MKT.tradingDaysBetween(prev.day, day);
+    extra = (gap === 2 && prev.count >= 1) ? { lost: prev.count, lostDay: day } : { lost: null, lostDay: null };
+  }
+  if (next.changed || best !== ((prev && prev.best) || 0)) await db.saveStreak(uid, next.count, best, next.day, extra);
+  return { count: next.count, best, day: next.day };
+}
+const STREAK_REPAIR_EVERY = 7 * 86400000;
+// The run a lesson would bring back today, or 0. Either already set aside by
+// bumpStreak, or (nothing done yet today) the run that missed one session.
+function repairable(st, now) {
+  if (!st || !st.day) return 0;
+  if (st.repairAt && (now || Date.now()) - st.repairAt < STREAK_REPAIR_EVERY) return 0;
+  const today = streakDayFor(now ? new Date(now) : new Date());
+  if (st.lost > 0 && st.lostDay === today) return st.lost;
+  if (MKT.tradingDaysBetween(st.day, today) === 2) return st.count;
+  return 0;
 }
 // What to show without touching anything: a run is still alive today if it was
 // extended today or on the previous trading day.
@@ -961,7 +999,161 @@ function streakView(st) {
   const day = streakDayFor(new Date());
   const gap = MKT.tradingDaysBetween(st.day, day);
   const alive = gap <= 1;
-  return { count: alive ? st.count : 0, best: st.best || 0, alive, day: st.day };
+  const r = repairable(st);
+  return { count: alive ? st.count : 0, best: st.best || 0, alive, day: st.day, today: st.day === day,
+    repair: r ? { count: r } : null, mail: st.mail !== false };
+}
+
+// ---- Streak saver ----
+// POST /api/streak/lesson { lesson, answers }: a lesson finished counts as
+// today's activity, and if yesterday's session was the only one missed, it
+// brings the old run back. The quiz is graded here from the same lessons
+// file the page uses, so the repair needs the lesson actually done: every
+// question answered, at least half right.
+async function handleStreakLesson(req, res, u) {
+  const b = await readBody(req);
+  const l = LESSON_INDEX[String(b.lesson || '')];
+  if (!l) return json(res, 400, { error: 'Unknown lesson.' });
+  const answers = Array.isArray(b.answers) ? b.answers : [];
+  if (answers.length !== l.quiz.length) return json(res, 400, { error: 'Answer every question first.' });
+  const right = l.quiz.reduce((n, q, i) => n + (Number(answers[i]) === q.correct ? 1 : 0), 0);
+  if (right * 2 < l.quiz.length) return json(res, 200, { passed: false, right, of: l.quiz.length, streak: streakView(await db.getStreak(u.id)) });
+  let restored = 0;
+  await db.withLock('streak:' + u.id, async () => {
+    const before = await db.getStreak(u.id);
+    const lost = repairable(before);
+    const now = await bumpStreakLocked(u.id);
+    if (lost > 0) {
+      const count = lost + now.count;
+      await db.saveStreak(u.id, count, Math.max(now.best, count), now.day, { lost: null, lostDay: null, repairAt: Date.now() });
+      restored = count;
+    }
+  });
+  return json(res, 200, { passed: true, right, of: l.quiz.length, restored, streak: streakView(await db.getStreak(u.id)) });
+}
+async function handleStreakMail(req, res, u) {
+  const b = await readBody(req);
+  await db.setStreakMail(u.id, !!b.on);
+  return json(res, 200, { ok: true, mail: !!b.on });
+}
+
+// Reminder emails. Sent only with mail on and MAIL_POSTAL_ADDRESS set: they
+// are about using the product rather than the account, so they carry a
+// postal address and a one-click way out (CAN-SPAM). STREAK_MAIL=off stops
+// them. Two kinds, each at most once a day per account:
+//   risk   - after the close on a trading day, to accounts whose run is still
+//            open (extended on the previous session, not yet today);
+//   repair - during the day, to accounts that missed exactly yesterday, while
+//            a lesson can still bring the run back.
+const STREAK_MAIL_ON = (process.env.STREAK_MAIL || 'on') === 'on';
+const STREAK_MAIL_MAX = Number(process.env.STREAK_MAIL_MAX || 80);   // per pass; Resend's free tier is 100 a day
+const etHour = (d) => Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hourCycle: 'h23' }).format(d));
+let unsubKey = process.env.UNSUB_KEY || '';
+async function unsubSecret() {
+  if (unsubKey) return unsubKey;
+  let k = await db.getSetting('unsub_key').catch(() => null);
+  if (!k) { k = crypto.randomBytes(32).toString('hex'); await db.setSetting('unsub_key', k); }
+  return (unsubKey = k);
+}
+const unsubTag = async (uid) => crypto.createHmac('sha256', await unsubSecret()).update('streak-mail:' + uid).digest('hex').slice(0, 32);
+const unsubUrl = async (uid) => `${SITE_ORIGIN || ('http://localhost:' + PORT)}/api/streak/unsubscribe?u=${encodeURIComponent(uid)}&t=${await unsubTag(uid)}`;
+// GET shows a button (link scanners open every URL in an email, so a GET must
+// not change anything); POST, from that button or a mail client's one-click
+// unsubscribe, turns the reminders off.
+async function handleStreakUnsub(req, res) {
+  const q = new URLSearchParams(req.url.split('?')[1] || '');
+  const uid = q.get('u') || '', tag = q.get('t') || '';
+  const want = uid ? await unsubTag(uid) : '';
+  const ok = uid && tag.length === want.length && crypto.timingSafeEqual(Buffer.from(tag), Buffer.from(want));
+  const page = (h, p, form) => {
+    res.writeHead(ok ? 200 : 400, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(`<!doctype html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Streak reminders | ${SITE_NAME}</title><meta name="robots" content="noindex" /><link rel="stylesheet" href="/styles.css" /></head><body class="po-body"><main id="main" class="po-wrap"><div class="po-card"><h1 class="po-h">${esc(h)}</h1><p class="po-p">${esc(p)}</p>${form || ''}<p class="po-p"><a href="/">Back to ChartGauge</a></p></div></main></body></html>`);
+  };
+  if (!ok) return page('This link does not work', 'Sign in and open Settings to change streak reminders.');
+  if (req.method === 'POST') { await db.setStreakMail(uid, false); return page('Streak reminders are off', 'You will not get streak reminder emails. You can turn them back on in Settings.'); }
+  return page('Turn off streak reminders?', 'Account emails, such as sign-in codes, still arrive.',
+    `<form method="post"><button class="btn btn-primary" type="submit">Turn off streak reminders</button></form>`);
+}
+function lessonForDay(day, i) {
+  if (!LESSONS.length) return null;
+  const n = [...String(day)].reduce((a, c) => a + c.charCodeAt(0), i || 0);
+  return LESSONS[n % LESSONS.length];
+}
+// The "risk" email, in one of several kinds so the same words do not arrive
+// every evening. Each is plain about what keeps the run going; none scolds.
+async function streakRiskMail(u, today) {
+  const n = u.streak_count, best = u.streak_best || 0, origin = SITE_ORIGIN || '';
+  const kinds = ['open', 'lesson', 'market'];
+  if (best > n && best - n <= 3) kinds.push('best');
+  const syms = await db.listWatch(u.id).catch(() => []);
+  if (syms && syms.length) kinds.push('watch');
+  const hash = [...(u.id + today)].reduce((a, c) => a + c.charCodeAt(0), 0);
+  const kind = kinds[hash % kinds.length];
+  const until = 'It stays open until midnight Eastern time.';
+  if (kind === 'lesson') {
+    const l = lessonForDay(today, hash);
+    if (l) return { subject: `${l.minutes} minutes keeps your ${n}-day streak going`, title: `Today's lesson: ${l.title}`,
+      intro: `${l.intro} Finishing it counts as today's visit, so your ${n}-day streak carries on.`, button: { label: 'Read the lesson', url: `${origin}/learn/${l.id}` }, outro: until };
+  }
+  if (kind === 'watch') {
+    const sym = syms[hash % syms.length];
+    return { subject: `${sym}: today's reading is in`, title: `How ${sym} closed`,
+      intro: `The market has closed. Open ${sym} from your watchlist to see today's reading, and your ${n}-day streak moves to ${n + 1}.`,
+      button: { label: `Open ${sym}`, url: `${origin}/stock/${encodeURIComponent(sym)}` }, outro: until };
+  }
+  if (kind === 'best') return { subject: `${best - n} more ${best - n === 1 ? 'day' : 'days'} to your best streak`, title: `Your best is ${best} days`,
+    intro: `You are on ${n} trading days in a row. Open any chart today to make it ${n + 1}, ${best - n - 1 ? (best - n - 1) + (best - n - 1 === 1 ? ' day' : ' days') + ' short of your best' : 'level with your best'}.`,
+    button: { label: 'Open ChartGauge', url: `${origin}/` }, outro: until };
+  if (kind === 'market') return { subject: 'The close is in. Here is SPY\'s reading', title: 'Today\'s close',
+    intro: `The market has closed for the day. SPY's reading takes a few seconds to check, and it keeps your ${n}-day streak going.`,
+    button: { label: 'See the SPY reading', url: `${origin}/stock/SPY` }, outro: until };
+  return { subject: `Your ${n}-day streak is still open today`, title: `Day ${n + 1} is waiting`,
+    intro: `You have used ChartGauge ${n} trading days in a row. Open any chart or finish a lesson today and it becomes ${n + 1}.`,
+    button: { label: 'Open ChartGauge', url: `${origin}/` }, outro: until };
+}
+function streakRepairMail(u, today) {
+  const l = lessonForDay(today, u.streak_count);
+  const n = u.streak_count, origin = SITE_ORIGIN || '';
+  return { subject: `Get your ${n}-day streak back with one lesson`, title: 'Your streak can still be saved',
+    intro: `Yesterday's session went by without a visit. Finish one lesson today, quiz included, and your ${n}-day streak comes back.`
+      + (l ? ` Try "${l.title}", about ${l.minutes} minutes.` : ''),
+    button: { label: l ? 'Start the lesson' : 'Pick a lesson', url: l ? `${origin}/learn/${l.id}` : `${origin}/learn` },
+    outro: 'This works until midnight Eastern time today, once a week.' };
+}
+let streakMailRunning = false;
+async function runStreakMail(now) {
+  now = now || new Date();
+  if (!STREAK_MAIL_ON || !mailEnabled() || !MAIL_POSTAL_ADDRESS || streakMailRunning) return { sent: 0 };
+  const today = MKT.etDay(now);
+  if (!MKT.isTradingDay(today)) return { sent: 0 };
+  const hour = etHour(now);
+  const yday = MKT.prevTradingDay(today);
+  let kind, days;
+  if (hour >= 17 && hour < 22) { kind = 'risk'; days = [yday]; }
+  else if (hour >= 9 && hour < 17) { kind = 'repair'; days = [MKT.prevTradingDay(yday)]; }
+  else return { sent: 0 };
+  streakMailRunning = true;
+  let sent = 0;
+  try {
+    for (const u of await db.streakCandidates(days, STREAK_MAIL_MAX)) {
+      if (kind === 'repair' && u.streak_repair_at && now.getTime() - Number(u.streak_repair_at) < STREAK_REPAIR_EVERY) continue;
+      if (!(await db.claimStreakNudge(u.id, kind + ':' + today))) continue;
+      const m = kind === 'risk' ? await streakRiskMail(u, today) : streakRepairMail(u, today);
+      const off = await unsubUrl(u.id);
+      const why = 'You are getting this because streak reminders are on for your ChartGauge account.';
+      try {
+        await sendMail(u.email, m.subject, `${m.intro}\n\n${m.button.url}\n\n${m.outro}\n\nTurn off streak reminders: ${off}`,
+          emailHtml({ ...m, why, unsub: off }),
+          { 'List-Unsubscribe': `<${off}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' });
+        sent++;
+      } catch (e) { logError(e); break; }   // mail is down; try again next pass
+    }
+  } finally { streakMailRunning = false; }
+  return { sent, kind };
+}
+function startStreakMail() {
+  const t = setInterval(() => { runStreakMail().catch(logError); }, Number(process.env.STREAK_MAIL_EVERY_MS) || 15 * 60000);
+  if (t.unref) t.unref();
 }
 
 // ---- News sentiment ----
@@ -1028,16 +1220,14 @@ async function handleSentiment(req, res, user, symbolRaw) {
     // re-reading them with the model on every page view paid twice for the
     // same answer. A cache hit is free and is not charged.
     const hit = cachedAt('sent:' + symbol) > 0;
-    let allowed = true;
-    if (!pro && !hit) {
-      try { allowed = (await db.peekUsage(key, 'ai')) < AI_FREE_DAILY; } catch (e) {}
-    }
-    if (allowed) {
+    // Reserved before the call, atomically, so parallel requests for many
+    // symbols cannot all pass a check made before any of them was charged.
+    const slot = (!pro && !hit) ? await aiSlot(null, key, 'ai', AI_FREE_DAILY) : { refund() {} };
+    if (slot) {
       try {
         scored = await cached('sent:' + symbol, 900000, () => sentimentByClaude(items, symbol));
         method = 'claude';
-        if (!pro && !hit) { try { await db.bumpUsage(key, 'ai', AI_FREE_DAILY); } catch (e) {} }
-      } catch (e) { logError(e); }
+      } catch (e) { logError(e); await slot.refund(); }
     }
   }
   if (!scored) scored = sentimentByWords(items);
@@ -1455,9 +1645,12 @@ function tooMany(key, limit, windowMs) {
 // those are trusted when TRUST_CF_IP is on (the default on Render).
 // Elsewhere (local runs) the socket address is the client.
 const TRUST_CF_IP = (process.env.TRUST_CF_IP || (process.env.RENDER ? 'on' : 'off')) === 'on';
+const TRUST_TRUE_CLIENT_IP = process.env.TRUST_TRUE_CLIENT_IP === 'on';
 function clientIp(req) {
   if (TRUST_CF_IP) {
-    const cf = String(req.headers['true-client-ip'] || req.headers['cf-connecting-ip'] || '').trim();
+    // CF-Connecting-IP first: Cloudflare always overwrites it. True-Client-IP
+    // is only overwritten on Enterprise plans, so a client could forge it.
+    const cf = String(req.headers['cf-connecting-ip'] || (TRUST_TRUE_CLIENT_IP && req.headers['true-client-ip']) || '').trim();
     if (cf) return cf;
   }
   return (req.socket && req.socket.remoteAddress) || 'unknown';
@@ -1617,7 +1810,7 @@ const MAIL_DOWN = 'We could not send the email just now, so we could not finish 
 // marketing, so there is no list to unsubscribe from. The footer says so.
 // MAIL_POSTAL_ADDRESS is printed under it once set (needed before any
 // promotional email is ever sent).
-const MAIL_WHY = 'You are getting this because of your ChartGauge account. It is an account email. ChartGauge sends no marketing or newsletters.';
+const MAIL_WHY = 'You are getting this because of your ChartGauge account. It is an account email. ChartGauge sends no newsletters or ads.';
 const MAIL_POSTAL_ADDRESS = (process.env.MAIL_POSTAL_ADDRESS || '').trim();
 const MAIL_FONT = "ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
 function emailHtml(o) {
@@ -1653,19 +1846,20 @@ function emailHtml(o) {
     + intro2 + lines + code + box + button
     + `<p style="margin:18px 0 0;font-family:${MAIL_FONT};font-size:13px;line-height:1.6;color:#9a958c;">${esc(o.outro)}</p>`
     + `</td></tr>`
-    + `<tr><td style="padding:16px 4px 0;font-family:${MAIL_FONT};font-size:12px;line-height:1.5;color:#7a756b;">${esc(o.why || MAIL_WHY)}<br>ChartGauge is for educational purposes only. Trading can lose money, and nothing on it is financial advice.<br>`
+    + `<tr><td style="padding:16px 4px 0;font-family:${MAIL_FONT};font-size:12px;line-height:1.5;color:#7a756b;">${esc(o.why || MAIL_WHY)}`
+    + (o.unsub ? ` <a href="${esc(o.unsub)}" style="color:#9a958c;">Turn off streak reminders</a>.` : '') + `<br>ChartGauge is for educational purposes only. Trading can lose money, and nothing on it is financial advice.<br>`
     + (MAIL_POSTAL_ADDRESS ? `${esc(MAIL_POSTAL_ADDRESS)}<br>` : '')
     + `<a href="https://chartgauge.com" style="color:#9a958c;">chartgauge.com</a> · <a href="mailto:${esc(CONTACT_EMAIL)}" style="color:#9a958c;">${esc(CONTACT_EMAIL)}</a></td></tr>`
     + `</table></td></tr></table></body></html>`;
 }
-async function sendMail(to, subject, text, html) {
+async function sendMail(to, subject, text, html, headers) {
   if (MAIL_TRANSPORT === 'log') {
     console.log(`[mail] to ${to}: ${subject}\n${text}`);
     if (process.env.MAIL_DUMP && html) require('fs').writeFileSync(process.env.MAIL_DUMP, html);
     return;
   }
   try {
-    const body = JSON.stringify({ from: MAIL_FROM, to: [to], subject, text, html });
+    const body = JSON.stringify({ from: MAIL_FROM, to: [to], subject, text, html, ...(headers ? { headers } : {}) });
     const r = await httpsJson({ method: 'POST', hostname: 'api.resend.com', path: '/emails',
       headers: { 'Authorization': 'Bearer ' + RESEND_API_KEY, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, body);
     if (r.status >= 300) throw new Error('mail: ' + ((r.json && (r.json.message || r.json.error)) || ('HTTP ' + r.status)));
@@ -1765,7 +1959,7 @@ async function handleAffiliatePayout(req, res) {
     const pp = String(b.paypal || '').toLowerCase().trim();
     if (!validEmail(pp)) return json(res, 400, { error: 'Enter the email address on your PayPal account.' });
     rec = { method, holder, paypal: pp };
-    last4 = pp;
+    last4 = pp.replace(/^(.).*(@.*)$/, '$1***$2');
   } else {
     const bankName = String(b.bankName || '').trim().slice(0, 80);
     const routing = String(b.routing || '').replace(/\D/g, '');
@@ -1780,6 +1974,8 @@ async function handleAffiliatePayout(req, res) {
   await db.savePayout(who.user.id, { method, holder, last4, enc: sealJson(rec) });
   // The emailed link is spent once it has done its job.
   if (who.viaToken) await db.consumeVerifyToken(token, 'payout').catch(() => {});
+  // Saved from a signed-in session: any emailed link still out there is void.
+  else await db.deleteTokens(who.user.id, 'payout').catch(logError);
   // Every change is announced to the account's own inbox, so a change the
   // owner did not make is noticed before a payment goes out.
   if (prior && mailEnabled()) {
@@ -1975,7 +2171,8 @@ async function handleSignup(req, res) {
     }
     // The new password replaces the old one, and any session made under the
     // old one (there should be none for an unconfirmed account) is ended.
-    await db.setPassword(existing.id, b.password);
+    if (!(await db.setPassword(existing.id, b.password))) return json(res, 409, { error: 'That email already has an account. Try logging in.' });
+    await db.deleteTokens(existing.id, 'verify').catch(logError);
     await db.deleteUserSessions(existing.id).catch(logError);
     user = existing; fresh = false;
   }
@@ -1987,6 +2184,9 @@ async function handleSignup(req, res) {
     try {
       await sendVerification(req, user);
     } catch (e) { logError(e); return json(res, 503, { error: MAIL_DOWN }); }
+    // Marks this browser as the one that signed up, so the link signs it in
+    // and only it: opened anywhere else it confirms the address and stops.
+    res.setHeader('Set-Cookie', cookieStr(req, 'vfy', user.id, 7 * 86400));
     return json(res, 200, { pending: true, email: user.email, message: VERIFY_MSG(user.email) });
   }
   // No mail configured at all: the account is usable at once.
@@ -1994,12 +2194,18 @@ async function handleSignup(req, res) {
   setSessionCookie(req, res, token);
   return json(res, 200, { user: slim(user) });
 }
+// A path on this site only. '//host' and '/\\host' are other sites to a browser.
+const safeNext = (n) => (typeof n === 'string' && /^\/(?![\/\\])[A-Za-z0-9\/_-]*$/.test(n)) ? n : '/';
 async function handleVerify(req, res) {
   const q = new URLSearchParams(req.url.split('?')[1] || '');
   const uid = await db.consumeVerifyToken(q.get('token') || '').catch(() => null);
   const back = (state) => { res.writeHead(302, { Location: '/?verified=' + state }); res.end(); };
   if (!uid) return back('expired');
   await db.markVerified(uid);
+  // Without the sign-up cookie this could be someone else's link sent to
+  // sign the visitor into the sender's account (login CSRF), so no session.
+  if (parseCookies(req).vfy !== uid) return back('signin');
+  res.setHeader('Set-Cookie', cookieStr(req, 'vfy', '', 0));
   const token = await db.createSession(uid);
   setSessionCookie(req, res, token);
   return back('ok');
@@ -2109,7 +2315,7 @@ function decodeIdToken(idToken) {
 async function handleGoogleStart(req, res) {
   if (!googleEnabled()) return json(res, 404, { error: 'Google sign-in is not configured.' });
   const q = new URLSearchParams(req.url.split('?')[1] || '');
-  const next = /^\/[A-Za-z0-9\/_-]*$/.test(q.get('next') || '') ? q.get('next') : '/';
+  const next = safeNext(q.get('next'));
   const gState = newGoogleState(next, q.get('adult') === '1');
   const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
@@ -2165,6 +2371,7 @@ async function handleGoogleCallback(req, res) {
       else if (!st.adult) return googleFail(res, 'age');
       else { user = await db.createGoogleUser(email, claims.sub); await attributeReferral(req, user); await markSignup(req, null, user, null); }
     }
+    st.next = safeNext(st.next);
     const sep = st.next.includes('?') ? '&' : '?';
     if (mailEnabled()) {
       // Google vouched for the address; the code proves the inbox is still
@@ -2233,22 +2440,7 @@ async function handleDeleteAccount(req, res) {
   return json(res, 200, { ok: true });
 }
 
-function stripeDelete(apiPath) {
-  return new Promise((resolve, reject) => {
-    const r = https.request({ method: 'DELETE', hostname: 'api.stripe.com', path: '/v1/' + apiPath,
-      headers: { 'Authorization': 'Bearer ' + STRIPE_SECRET_KEY } }, resp => {
-      let d = ''; resp.on('data', c => d += c);
-      resp.on('end', () => {
-        let j = null; try { j = JSON.parse(d); } catch (e) {}
-        if (resp.statusCode >= 400) return reject(new Error(j && j.error ? j.error.message : 'Stripe ' + resp.statusCode));
-        resolve(j);
-      });
-    });
-    r.on('error', reject);
-    r.setTimeout(10000, () => r.destroy(new Error('Stripe timed out')));
-    r.end();
-  });
-}
+function stripeDelete(apiPath) { return stripeReq('DELETE', apiPath); }
 
 async function handleLogout(req, res) {
   await db.deleteSession(parseCookies(req).session);
@@ -2375,7 +2567,7 @@ async function handleAdminPlan(req, res) {
     // a live subscription: the cancellation webhook finds the account by sub
     // id, would no longer find this one, and the account would keep Pro for
     // good after the customer stopped paying.
-    await db.setPro(before.id, before.stripe_customer || null, before.stripe_sub || null);
+    await db.setPlanPro(before.id);
   } else {
     await db.setFree(before.id);
   }
@@ -2418,7 +2610,7 @@ async function handleAdminAffiliate(req, res) {
   }
   const wasAlready = !!user.affiliate_code;
   const code = await db.makeAffiliate(user.id);
-  if (!wasAlready) await db.setPro(user.id, user.stripe_customer || null, user.stripe_sub || null);
+  if (!wasAlready) await db.setPlanPro(user.id);
   let emailed = false, payoutUrl = null, mailError = null;
   if (mailEnabled()) {
     try { await sendAffiliateEmail(req, user, code); emailed = true; }
@@ -2477,14 +2669,21 @@ async function creditInvoice(inv) {
 // A refund takes back the same share of what went back. Worked from the
 // charge's running refunded total, so partial refunds in any order come out
 // right, and keyed by that total so a repeat report changes nothing.
-async function debitRefund(charge) {
-  if (!charge || !charge.invoice || !(charge.amount_refunded > 0)) return 'skipped';
+// One invoice at a time, so a webhook and the daily sync reading the same
+// refund cannot both see nothing recorded and both debit it.
+function debitRefund(charge) {
+  if (!charge || !charge.invoice || !(charge.amount_refunded > 0)) return Promise.resolve('skipped');
+  return db.withLock('refund:' + charge.invoice, () => debitRefundLocked(charge));
+}
+async function debitRefundLocked(charge) {
   const base = await db.ledgerByRef(charge.invoice);
   if (!base || base.kind !== 'commission') return 'no_commission';
   const target = -Math.round(charge.amount_refunded * AFF_SHARE / 100);
   const already = await db.ledgerGroupSum(charge.invoice, 'refund');
   const delta = target - already;
-  if (!delta) return 'already_recorded';
+  // Refunded totals only grow. A late event carrying an older, smaller total
+  // would give a positive delta and hand commission back; it is ignored.
+  if (delta >= 0) return 'already_recorded';
   const ok = await db.addLedger({ aff_uid: base.aff_uid, ref_uid: base.ref_uid, kind: 'refund', amount: delta,
     currency: charge.currency || 'usd', stripe_ref: `${charge.id}:refunded:${charge.amount_refunded}`, group_ref: charge.invoice,
     note: `${AFF_SHARE}% of ${money(charge.amount_refunded, charge.currency)} refunded to that account` });
@@ -2546,8 +2745,17 @@ async function handleAdminAffiliatePay(req, res) {
   const user = await db.getUserByEmail(email);
   if (!user || !user.affiliate_code) return json(res, 404, { error: `${email} is not an affiliate.` });
   const r = await withPayLock(user.id, async () => {
+    // A Stripe transfer the ledger missed would make this a second payment.
+    if (user.stripe_account) {
+      try {
+        const n = await recordMissedTransfers(user);
+        if (n) return { error: `Found ${n} Stripe transfer${n === 1 ? '' : 's'} the ledger had missed and recorded ${n === 1 ? 'it' : 'them'}. Reload and check the balance before recording a payment.` };
+      } catch (e) { logError(e); return { error: 'Could not check earlier Stripe transfers, so nothing was recorded. Try again in a minute.' }; }
+    }
     const t = await db.ledgerTotals(user.id);
-    const cents = b.amount == null ? t.owed : Math.round(Number(b.amount) * 100);
+    // The amount the admin confirmed, not whatever the balance is by now.
+    if (b.amount == null) return { error: 'Reload the page and try again.' };
+    const cents = Math.round(Number(b.amount) * 100);
     if (!(cents > 0)) return { error: 'Nothing is owed.' };
     if (cents > t.owed) return { error: `Only ${money(t.owed)} is owed.` };
     await db.addLedger({ aff_uid: user.id, kind: 'payout', amount: -cents, note: String(b.note || '').slice(0, 120) || `paid by ${me.email}` });
@@ -2616,6 +2824,10 @@ async function handleAffiliateConnect(req, res) {
   // managing it needs a signed-in session, not a link that may have been
   // forwarded (the same rule the details form follows).
   if (u.stripe_account && who.viaToken) return json(res, 403, { error: 'Sign in to manage your payout account.' });
+  // Same rule as the details form: once details are saved, a link that may
+  // have been forwarded cannot point payouts at a new Stripe account.
+  if (who.viaToken && await db.getPayout(u.id).catch(() => null))
+    return json(res, 403, { error: 'Your details are already saved. To change them, sign in and open Settings.' });
   try {
     if (u.stripe_account) {
       const c = await connectRefresh(u, true);
@@ -2628,6 +2840,12 @@ async function handleAffiliateConnect(req, res) {
         'capabilities[transfers][requested]': 'true', 'metadata[uid]': u.id, 'metadata[role]': 'affiliate' });
       await db.setConnectAccount(u.id, a.id);
       u.stripe_account = a.id;
+      if (mailEnabled()) {
+        const outro = `If you did not do this, reply to ${CONTACT_EMAIL} straight away.`;
+        sendMail(u.email, 'Stripe payout setup started on your ChartGauge account',
+          `Someone started setting up Stripe payouts for your affiliate account.\n\n${outro}`,
+          emailHtml({ title: 'Stripe payout setup started', intro: 'Stripe payouts for your affiliate account are being set up.', outro })).catch(logError);
+      }
     }
     const back = siteOrigin(req) + '/affiliate/payout?' + (who.viaToken ? 'token=' + encodeURIComponent(token) + '&' : '');
     const link = await stripePost('account_links', { account: u.stripe_account, type: 'account_onboarding',
@@ -2650,7 +2868,9 @@ const payingNow = new Set();
 async function withPayLock(uid, fn) {
   if (payingNow.has(uid)) return { error: 'A payment to this affiliate is already in progress. Wait a moment and refresh.' };
   payingNow.add(uid);
-  try { return await fn(); } finally { payingNow.delete(uid); }
+  // The in-process set answers a double click at once; the database lock
+  // covers a second instance (deploy overlap) as well.
+  try { return await db.withLock('pay:' + uid, fn); } finally { payingNow.delete(uid); }
 }
 // A transfer Stripe made but the ledger never recorded (the ledger write
 // failed after the transfer succeeded) would leave the balance looking unpaid
@@ -2684,7 +2904,15 @@ async function transferToAffiliateLocked(user, by) {
     const key = `aff-${user.id}-${t.owed}-${t.rows}`;
     const tr = await stripePost('transfers', { amount: String(t.owed), currency: 'usd', destination: user.stripe_account,
       description: 'ChartGauge affiliate commission', 'metadata[uid]': user.id }, { 'Idempotency-Key': key });
-    const fresh = await db.addLedger({ aff_uid: user.id, kind: 'payout', amount: -t.owed, stripe_ref: tr.id, note: `Stripe transfer ${tr.id}${by ? ' by ' + by : ''}` });
+    let fresh;
+    try {
+      fresh = await db.addLedger({ aff_uid: user.id, kind: 'payout', amount: -t.owed, stripe_ref: tr.id, note: `Stripe transfer ${tr.id}${by ? ' by ' + by : ''}` });
+    } catch (e) {
+      // The money has moved; only the record failed. Saying "failed" here is
+      // what led to paying by hand a second time.
+      logError(e);
+      return { email: user.email, paid: t.owed, transfer: tr.id, error: `Stripe sent ${money(t.owed)} as transfer ${tr.id}, but the ledger could not record it. Do NOT pay this affiliate by hand. Press "Sync with Stripe" in a minute and it will be recorded.` };
+    }
     if (!fresh) return { email: user.email, error: `Stripe answered with transfer ${tr.id}, which is already in the ledger, so nothing new was sent. Try again in a minute.` };
     return { email: user.email, paid: t.owed, transfer: tr.id, totals: await db.ledgerTotals(user.id) };
   } catch (e) {
@@ -3498,7 +3726,7 @@ async function handleScreen(req, res, qs) {
 // on every session check.
 // The host is configurable only so a test can stand in for Stripe; a local
 // stand-in is spoken to over plain http, Stripe itself always over https.
-const STRIPE_API_HOST = (process.env.STRIPE_API_HOST || 'api.stripe.com').trim();
+const STRIPE_API_HOST = IS_PROD ? 'api.stripe.com' : (process.env.STRIPE_API_HOST || 'api.stripe.com').trim();
 function stripeReq(method, apiPath, body, extraHeaders) {
   const [hostname, port] = STRIPE_API_HOST.split(':');
   const local = /^(localhost|127\.0\.0\.1)$/.test(hostname);
@@ -3507,7 +3735,7 @@ function stripeReq(method, apiPath, body, extraHeaders) {
   return new Promise((resolve, reject) => {
     const r = (local ? http : https).request({ method, hostname, port: port ? Number(port) : undefined, path: '/v1/' + apiPath, headers }, resp => {
       let d = ''; resp.on('data', c => d += c);
-      resp.on('end', () => { try { const j = JSON.parse(d); if (resp.statusCode >= 400) reject(new Error(j.error ? j.error.message : 'Stripe error')); else resolve(j); } catch (e) { reject(new Error('bad Stripe response')); } });
+      resp.on('end', () => { try { const j = JSON.parse(d); if (resp.statusCode >= 400) { const err = new Error(j.error ? j.error.message : 'Stripe error'); err.status = resp.statusCode; err.code = j.error && j.error.code; reject(err); } else resolve(j); } catch (e) { reject(new Error('bad Stripe response')); } });
     });
     r.on('error', reject);
     r.setTimeout(method === 'GET' ? 8000 : 20000, () => r.destroy(new Error('stripe timeout')));
@@ -3722,11 +3950,9 @@ async function handleWebhook(req, res) {
       // Some payment methods settle later; access waits until the money has.
       const paid = s.payment_status === 'paid' || s.payment_status === 'no_payment_required';
       if (s.client_reference_id && paid) {
-        const before = await db.getUserById(s.client_reference_id);
-        await db.setPro(s.client_reference_id, s.customer, s.subscription);
-        if (before && before.stripe_sub && s.subscription && before.stripe_sub !== s.subscription) {
-          await cancelDuplicateSub(before, s.subscription).catch(logError);
-        }
+        // One event per account at a time, so two checkouts finishing together
+        // (or Stripe sending one event twice) are decided one after the other.
+        await db.withLock('sub:' + s.client_reference_id, () => applyCheckout(s.client_reference_id, s.customer, s.subscription));
         // The card check: a card that already had a trial on another account
         // ends this trial now, which charges it. Throws on a Stripe failure,
         // so the webhook answers 500 and Stripe sends the event again.
@@ -3742,7 +3968,7 @@ async function handleWebhook(req, res) {
     } else if (event.type === 'customer.subscription.updated' && ['active', 'trialing'].includes(event.data.object.status)) {
       // A subscription that comes back (a past-due card paid, a resumed plan).
       const u = await db.findByStripeSub(event.data.object.id);
-      if (u && u.plan !== 'pro') await db.setPro(u.id, u.stripe_customer, u.stripe_sub);
+      if (u && u.plan !== 'pro') await db.setPlanPro(u.id);
     } else if (event.type === 'invoice.paid' || event.type === 'invoice.payment_succeeded') {
       await creditInvoice(event.data.object);
     } else if (event.type === 'charge.refunded') {
@@ -3772,6 +3998,9 @@ async function trialCardCheck(uid, subId) {
   if (!sig.email) sig.email = TG.h('email', TG.normEmail(u.email));
   const pm = sub.default_payment_method;
   const card = TG.h('card', pm && pm.card && pm.card.fingerprint);
+  // Count and mark under one lock per card, so two checkouts with the same
+  // card a moment apart cannot both find no earlier trial.
+  return db.withLock('card:' + (card || uid), async () => {
   const reused = card ? await db.countMarks('card', card, ['trial', 'blocked'], uid, 0) : 0;
   if (reused) {
     await stripePost('subscriptions/' + encodeURIComponent(subId), { trial_end: 'now' }, { 'Idempotency-Key': 'trial-end-' + subId });
@@ -3782,21 +4011,41 @@ async function trialCardCheck(uid, subId) {
     return;
   }
   await db.addMarks(TG.marksFor(uid, sig, 'trial', { card }));
+  });
 }
 // A second subscription for an account that already had one (two checkouts
 // finished close together). The account keeps the one it already had; the
 // new one is canceled at once and its first payment, if any, refunded, so
 // nobody is billed twice for one account. Logged so the admin page shows it.
+const LIVE_SUB = ['active', 'trialing', 'past_due'];
+const stripeMissing = (e) => e && (e.status === 404 || e.code === 'resource_missing');
+// Runs under the account's 'sub:' lock. The row is never pointed at a
+// subscription that is about to be canceled, and nothing is swallowed: a
+// failure reaches the webhook's 500 so Stripe retries the whole event.
+async function applyCheckout(uid, customer, sub) {
+  const before = await db.getUserById(uid);
+  if (!before) return;
+  if (sub && before.stripe_sub === sub) return db.setPlanPro(uid);   // repeat delivery
+  if (sub && before.stripe_sub) {
+    const old = await stripeGet('subscriptions/' + encodeURIComponent(before.stripe_sub))
+      .catch(e => { if (stripeMissing(e)) return null; throw e; });
+    if (old && LIVE_SUB.includes(old.status)) {
+      await cancelDuplicateSub(before, sub);
+      return db.setPlanPro(uid);
+    }
+  }
+  if (!(await db.setProIf(uid, customer, sub, before.stripe_sub))) throw new Error('subscription changed during checkout event; retry');
+}
 async function cancelDuplicateSub(before, newSub) {
-  const old = await stripeGet('subscriptions/' + encodeURIComponent(before.stripe_sub)).catch(() => null);
-  if (!old || !['active', 'trialing', 'past_due'].includes(old.status)) return;
   const dup = await stripeGet('subscriptions/' + encodeURIComponent(newSub) + '?expand[]=latest_invoice');
-  await stripeDelete('subscriptions/' + encodeURIComponent(newSub));
+  // Already canceled (an earlier delivery of this event did it) counts as done.
+  if (dup.status !== 'canceled') {
+    await stripeDelete('subscriptions/' + encodeURIComponent(newSub)).catch(e => { if (!stripeMissing(e)) throw e; });
+  }
   const pi = dup && dup.latest_invoice && dup.latest_invoice.payment_intent;
   if (pi && dup.latest_invoice.amount_paid > 0) {
     await stripePost('refunds', { payment_intent: typeof pi === 'string' ? pi : pi.id }, { 'Idempotency-Key': 'dup-refund-' + newSub });
   }
-  await db.setPro(before.id, before.stripe_customer, before.stripe_sub);
   logError(new Error(`duplicate subscription ${newSub} for ${before.email} canceled and refunded; kept ${before.stripe_sub}`));
 }
 // Once a day every subscribed account's plan is checked against Stripe, so
@@ -3810,7 +4059,7 @@ async function syncPlans() {
       const sub = await stripeGet('subscriptions/' + encodeURIComponent(u.stripe_sub));
       checked++;
       const on = ['active', 'trialing', 'past_due'].includes(sub.status);
-      if (on && u.plan !== 'pro') { await db.setPro(u.id, u.stripe_customer, u.stripe_sub); fixed++; }
+      if (on && u.plan !== 'pro') { await db.setPlanPro(u.id); fixed++; }
       if (!on && u.plan === 'pro') { await db.setFree(u.id); fixed++; }
     } catch (e) { logError(e); }
   }
@@ -3824,6 +4073,7 @@ async function syncPlans() {
 // lessons are rendered into the HTML so they index without JavaScript.
 const SITE_NAME = 'ChartGauge';
 const LEGAL = require('./legal');
+const GUIDES = require('./guides');
 // Every absolute URL the site writes (links in email, Stripe return URLs, the
 // Google redirect, canonicals, the sitemap) comes from one fixed origin. It
 // used to come from the request's Host header, which a client chooses: that
@@ -3837,8 +4087,8 @@ function siteOrigin(req) {
 }
 
 const VIEW_SEO = {
-  '': { view: 'home', title: 'ChartGauge | Buy, Sell or Hold Calls for Stocks and Crypto',
-    desc: 'A buy, sell or hold call on any stock or crypto pair, with stop and target already set, plus a candlestick chart and 13 indicators. Not financial advice.' },
+  '': { view: 'home', title: 'ChartGauge | AI Trading App: Buy, Sell or Hold Calls with Stops',
+    desc: 'An AI trading app for stocks and crypto: a buy, sell or hold call with the stop and target set, an AI-written analysis, and AI that reads your chart screenshots. Not financial advice.' },
   'analyze': { view: 'analyze', title: 'Analyze a stock or crypto pair | ChartGauge',
     desc: 'Enter a stock or crypto pair for a candlestick chart, 13 technical indicators, an indicator score, and stop-loss and take-profit levels from ATR and recent swing highs and lows.' },
   'markets': { view: 'markets', title: 'Market snapshot: indices and trending stocks | ChartGauge',
@@ -3940,8 +4190,8 @@ function seoFor(urlPath, req) {
       canonical: `${origin}/stock/${sym}`,
     };
   }
-  if (LEGAL.PAGES[parts[0]]) {
-    const pg = LEGAL.PAGES[parts[0]];
+  if (LEGAL.PAGES[parts[0]] || GUIDES.PAGES[parts[0]]) {
+    const pg = LEGAL.PAGES[parts[0]] || GUIDES.PAGES[parts[0]];
     return { view: 'legal', legal: pg, title: pg.title, desc: pg.desc, canonical: `${origin}/${parts[0]}` };
   }
   const v = VIEW_SEO[parts[0] || ''];
@@ -4074,7 +4324,7 @@ const GA_SNIPPET = (GA_ID ? `<meta name="ga-id" content="${esc(GA_ID)}">` : '')
 // 'admin' is routable so the operator can open /admin directly, but it is
 // absent from VIEW_SEO, so it never reaches the sitemap, and robots.txt
 // disallows it. The page itself is guarded server-side regardless.
-const APP_PATH = /^\/(analyze|markets|movers|compare|verify|screener|alerts|watchlist|practice|learn|settings|pricing|terms|privacy|refunds|contact|affiliate-terms|accessibility|security|copyright|admin)(\/|$)|^\/stock\//;
+const APP_PATH = /^\/(analyze|markets|movers|compare|verify|screener|alerts|watchlist|practice|learn|settings|pricing|terms|privacy|refunds|contact|affiliate-terms|accessibility|security|copyright|admin|ai-chart-analysis|best-ai-trading-apps|chartgauge-vs-trendspider|chartgauge-vs-trade-ideas|tradingview-alternative)(\/|$)|^\/stock\//;
 
 // A mistyped URL used to return the two words "Not found" as plain text on a
 // blank white page, with no styling, no way back and no branding. Cheap to do
@@ -4115,12 +4365,14 @@ function llmsTxt(origin) {
   const L = (p, t, d) => `- [${t}](${origin}${p})${d ? ': ' + d : ''}`;
   return [
     `# ${SITE_NAME}`, '',
-    `> A trading tool for stocks and crypto pairs. Enter a stock and get a mechanical buy, sell or hold call with the stop-loss and take-profit levels already set, a candlestick chart and 13 technical indicators. Trading can lose money, including everything you put in. Everything on the site is for educational purposes only, nothing on it is financial advice, and it does not promise or quote returns.`, '',
+    `> An AI trading app for US stocks and crypto pairs. Enter a stock and get a mechanical buy, sell or hold call with the stop-loss and take-profit levels already set, a candlestick chart and 13 technical indicators. Claude (Anthropic's AI) writes the analysis of each reading, and on Pro it reads a screenshot of any chart you upload. Free account; Pro is $14.99 a month. Includes paper trading and 19 free lessons. Trading can lose money, including everything you put in. Everything on the site is for educational purposes only, nothing on it is financial advice, and it does not promise or quote returns.`, '',
     '## Main pages',
     L('/', 'Home', 'what the tool does and a live example reading'),
     L('/analyze', 'Analyze', 'the call, chart, indicators and levels for any stock'),
     L('/practice', 'Practice', 'paper trading with pretend money'),
     L('/pricing', 'Plans', 'what is free and what Pro adds'), '',
+    '## Guides and comparisons',
+    ...Object.keys(GUIDES.PAGES).map(k => L(`/${k}`, GUIDES.PAGES[k].heading, GUIDES.PAGES[k].desc)), '',
     '## Lessons',
     ...LESSONS.map(l => L(`/learn/${encodeURIComponent(l.id)}`, l.title, l.intro)), '',
     '## Stock pages',
@@ -4296,7 +4548,7 @@ const CSP = [
   // Styles stay 'unsafe-inline': the markup carries style attributes, and an
   // injected stylesheet is a far smaller problem than an injected script.
   "style-src 'self' 'unsafe-inline'",
-  "script-src 'self' https://www.googletagmanager.com/gtag/ https://www.google-analytics.com",
+  "script-src 'self' https://www.googletagmanager.com/gtag/js https://www.google-analytics.com",
   // Declared rather than left to inherit: worker-src falls back through
   // child-src to script-src, and browsers have disagreed about that chain.
   "worker-src 'self'",
@@ -4304,6 +4556,27 @@ const CSP = [
   "connect-src 'self' https://www.google-analytics.com https://analytics.google.com https://www.googletagmanager.com",
   "font-src 'self' data:",
 ].join('; ');
+
+// On by default on Render (TLS ends at the proxy); FORCE_HTTPS=off disables.
+const FORCE_HTTPS = (process.env.FORCE_HTTPS || (process.env.RENDER ? 'on' : 'off')) === 'on';
+
+// CSRF. Session cookies are SameSite=Lax, which already keeps them off
+// cross-site POSTs; this refuses any state-changing API call a browser marks
+// as coming from another site, so the protection does not rest on one flag.
+// A request with none of these headers is not a browser riding someone's
+// cookies (curl, server-to-server), so it is let through. The Stripe webhook
+// is signed and exempt.
+function crossSiteWrite(req, url) {
+  if (!url.startsWith('/api/') || url === '/api/billing/webhook') return false;
+  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return false;
+  const site = req.headers['sec-fetch-site'];
+  if (site) return site !== 'same-origin' && site !== 'none';
+  const src = req.headers.origin || req.headers.referer;
+  if (!src) return false;
+  let host;
+  try { host = new URL(src).host; } catch (e) { return true; }
+  return host !== req.headers.host && host !== SITE_HOST;
+}
 
 function securityHeaders(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -4325,6 +4598,19 @@ const server = http.createServer(async (req, res) => {
   try {
     securityHeaders(req, res);
     const url = req.url.split('?')[0];
+    // Plain http that reached the app (the proxy says so) goes to https. The
+    // edge already does this for the public hosts; this covers any that don't.
+    if (FORCE_HTTPS && (req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'http') {
+      res.writeHead(308, { Location: 'https://' + (SITE_HOST || req.headers.host) + req.url });
+      return res.end();
+    }
+    if (url.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
+    if (crossSiteWrite(req, url)) return json(res, 403, { error: 'Cross-site request refused.' });
+    // Every admin endpoint is refused here as well as in its own handler, so
+    // one added later without the check is still closed.
+    if (url.startsWith('/api/admin')) {
+      if (!isAdmin(await currentUser(req))) return json(res, 403, { error: 'Admin access only.' });
+    }
     // Pages asked for on any other host (the onrender.com address, chiefly)
     // move permanently to the real one, so there is one copy of the site to
     // index. The API is left alone: the Stripe webhook and any existing
@@ -4370,6 +4656,7 @@ const server = http.createServer(async (req, res) => {
         // Pages that only show a signed-in account's own data are not listed.
         ...Object.keys(VIEW_SEO).filter(k => k && !VIEW_SEO[k].noindex).map(k => ({ loc: `${origin}/${k}`, pri: '0.8', freq: 'weekly' })),
         ...LESSONS.map(l => ({ loc: `${origin}/learn/${l.id}`, pri: '0.7', freq: 'monthly' })),
+        ...Object.keys(GUIDES.PAGES).map(k => ({ loc: `${origin}/${k}`, pri: '0.7', freq: 'monthly' })),
         ...Object.keys(LEGAL.PAGES).map(k => ({ loc: `${origin}/${k}`, pri: '0.4', freq: 'yearly' })),
         ...FEATURED.map(sym => ({ loc: `${origin}/stock/${sym}`, pri: '0.6', freq: 'daily' })),
       ];
@@ -4417,6 +4704,19 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/auth/delete' && req.method === 'POST') return await handleDeleteAccount(req, res);
     if (url === '/api/auth/adult' && req.method === 'POST') return await handleConfirmAdult(req, res);
     if (url === '/api/auth/me' && req.method === 'GET') return await handleMe(req, res);
+    if (url === '/api/streak/unsubscribe' && (req.method === 'GET' || req.method === 'POST')) return await handleStreakUnsub(req, res);
+    if ((url === '/api/streak/lesson' || url === '/api/streak/mail') && req.method === 'POST') {
+      const u = await currentUser(req);
+      if (!u) return json(res, 401, { error: 'Please sign in.' });
+      return url === '/api/streak/lesson' ? await handleStreakLesson(req, res, u) : await handleStreakMail(req, res, u);
+    }
+    // Free-tier caps are count-then-insert with price lookups between, so
+    // adds for one account run one at a time.
+    if ((url === '/api/watchlist' || url === '/api/alerts') && req.method === 'POST') {
+      const me = await currentUser(req);
+      const run = () => url === '/api/watchlist' ? handleWatchlist(req, res) : handleAlerts(req, res);
+      return await (me ? db.withLock('cap:' + me.id, run) : run());
+    }
     if (url === '/api/watchlist') return await handleWatchlist(req, res);
     if (url === '/api/paper' || url === '/api/paper/open' || url === '/api/paper/trade'
         || url === '/api/paper/reset' || url === '/api/risk' || url === '/api/sentiment') {
@@ -4426,10 +4726,17 @@ const server = http.createServer(async (req, res) => {
       // and the same daily budget as the written report. It was wide open.
       if (url === '/api/sentiment' && req.method === 'GET')
         return await handleSentiment(req, res, u, new URLSearchParams(req.url.split('?')[1] || '').get('symbol'));
-      if (url === '/api/paper/reset' && req.method === 'POST') return await handlePaperReset(req, res, u);
+      // Practice trades read the balance, fetch prices, then write; one at a
+      // time per account, so two at once cannot both spend the same cash.
+      if (req.method === 'POST' && url.startsWith('/api/paper/')) {
+        const body = url === '/api/paper/reset' ? null : await readBody(req);
+        return await db.withLock('paper:' + u.id, () =>
+          url === '/api/paper/reset' ? handlePaperReset(req, res, u)
+          : url === '/api/paper/open' ? handlePaperOpen(req, res, u, body)
+          : url === '/api/paper/trade' ? handlePaperTrade(req, res, u, body)
+          : json(res, 405, { error: 'Method not allowed.' }));
+      }
       if (url === '/api/paper' && req.method === 'GET') return await handlePaperGet(req, res, u);
-      if (url === '/api/paper/open' && req.method === 'POST') return await handlePaperOpen(req, res, u, await readBody(req));
-      if (url === '/api/paper/trade' && req.method === 'POST') return await handlePaperTrade(req, res, u, await readBody(req));
       if (url === '/api/risk' && req.method === 'GET') return await handleRiskGet(req, res, u);
       if (url === '/api/risk' && req.method === 'POST') return await handleRiskSet(req, res, u, await readBody(req));
       return json(res, 405, { error: 'Method not allowed.' });
@@ -4496,6 +4803,7 @@ db.init().then(async (storeMode) => {
     startRankedLoop();
     startScreenLoop();
     startSessionPurge();
+    startStreakMail();
     // Affiliate commissions are reconciled against Stripe a minute after boot
     // and then daily, so a missed webhook never leaves an affiliate short.
     // Connect is probed at boot and hourly until it answers, so enabling it
