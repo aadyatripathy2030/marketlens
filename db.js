@@ -127,6 +127,11 @@ async function init() {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_repair_at BIGINT');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_mail BOOLEAN NOT NULL DEFAULT TRUE');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS streak_nudge TEXT');
+      // A paused subscription: Pro is off from pause_from (the end of the
+      // period already paid for) until pause_until, when billing resumes.
+      // Both null when not paused. Mirrors pause_collection on Stripe.
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS pause_from BIGINT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS pause_until BIGINT');
 
       // Risk limits the user sets, applied to paper trades and shown against
       // real positions. Percentages of account value.
@@ -260,7 +265,8 @@ async function verifyPw(pw, stored) {
 // the same scrypt time as a real one and not reveal which addresses exist.
 const DUMMY_PW = hashPwSync(crypto.randomBytes(12).toString('hex'));
 
-const pub = (u) => u && { id: u.id, email: u.email, plan: u.plan, verified: u.email_verified !== false };
+const pub = (u) => u && { id: u.id, email: u.email, plan: u.plan, verified: u.email_verified !== false,
+  pause_from: u.pause_from != null ? Number(u.pause_from) : null, pause_until: u.pause_until != null ? Number(u.pause_until) : null };
 
 // ---- risk limits ----
 const RISK_DEFAULTS = { maxPosition: 20, perTrade: 2 };
@@ -1058,7 +1064,7 @@ async function setCustomer(uid, customer) {
 }
 // Every account tied to a Stripe subscription, for the daily plan check.
 async function listSubscribers() {
-  if (mode === 'postgres') { const r = await pool.query("SELECT id, email, plan, stripe_customer, stripe_sub FROM users WHERE stripe_sub IS NOT NULL"); return r.rows; }
+  if (mode === 'postgres') { const r = await pool.query("SELECT id, email, plan, stripe_customer, stripe_sub, pause_from, pause_until FROM users WHERE stripe_sub IS NOT NULL"); return r.rows; }
   return [...mem.users.values()].filter(u => u.stripe_sub);
 }
 // Pro, leaving the Stripe columns alone: for paths that only re-assert the
@@ -1077,6 +1083,11 @@ async function setProIf(uid, customer, sub, expectedSub) {
   }
   const u = mem.users.get(uid); if (!u || (u.stripe_sub || null) !== (expectedSub || null)) return false;
   u.plan = 'pro'; u.stripe_customer = customer; u.stripe_sub = sub; return true;
+}
+// from/until in ms, or both null to clear the pause.
+async function setPause(uid, from, until) {
+  if (mode === 'postgres') { await pool.query('UPDATE users SET pause_from=$2, pause_until=$3 WHERE id=$1', [uid, from || null, until || null]); return; }
+  const u = mem.users.get(uid); if (u) { u.pause_from = from || null; u.pause_until = until || null; }
 }
 async function setFree(uid) {
   if (mode === 'postgres') await pool.query("UPDATE users SET plan='free' WHERE id=$1", [uid]);
@@ -1283,5 +1294,5 @@ module.exports = {
   listAlerts, addAlert, removeAlert, markTriggered,
   listUsers, counts,
   addMarks, countMarks, purgeMarks, setTrialRisk,
-  setPro, setFree, findByStripeSub, setCustomer, listSubscribers,
+  setPro, setFree, setPause, findByStripeSub, setCustomer, listSubscribers,
 };

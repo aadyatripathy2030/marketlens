@@ -124,7 +124,10 @@ const isAdmin = (u) => !!(u && emailConfirmed(u) && ADMIN_EMAILS.includes(String
 const COMP_PRO_EMAILS = (process.env.PRO_EMAILS || 'aadyatripathy3@gmail.com,cjcthegolfer2@icloud.com,chartgauge@gmail.com').toLowerCase().split(',').map(s => s.trim()).filter(Boolean);
 // One answer to "is this account Pro", used everywhere a plan is checked, so a
 // complimentary account cannot be Pro in one place and free in another.
-const isPro = (u) => !!(u && (u.plan === 'pro' || isAdmin(u) || (emailConfirmed(u) && COMP_PRO_EMAILS.includes(String(u.email || '').toLowerCase()))));
+// A paused subscription is still plan 'pro' on the row (Stripe keeps it
+// active), but Pro is off between pause_from and pause_until.
+const isPaused = (u, now) => { now = now || Date.now(); return !!(u && u.pause_from && now >= u.pause_from && (!u.pause_until || now < u.pause_until)); };
+const isPro = (u) => !!(u && ((u.plan === 'pro' && !isPaused(u)) || isAdmin(u) || (emailConfirmed(u) && COMP_PRO_EMAILS.includes(String(u.email || '').toLowerCase()))));
 
 // Launch period: every Pro feature is open to every account until this moment,
 // after which the normal split applies with no deploy needed. Set FREE_UNTIL
@@ -155,6 +158,8 @@ const KNOWN_API = new Set([
   '/api/auth/verify', '/api/auth/resend',
   '/api/auth/code', '/api/auth/code/resend', '/api/auth/challenge',
   '/api/billing/webhook', '/api/billing/checkout', '/api/billing/portal',
+  '/api/billing/manage', '/api/billing/pause', '/api/billing/resume', '/api/billing/switch',
+  '/api/billing/cancel', '/api/billing/keep',
   // practice account, the risk limits it is measured against, and the
   // sentiment read over the headlines that were already being fetched
   '/api/paper', '/api/paper/open', '/api/paper/trade', '/api/paper/reset',
@@ -2066,7 +2071,10 @@ async function servePayoutPage(req, res) {
 </div>` + foot);
 }
 const slim = (u) => ({ id: u.id, email: u.email, plan: u.plan });
-const sessionUser = (u) => ({ id: u.id, email: u.email, plan: isPro(u) ? 'pro' : u.plan });
+// The plan a client is shown: a paused subscriber is 'pro' on the row but
+// on Free until the pause ends.
+const shownPlan = (u) => isPro(u) ? 'pro' : (u.plan === 'pro' ? 'free' : u.plan);
+const sessionUser = (u) => ({ id: u.id, email: u.email, plan: shownPlan(u) });
 
 // ---- Sign-in codes ----
 // Every sign-in, password or Google, finishes with a six-digit code sent to
@@ -2464,7 +2472,7 @@ async function handleMe(req, res) {
   let everSubscribed = false, needsAge = false;
   if (u) { try { const full = await db.getUserById(u.id); everSubscribed = !!(full && full.stripe_customer); needsAge = !!full && !full.adult_at && !isAdmin(u); } catch (e) { logError(e); } }
   return json(res, 200, {
-    user: u ? { ...u, plan: isPro(u) ? 'pro' : u.plan, admin: isAdmin(u) } : null,
+    user: u ? { ...u, plan: shownPlan(u), admin: isAdmin(u) } : null,
     // Set for an affiliate: their code, how many accounts came through it,
     // and whether payout details are on file. Settings shows the card.
     affiliate: u ? await db.affiliateInfo(u.id).catch(() => null) : null,
@@ -3826,7 +3834,7 @@ async function handleCheckout(req, res) {
       const live = ((subs && subs.data) || []).find(x => ['active', 'trialing', 'past_due'].includes(x.status));
       if (live) {
         await db.setPro(user.id, customer, live.id);
-        return json(res, 200, { error: 'You already have a subscription. Reload the page to see Pro, or open Manage subscription.' });
+        return json(res, 200, { error: live.pause_collection ? 'Your Pro subscription is paused. Open Manage subscription on the Plans page to resume it.' : 'You already have a subscription. Reload the page to see Pro, or open Manage subscription.' });
       }
       firstTime = !((subs && subs.data) || []).length;
     } else {
@@ -3880,6 +3888,181 @@ async function handlePortal(req, res) {
     return json(res, 200, { url: s.url });
   } catch (e) { logError(e); return json(res, 200, { error: 'Could not open the billing portal. Try again in a minute.' }); }
 }
+// ---- manage subscription: pause, switch plan, cancel ----
+// Shown when a subscriber opens Manage subscription. Pausing and switching
+// sit next to Cancel, not in front of it: cancel is one button and one plain
+// confirmation, whatever else is on offer. The Stripe portal stays for the
+// card and invoices.
+const SUB_PLANS = [['weekly', 'Weekly'], ['monthly', 'Monthly'], ['yearly', 'Yearly']];
+// How many billing periods a pause may skip, per plan. A yearly plan is not
+// paused (a year off is a cancel); switching to monthly is offered instead.
+const PAUSE_STEPS = { weekly: [1, 2, 4], monthly: [1, 2, 3], yearly: [] };
+const subPeriodEnd = (sub) => sub.current_period_end || (sub.items && sub.items.data && sub.items.data[0] && sub.items.data[0].current_period_end) || null;
+const subItem = (sub) => sub && sub.items && sub.items.data && sub.items.data[0];
+const planOfSub = (sub) => { const id = subItem(sub) && subItem(sub).price && subItem(sub).price.id; return (SUB_PLANS.find(([k]) => STRIPE_PRICES[k] && STRIPE_PRICES[k] === id) || [null])[0]; };
+// n billing periods after `sec`, in ms, the way Stripe counts them (calendar
+// months and years, clamped to the month's last day).
+function addPeriods(sec, interval, n) {
+  const d = new Date(sec * 1000);
+  if (interval === 'week') return d.getTime() + n * 7 * 86400e3;
+  if (interval === 'day') return d.getTime() + n * 86400e3;
+  const months = interval === 'year' ? 12 * n : n;
+  const day = d.getUTCDate();
+  d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + months);
+  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, last));
+  return d.getTime();
+}
+async function loadSub(user) {
+  const full = await db.getUserById(user.id);
+  if (!STRIPE_SECRET_KEY || !full || !full.stripe_sub) return { full, sub: null };
+  const sub = await stripeGet('subscriptions/' + encodeURIComponent(full.stripe_sub));
+  return { full, sub: sub && LIVE_SUB.includes(sub.status) ? sub : null };
+}
+function subState(full, sub, info) {
+  const item = subItem(sub), pr = item && item.price, rec = (pr && pr.recurring) || {};
+  const plan = planOfSub(sub);
+  const end = subPeriodEnd(sub);
+  const paused = sub.pause_collection ? { from: Number(full.pause_from) || (end && end * 1000), until: Number(full.pause_until) || (sub.pause_collection.resumes_at ? sub.pause_collection.resumes_at * 1000 : null) } : null;
+  const trialing = sub.status === 'trialing';
+  const cur = info[plan];
+  const perMo = (p) => p && p.amount != null ? p.amount * ({ week: 52 / 12, month: 1, year: 1 / 12 }[p.interval] || 1) / (p.intervalCount || 1) : null;
+  const curPm = perMo(cur);
+  return {
+    plan, status: sub.status, trialing,
+    price: pr && pr.unit_amount != null ? money(pr.unit_amount * (item.quantity || 1), pr.currency) : null,
+    every: everyWord(rec.interval || 'month', rec.interval_count),
+    periodEnd: end ? end * 1000 : null,
+    trialEnd: trialing && sub.trial_end ? sub.trial_end * 1000 : null,
+    canceling: !!sub.cancel_at_period_end,
+    paused,
+    // Offered only on a plain running subscription: a pause during a trial
+    // would skip nothing, and one on a subscription that is ending is moot.
+    pauseSteps: (!trialing && !sub.cancel_at_period_end && !paused && sub.status === 'active') ? (PAUSE_STEPS[plan] || []) : [],
+    pauseUnit: rec.interval || 'month',
+    switchTo: (sub.cancel_at_period_end || paused || sub.status === 'past_due') ? [] : SUB_PLANS
+      .filter(([k]) => k !== plan && STRIPE_PRICES[k] && info[k] && info[k].amount != null)
+      .map(([k, label]) => { const p = info[k], pm = perMo(p);
+        return { plan: k, label, price: money(p.amount, p.currency), every: everyWord(p.interval, p.intervalCount),
+          perMonth: pm != null ? money(Math.round(pm), p.currency) : null,
+          savePct: (pm != null && curPm) ? Math.round((1 - pm / curPm) * 100) : null }; }),
+  };
+}
+async function handleManage(req, res) {
+  const user = await currentUser(req);
+  if (!user) return json(res, 401, { error: 'Please sign in first.' });
+  try {
+    const { full, sub } = await loadSub(user);
+    if (!sub) return json(res, 200, { none: true, portal: !!(full && full.stripe_customer) });
+    return json(res, 200, subState(full, sub, await billingInfo()));
+  } catch (e) { logError(e); return json(res, 200, { error: 'Could not load your subscription. Try again in a minute.' }); }
+}
+// Every change goes to Stripe first and the row follows; the webhook brings
+// the row in line if this request dies between the two.
+async function handleSubChange(req, res, action) {
+  const user = await currentUser(req);
+  if (!user) return json(res, 401, { error: 'Please sign in first.' });
+  if (!BILLING_ON) return json(res, 200, { error: 'Billing isn\u2019t configured.' });
+  const b = await readBody(req);
+  try {
+    return await db.withLock('sub:' + user.id, async () => {
+      const { full, sub } = await loadSub(user);
+      if (!sub) return json(res, 200, { error: 'There is no active subscription on this account.' });
+      const id = encodeURIComponent(sub.id);
+      const end = subPeriodEnd(sub);
+      const rec = (subItem(sub).price || {}).recurring || {};
+      const fmt = (ms) => fmtDay(Math.floor(ms / 1000));
+      let msg;
+      if (action === 'pause') {
+        const steps = PAUSE_STEPS[planOfSub(sub)] || [];
+        const n = Number(b.periods);
+        if (!steps.includes(n)) return json(res, 200, { error: 'That pause length isn\u2019t available.' });
+        if (sub.status !== 'active' || sub.cancel_at_period_end || sub.pause_collection || !end) return json(res, 200, { error: 'This subscription can\u2019t be paused right now.' });
+        // Pro runs to the end of the period already paid for. The renewals in
+        // the pause are voided, not charged. Billing resumes half a day before
+        // the next real renewal, which is charged as normal.
+        const from = end * 1000;
+        const until = Math.floor((addPeriods(end, rec.interval || 'month', n * (rec.interval_count || 1)) - 12 * 3600e3) / 1000) * 1000;
+        await stripePost('subscriptions/' + id, { 'pause_collection[behavior]': 'void', 'pause_collection[resumes_at]': String(Math.floor(until / 1000)) });
+        await db.setPause(user.id, from, until);
+        msg = `Paused. You keep Pro until ${fmt(from)}. Nothing is charged while paused; Pro and billing start again on ${fmt(until)}.`;
+        mailSubscriber(full, 'Your ChartGauge Pro subscription is paused', 'Subscription paused', msg,
+          'To start again sooner, or to cancel instead, open Manage subscription on the Plans page.', req).catch(logError);
+      } else if (action === 'resume') {
+        if (!sub.pause_collection) return json(res, 200, { error: 'This subscription isn\u2019t paused.' });
+        const started = full.pause_from && Date.now() >= Number(full.pause_from);
+        // Before the pause starts nothing changes but the flag. Once it has
+        // started, the period is restarted today and charged, since the
+        // renewal that would have covered today was voided.
+        const params = { pause_collection: '' };
+        if (started) { params.billing_cycle_anchor = 'now'; params.proration_behavior = 'none'; }
+        await stripePost('subscriptions/' + id, params);
+        await db.setPause(user.id, null, null);
+        msg = started ? 'Welcome back. Pro is on again, and this period has been charged.' : 'Pause removed. Your subscription carries on as before.';
+      } else if (action === 'switch') {
+        const plan = String(b.plan || '');
+        const price = STRIPE_PRICES[plan];
+        if (!SUB_PLANS.some(([k]) => k === plan) || !price) return json(res, 200, { error: 'That plan isn\u2019t available.' });
+        if (plan === planOfSub(sub)) return json(res, 200, { error: 'You\u2019re already on that plan.' });
+        if (sub.cancel_at_period_end || sub.pause_collection || sub.status === 'past_due') return json(res, 200, { error: 'Switch plans after resuming your subscription.' });
+        const trialing = sub.status === 'trialing';
+        // During a trial the new price simply applies when the trial ends.
+        // Otherwise the new plan starts today: the unused part of the current
+        // one is credited and the difference charged. If the card declines,
+        // nothing changes (pending_if_incomplete).
+        await stripePost('subscriptions/' + id, {
+          'items[0][id]': subItem(sub).id, 'items[0][price]': price,
+          proration_behavior: trialing ? 'none' : 'always_invoice',
+          ...(trialing ? {} : { payment_behavior: 'pending_if_incomplete' }),
+        }, { 'Idempotency-Key': 'switch-' + sub.id + '-' + plan + '-' + (end || '') });
+        const label = (SUB_PLANS.find(([k]) => k === plan) || [, plan])[1];
+        msg = trialing
+          ? `Switched to ${label}. Your trial carries on, and the ${label.toLowerCase()} price is charged when it ends.`
+          : `Switched to ${label}. The unused time on your old plan was credited toward it, and the new plan renews from today.`;
+        mailSubscriber(full, 'Your ChartGauge Pro plan has changed', 'Plan changed', msg, 'Pro renews automatically until you cancel.', req).catch(logError);
+      } else if (action === 'cancel') {
+        if (sub.cancel_at_period_end) return json(res, 200, { ok: true, message: 'Your subscription is already set to end.' });
+        // A paused subscription ends now: the paid period is over or about to
+        // be, and nothing is owed for the pause.
+        const pausedNow = sub.pause_collection && isPaused(full);
+        if (pausedNow) {
+          await stripeDelete('subscriptions/' + id);
+          await db.setPause(user.id, null, null);
+          await db.setFree(user.id);
+          msg = 'Canceled. Nothing more will be charged.';
+        } else {
+          const params = { cancel_at_period_end: 'true' };
+          if (sub.pause_collection) params.pause_collection = '';
+          await stripePost('subscriptions/' + id, params);
+          if (sub.pause_collection) await db.setPause(user.id, null, null);
+          const until = sub.status === 'trialing' && sub.trial_end ? sub.trial_end * 1000 : (end && end * 1000);
+          msg = `Canceled. You keep Pro until ${until ? fmt(until) : 'the end of this period'}, and nothing more will be charged.`;
+        }
+        mailSubscriber(full, 'Your ChartGauge Pro subscription is canceled', 'Subscription canceled', msg,
+          'Changed your mind? Open Manage subscription on the Plans page before then and choose Keep Pro.', req).catch(logError);
+      } else if (action === 'keep') {
+        if (!sub.cancel_at_period_end) return json(res, 200, { ok: true, message: 'Your subscription is not set to end.' });
+        await stripePost('subscriptions/' + id, { cancel_at_period_end: 'false' });
+        msg = 'Your subscription will carry on as before.';
+      }
+      return json(res, 200, { ok: true, message: msg });
+    });
+  } catch (e) {
+    logError(e);
+    return json(res, 200, { error: (e && e.status && e.status < 500 && e.message) ? 'Stripe said: ' + e.message : 'Could not reach Stripe. Nothing was changed; try again in a minute.' });
+  }
+}
+// Keeps the row's pause in line with Stripe, for a pause set or lifted in the
+// Stripe dashboard or portal, or a request that died after the Stripe call.
+async function syncPause(sub, u) {
+  u = u || await db.findByStripeSub(sub.id);
+  if (!u) return;
+  const pc = sub.pause_collection;
+  if (!pc) { if (u.pause_from || u.pause_until) await db.setPause(u.id, null, null); return; }
+  const until = pc.resumes_at ? pc.resumes_at * 1000 : null;
+  const from = Number(u.pause_from) || ((subPeriodEnd(sub) || 0) * 1000) || Date.now();
+  if (Number(u.pause_from) !== from || (Number(u.pause_until) || null) !== until) await db.setPause(u.id, from, until);
+}
 // ---- subscription emails ----
 // The auto-renewal notices: a confirmation stating the terms once someone
 // subscribes, a warning before a trial turns into a charge, and a reminder
@@ -3923,6 +4106,7 @@ async function sendRenewalReminder(inv) {
   const user = await db.findByStripeSub(inv.subscription) || (inv.customer && await db.findByStripeCustomer(inv.customer));
   if (!user) return;
   const when = inv.next_payment_attempt || inv.period_end;
+  if (when && isPaused(user, when * 1000)) return;   // voided by the pause, not charged
   await mailSubscriber(user, 'Your ChartGauge Pro subscription renews soon', 'Renewal reminder',
     `Your Pro subscription renews${when ? ' on ' + fmtDay(when) : ' soon'}, and ${money(inv.amount_due, inv.currency)} will be charged to your card on file.`,
     'If you want to keep Pro, there is nothing to do. If not, cancel before that date and you will not be charged again.');
@@ -3973,7 +4157,9 @@ async function handleWebhook(req, res) {
       await creditInvoice(event.data.object);
     } else if (event.type === 'charge.refunded') {
       await debitRefund(event.data.object);
-    } else if (event.type === 'customer.subscription.trial_will_end') {
+    }
+    if (event.type === 'customer.subscription.updated') await syncPause(event.data.object);
+    if (event.type === 'customer.subscription.trial_will_end') {
       await sendTrialEndingEmail(event.data.object).catch(logError);
     } else if (event.type === 'invoice.upcoming') {
       await sendRenewalReminder(event.data.object).catch(logError);
@@ -4061,6 +4247,7 @@ async function syncPlans() {
       const on = ['active', 'trialing', 'past_due'].includes(sub.status);
       if (on && u.plan !== 'pro') { await db.setPlanPro(u.id); fixed++; }
       if (!on && u.plan === 'pro') { await db.setFree(u.id); fixed++; }
+      if (on) await syncPause(sub, u);
     } catch (e) { logError(e); }
   }
   return { checked, fixed };
@@ -4752,6 +4939,12 @@ const server = http.createServer(async (req, res) => {
     if (url === '/api/billing/webhook' && req.method === 'POST') return await handleWebhook(req, res);
     if (url === '/api/billing/checkout' && req.method === 'POST') return await handleCheckout(req, res);
     if (url === '/api/billing/portal' && req.method === 'POST') return await handlePortal(req, res);
+    if (url === '/api/billing/manage' && req.method === 'GET') return await handleManage(req, res);
+    if (url === '/api/billing/pause' && req.method === 'POST') return await handleSubChange(req, res, 'pause');
+    if (url === '/api/billing/resume' && req.method === 'POST') return await handleSubChange(req, res, 'resume');
+    if (url === '/api/billing/switch' && req.method === 'POST') return await handleSubChange(req, res, 'switch');
+    if (url === '/api/billing/cancel' && req.method === 'POST') return await handleSubChange(req, res, 'cancel');
+    if (url === '/api/billing/keep' && req.method === 'POST') return await handleSubChange(req, res, 'keep');
     serveStatic(req, res);
   } catch (e) { logError(e); console.error('server error:', e); serverError(req, res); }
 });

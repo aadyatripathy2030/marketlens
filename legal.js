@@ -173,7 +173,7 @@ const buildRefunds = () => h('Refunds and Cancellation', [
     TRIAL_DAYS > 0
       ? `If you are in the free trial, canceling before it ends means you are never charged at all. The Plans page shows the trial you would get, and you are emailed a few days before the trial ends.`
       : '',
-    `You can cancel at any time, with no notice period and no cancellation fee, from the <strong>Manage subscription</strong> button on the Plans page. That opens Stripe's billing portal, where cancellation takes effect immediately for future renewals. When you subscribe you are emailed the price, how often it renews and how to cancel, and you get a reminder email before each renewal.`,
+    `You can cancel at any time, with no notice period and no cancellation fee, from the <strong>Manage subscription</strong> button on the Plans page: choose <strong>Cancel subscription</strong> and confirm once. Cancellation takes effect immediately for future renewals, and you keep Pro until the end of the period already paid for. The same page also lets you pause a weekly or monthly plan for a few billing periods (nothing is charged while paused, and you can resume or cancel at any time) or switch to another billing period. When you subscribe you are emailed the price, how often it renews and how to cancel, and you get a reminder email before each renewal.`,
     `When you cancel, your subscription runs to the end of the period you have already paid for and then stops. After that the account returns to the free tier: nothing you saved is deleted, but the Pro-only features stop and the free daily limits apply again.`),
 
   s('Refunds',

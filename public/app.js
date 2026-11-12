@@ -3619,7 +3619,8 @@
   }
   if ($('homeEndCta')) $('homeEndCta').addEventListener('click', () => currentUser ? showView('analyze') : openAuth('signup'));
   function renderPricing() {
-    const pro = !!(currentUser && currentUser.plan === 'pro');
+    const paused = !!(currentUser && currentUser.pause_from && Date.now() >= currentUser.pause_from && (!currentUser.pause_until || Date.now() < currentUser.pause_until));
+    const pro = !!(currentUser && (currentUser.plan === 'pro' || paused));
     const li = (arr) => arr.map(([t, on]) => `<li class="${on ? '' : 'off'}">${esc(t)}</li>`).join('');
     const aiN = limits.aiPerDay || AI_FALLBACK_N;
     const freeList = [
@@ -3653,8 +3654,8 @@
     let proCards;
     if (pro) {
       proCards = `<div class="plan-card pro period"><div class="plan-name">Pro</div>`
-        + `<div class="plan-price">Active</div>`
-        + `<div class="period-sub">Thank you for supporting ChartGauge.</div>`
+        + `<div class="plan-price">${paused ? 'Paused' : 'Active'}</div>`
+        + `<div class="period-sub">${paused ? (currentUser.pause_until ? `Pro and billing start again on ${esc(dayFmt(currentUser.pause_until))}.` : 'Paused.') : 'Thank you for supporting ChartGauge.'}</div>`
         + `<button class="btn btn-ghost btn-block" id="manageBtn">Manage subscription</button></div>`;
     } else if (periods.length) {
       proCards = periods.map(([k, label]) => {
@@ -3695,7 +3696,8 @@
     // Two cards (a Pro subscriber, or billing not configured) should not sit in
     // a four-column grid leaving two empty tracks.
     $('pricingBody').style.setProperty('--cards', String($('pricingBody').children.length || 1));
-    if ($('manageBtn')) $('manageBtn').addEventListener('click', openPortal);
+    if ($('manageBtn')) $('manageBtn').addEventListener('click', openManage);
+    if ($('subManage') && !pro) $('subManage').remove();
     // Signed out, the same button opens the sign-in modal rather than checkout.
     $('pricingBody').querySelectorAll('.plan-btn').forEach(b => b.addEventListener('click',
       () => { if (currentUser) return startCheckout(b.dataset.plan, b); rememberPlan(b.dataset.plan); openAuth('signup'); }));
@@ -3757,10 +3759,74 @@
     } catch (e) { alert('Could not start checkout.'); }
     renderPricing();
   }
-  async function openPortal() {
-    const b = $('manageBtn'); if (b) { b.disabled = true; b.textContent = 'Opening…'; }
+  async function openPortal(b) {
+    b = b || $('manageBtn'); const was = b ? b.textContent : '';
+    if (b) { b.disabled = true; b.textContent = 'Opening…'; }
     try { const j = await (await fetch('/api/billing/portal', { method: 'POST' })).json(); if (j.url) { location.href = j.url; return; } alert(j.error || 'Could not open the billing portal.'); } catch (e) { alert('Could not open the billing portal.'); }
-    if (b) { b.disabled = false; b.textContent = 'Manage subscription'; }
+    if (b) { b.disabled = false; b.textContent = was; }
+  }
+  function dayFmt(ms) { return new Date(ms).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }); }
+  // Manage subscription: pause, switch plan, or cancel, all on one panel.
+  // Cancel is a plain button beside the others with one neutral confirm;
+  // nothing has to be declined to reach it.
+  async function openManage(note) {
+    let box = $('subManage');
+    if (!box) { box = document.createElement('section'); box.id = 'subManage'; box.className = 'sub-manage'; $('pricingBody').after(box); }
+    box.innerHTML = skelLines(4);
+    let d; try { d = await (await fetch('/api/billing/manage')).json(); } catch (e) { d = { error: 'Could not load your subscription.' }; }
+    if (d.error || d.none) {
+      box.innerHTML = `<p class="sub-note">${esc(d.error || 'No active subscription found on this account.')}</p>`
+        + (d.portal || d.error ? `<button class="btn btn-ghost" id="smPortal">Billing portal</button>` : '');
+      if ($('smPortal')) $('smPortal').addEventListener('click', e => openPortal(e.currentTarget));
+      return;
+    }
+    const label = { weekly: 'Weekly', monthly: 'Monthly', yearly: 'Yearly' }[d.plan] || '';
+    let status;
+    if (d.paused) status = `Paused. ${d.paused.from > Date.now() ? `Pro stays on until ${dayFmt(d.paused.from)}, then pauses.` : ''} Nothing is charged while paused${d.paused.until ? `; Pro and billing (${esc(d.price)} ${esc(d.every)}) start again on ${dayFmt(d.paused.until)}` : ''}.`;
+    else if (d.canceling) status = `Canceled. You keep Pro until ${dayFmt(d.trialEnd || d.periodEnd)}, and nothing more will be charged.`;
+    else if (d.trialing) status = `Free trial until ${dayFmt(d.trialEnd)}, then ${esc(d.price)} ${esc(d.every)}.`;
+    else status = `${esc(d.price)} ${esc(d.every)}. Renews on ${dayFmt(d.periodEnd)}.`;
+    if (d.status === 'past_due') status += ' The last payment failed: update your card in the billing portal.';
+    const unit = (n) => `${n} ${d.pauseUnit}${n > 1 ? 's' : ''}`;
+    let html = `<h2 class="sub-h">Your subscription${label ? ` · ${label}` : ''}</h2><p class="sub-status">${status}</p>`;
+    if (note) html += `<p class="sub-ok" role="status">${esc(note)}</p>`;
+    if (d.paused) html += `<div class="sub-row"><button class="btn btn-ai" data-act="resume">Resume now</button></div>`;
+    if (d.canceling) html += `<div class="sub-row"><button class="btn btn-ai" data-act="keep">Keep Pro</button></div>`;
+    if (d.pauseSteps && d.pauseSteps.length) {
+      html += `<div class="sub-opt"><div class="sub-opt-h">Take a break</div><p class="sub-opt-p">Pause instead of canceling. You keep Pro until ${dayFmt(d.periodEnd)}, then nothing is charged until the pause ends. Your watchlist, alerts and streak stay as they are.</p><div class="sub-row">`
+        + d.pauseSteps.map(n => `<button class="btn btn-ghost" data-act="pause" data-n="${n}">Pause ${unit(n)}</button>`).join('') + `</div></div>`;
+    }
+    if (d.switchTo && d.switchTo.length) {
+      html += `<div class="sub-opt"><div class="sub-opt-h">Switch plan</div><p class="sub-opt-p">${d.trialing ? 'Your trial carries on; the new price applies when it ends.' : 'The new plan starts today. Unused time on your current plan is credited toward it.'}</p><div class="sub-row">`
+        + d.switchTo.map(o => `<button class="btn btn-ghost" data-act="switch" data-plan="${esc(o.plan)}">${esc(o.label)}: ${esc(o.price)} ${esc(o.every)}${o.savePct > 0 ? ` (save ${o.savePct}%)` : ''}</button>`).join('') + `</div></div>`;
+    }
+    html += `<div class="sub-row sub-foot">`
+      + (d.canceling ? '' : `<button class="btn btn-ghost" data-act="cancel">Cancel subscription</button>`)
+      + `<button class="btn btn-ghost" id="smPortal">Card and invoices</button></div>`;
+    box.innerHTML = html;
+    $('smPortal').addEventListener('click', e => openPortal(e.currentTarget));
+    box.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => subAction(b, d)));
+    if (!note) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  async function subAction(b, d) {
+    const act = b.dataset.act;
+    let ask = '';
+    if (act === 'cancel') ask = d.paused && d.paused.from <= Date.now()
+      ? 'Cancel your subscription? It ends now and nothing more will be charged.'
+      : `Cancel your subscription? You keep Pro until ${dayFmt(d.trialEnd || d.periodEnd)} and nothing more will be charged.`;
+    if (act === 'pause') ask = `Pause for ${b.dataset.n} ${d.pauseUnit}${b.dataset.n > 1 ? 's' : ''}? You keep Pro until ${dayFmt(d.periodEnd)}.`;
+    if (act === 'switch') ask = `Switch to ${b.textContent}?` + (d.trialing ? '' : ' The difference is charged to your card today.');
+    if (act === 'resume' && d.paused && d.paused.from <= Date.now()) ask = `Resume now? ${d.price} is charged today and Pro comes back straight away.`;
+    if (ask && !confirm(ask)) return;
+    const box = $('subManage');
+    box.querySelectorAll('button').forEach(x => x.disabled = true);
+    const body = act === 'pause' ? { periods: Number(b.dataset.n) } : act === 'switch' ? { plan: b.dataset.plan } : {};
+    let j; try { j = await (await fetch('/api/billing/' + act, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json(); } catch (e) { j = { error: 'Could not reach the server. Nothing was changed.' }; }
+    if (j.error) { alert(j.error); box.querySelectorAll('button').forEach(x => x.disabled = false); return; }
+    if (act === 'cancel') track('subscription_cancel', {});
+    await checkAuth();
+    renderPricing();
+    if ($('manageBtn')) openManage(j.message); else alert(j.message);
   }
 
   // ---- Admin dashboard ----

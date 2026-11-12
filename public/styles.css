@@ -2466,3 +2466,16 @@ body:not([data-view="home"]) .bg-blobs { display: none; }
 .guide-table th { color: var(--muted); font-weight: 510; }
 .guide-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .guide-note { font-size: 13px; color: var(--muted); }
+
+/* Manage subscription panel (Plans page) */
+.sub-manage { border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin: 20px 0; max-width: 720px; }
+.sub-h { font-size: 17px; margin: 0 0 6px; }
+.sub-status { font-size: 14px; color: var(--muted); margin: 0 0 12px; line-height: 1.5; }
+.sub-ok { font-size: 14px; margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
+.sub-note { font-size: 14px; color: var(--muted); margin: 0 0 12px; }
+.sub-opt { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 14px; }
+.sub-opt-h { font-weight: 600; font-size: 14px; margin-bottom: 4px; }
+.sub-opt-p { font-size: 13px; color: var(--muted); margin: 0 0 10px; line-height: 1.5; }
+.sub-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.sub-foot { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 14px; }
+@media (max-width: 520px) { .sub-row .btn { flex: 1 1 100%; } }
