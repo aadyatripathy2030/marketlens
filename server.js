@@ -4830,6 +4830,27 @@ function pricingHtml(b) {
 }
 const ORDERED_LABELS = ['Strongly up', 'Leans up', 'Mixed', 'Leans down', 'Strongly down'];
 
+// Scripts and stylesheets are minified once, in memory, the first time each
+// version of a file is asked for (about 65 ms for app.js), and served from
+// memory after that. The files on disk stay readable. If esbuild is missing
+// or a file fails to minify, the original is served instead.
+let esbuild = null;
+try { esbuild = require('esbuild'); } catch (e) { console.warn('[static] esbuild not installed; serving unminified assets'); }
+const MINIFIED = new Map();
+function minified(filePath, stat) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (!esbuild || (ext !== '.js' && ext !== '.css')) return null;
+  const key = filePath + ':' + stat.size + ':' + Math.round(stat.mtimeMs);
+  let hit = MINIFIED.get(filePath);
+  if (hit && hit.key === key) return hit;
+  try {
+    const code = esbuild.transformSync(fs.readFileSync(filePath, 'utf8'), { loader: ext === '.css' ? 'css' : 'js', minify: true, legalComments: 'none' }).code;
+    hit = { key, body: Buffer.from(code), tag: `W/"m${stat.size}-${Math.round(stat.mtimeMs)}"` };
+  } catch (e) { logError(e); hit = { key, body: null }; }
+  MINIFIED.set(filePath, hit);
+  return hit.body ? hit : null;
+}
+
 function serveStatic(req, res) {
   let urlPath;
   try { urlPath = decodeURIComponent(req.url.split('?')[0]); }
@@ -4850,13 +4871,16 @@ function serveStatic(req, res) {
     // Filenames are not content-hashed, so a long max-age would pin stale code
     // after a deploy. Revalidate instead: an unchanged asset costs a 304 with
     // an empty body rather than a re-download.
-    const tag = `W/"${stat.size}-${Math.round(stat.mtimeMs)}"`;
+    const min = minified(filePath, stat);
+    const tag = min ? min.tag : `W/"${stat.size}-${Math.round(stat.mtimeMs)}"`;
     if (req.headers['if-none-match'] === tag) { res.writeHead(304, { ETag: tag }); return res.end(); }
     res.writeHead(200, {
       'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
       'ETag': tag,
       'Cache-Control': 'public, max-age=60, must-revalidate',
+      ...(min ? { 'Content-Length': min.body.length } : {}),
     });
+    if (min) return res.end(req.method === 'HEAD' ? undefined : min.body);
     fs.createReadStream(filePath).pipe(res);
   });
 }

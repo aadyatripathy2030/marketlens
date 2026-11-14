@@ -11,6 +11,7 @@
     "node": ">=22"
   },
   "dependencies": {
+    "esbuild": "0.25.12",
     "pg": "^8.23.1"
   }
 }
