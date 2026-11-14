@@ -608,43 +608,102 @@ function headlineCall(rating, e) {
 // Where the price is likely to be, as a range that holds 8 times in 10.
 // Centred on today's price: a trend line extended forward was tested and
 // missed by more than "no change" at every horizon, by 20x at a year.
-// Width = a blend of the last 20 days' and the last year's daily volatility
-// (volatility is the part of a chart that does carry forward), times
-// multipliers measured on daily bars of 134 stocks, funds and coins over
-// 2006-2015. Checked on 2016-2026, which they never saw: the real price
-// landed inside 77.5% to 82.3% of the time across the six horizons.
-// Daily bars only; the multipliers mean nothing on other intervals.
-const BAND80 = { 1: [-1.184, 1.248], 5: [-1.191, 1.205], 21: [-1.187, 1.184], 63: [-1.156, 1.219], 126: [-1.17, 1.283], 252: [-1.068, 1.379] };
-// The 80% range for any horizon in trading days, using the multipliers of
-// the nearest tested horizon. Used by the forward record (20 days).
-function rangeAt(closes, days) {
-  const b = forecastBands(closes);
-  if (!b.length) return null;
-  const keys = Object.keys(BAND80).map(Number);
-  const k = keys.reduce((a, x) => Math.abs(x - days) < Math.abs(a - days) ? x : a, keys[0]);
-  const ref = b.find(x => x.days === k), last = ref.mid, w = Math.sqrt(days / k);
-  return { low: last * Math.pow(ref.low / last, w), high: last * Math.pow(ref.high / last, w) };
+//
+// Width = daily volatility x the square root of the horizon x a multiplier
+// for each side. Volatility blends the last 20 days with the last year: half
+// and half for tomorrow and a week, and 20/80 from a month on, because quiet
+// and stormy spells both fade (the even blend under-covered calm markets and
+// over-covered stormy ones at longer horizons). The multipliers are the 10th
+// and 90th percentiles of past moves measured in those units, on daily bars
+// of 134 stocks, funds and coins.
+//
+// Each side then corrects itself on the symbol's own history: every past
+// range is checked once its horizon has passed, and that side widens a little
+// after a miss and narrows a little after a hit (adaptive conformal
+// inference), so a symbol or a decade that runs hotter than the average is
+// caught. Chosen on 2006-2015, tested once on 2016-2026: every side of every
+// stock horizon missed 9.8% to 11.5% of the time against a 10% target, and
+// calm and stormy markets were covered 75% to 82%. Before this change the
+// upside missed up to 13% and calm markets at three months were covered 71%.
+//
+// Crypto trades every day, so its horizons count calendar days, and it stops
+// at three months: six-month and one-year crypto ranges held only 68-72% in
+// the test, on too few independent years to fix.
+// Daily bars only; none of this means anything on other intervals.
+const BAND_H = {
+  stock:  [['Tomorrow', 1], ['1 week', 5], ['1 month', 21], ['3 months', 63], ['6 months', 126], ['1 year', 252]],
+  crypto: [['Tomorrow', 1], ['1 week', 7], ['1 month', 30], ['3 months', 91]],
+};
+// [lower, upper] multiplier per horizon slot, fit on 2006-2026 after the
+// method was fixed on earlier years (see above).
+const BAND80 = [[-1.156, 1.185], [-1.185, 1.206], [-1.152, 1.23], [-1.105, 1.254], [-1.072, 1.31], [-1.002, 1.415]];
+const ACI_ETA = 0.02;   // per-day step, divided by the square root of the horizon
+// Weight on the 20-day volatility for a horizon slot.
+const shortWeight = (slot) => slot >= 2 ? 0.2 : 0.5;
+
+// Rolling 20-day and 252-day volatility of daily log returns at every bar.
+function volSeries(closes) {
+  const n = closes.length, r = new Float64Array(n), s20 = new Float64Array(n), s252 = new Float64Array(n);
+  for (let i = 1; i < n; i++) r[i] = closes[i] > 0 && closes[i - 1] > 0 ? Math.log(closes[i] / closes[i - 1]) : 0;
+  const roll = (len, out) => {
+    let s = 0, q = 0;
+    for (let i = 1; i < n; i++) {
+      s += r[i]; q += r[i] * r[i];
+      if (i > len) { s -= r[i - len]; q -= r[i - len] * r[i - len]; }
+      const m = Math.min(i, len);
+      if (m >= 10) { const mu = s / m; out[i] = Math.sqrt(Math.max(0, (q - m * mu * mu) / (m - 1))); }
+    }
+  };
+  roll(20, s20); roll(252, s252);
+  return { s20, s252 };
 }
-function forecastBands(closes) {
+
+// The 80% range for one horizon in bars, self-corrected on this series.
+function bandFor(closes, vs, h, slot) {
+  const n = closes.length, w = shortWeight(slot), [ml, mu] = BAND80[slot];
+  const eta = ACI_ETA / Math.sqrt(h);
+  const sig = (i) => w * vs.s20[i] + (1 - w) * vs.s252[i];
+  let aL = 0, aU = 0;
+  // Replay exactly as tested: at each bar, first score the range made h bars
+  // ago (as it stood then), then make today's with the current correction.
+  const lo = new Float64Array(n), up = new Float64Array(n), made = new Uint8Array(n);
+  for (let i = Math.min(260, n - 1); i < n; i++) {
+    const j = i - h;
+    if (j >= 0 && made[j]) {
+      const y = Math.log(closes[i] / closes[j]);
+      aL += eta * ((y < lo[j] ? 1 : 0) - 0.1);
+      aU += eta * ((y > up[j] ? 1 : 0) - 0.1);
+    }
+    const v = sig(i); if (!(v > 0)) continue;
+    const sd = v * Math.sqrt(h);
+    lo[i] = ml * sd * Math.exp(aL); up[i] = mu * sd * Math.exp(aU); made[i] = 1;
+  }
+  if (!made[n - 1]) return null;
+  const last = closes[n - 1];
+  return { low: last * Math.exp(lo[n - 1]), high: last * Math.exp(up[n - 1]) };
+}
+const slotFor = (days, crypto) => {
+  const hs = (crypto ? BAND_H.crypto : BAND_H.stock).map(x => x[1]);
+  let k = 0; hs.forEach((x, i) => { if (Math.abs(x - days) < Math.abs(hs[k] - days)) k = i; });
+  return k;
+};
+// The 80% range for any horizon in bars. Used by the forward record (20 days).
+function rangeAt(closes, days, opts) {
+  if (!closes || closes.length < 61 || !(closes[closes.length - 1] > 0)) return null;
+  return bandFor(closes, volSeries(closes), days, slotFor(days, opts && opts.crypto));
+}
+function forecastBands(closes, opts) {
   const n = closes ? closes.length : 0;
   if (n < 61) return [];
   const last = closes[n - 1];
   if (!(last > 0)) return [];
-  const sd = (len) => {
-    const r = [];
-    for (let k = n - len; k < n; k++) if (closes[k] > 0 && closes[k - 1] > 0) r.push(Math.log(closes[k] / closes[k - 1]));
-    if (r.length < 10) return null;
-    const m = r.reduce((a, b) => a + b, 0) / r.length;
-    return Math.sqrt(r.reduce((a, b) => a + (b - m) * (b - m), 0) / (r.length - 1));
-  };
-  const short = sd(20), long = sd(Math.min(252, n - 1));
-  if (!short || !long) return [];
-  const v = 0.5 * short + 0.5 * long;
-  const H = [['Tomorrow', 1], ['1 week', 5], ['1 month', 21], ['3 months', 63], ['6 months', 126], ['1 year', 252]];
-  return H.map(([label, d]) => {
-    const [lo, hi] = BAND80[d], w = v * Math.sqrt(d);
-    return { label, days: d, low: last * Math.exp(lo * w), mid: last, high: last * Math.exp(hi * w), chance: 80 };
-  });
+  const vs = volSeries(closes);
+  if (!(vs.s20[n - 1] > 0) || !(vs.s252[n - 1] > 0)) return [];
+  const H = opts && opts.crypto ? BAND_H.crypto : BAND_H.stock;
+  return H.map(([label, d], slot) => {
+    const b = bandFor(closes, vs, d, slot);
+    return b && { label, days: d, low: b.low, mid: last, high: b.high, chance: 80 };
+  }).filter(Boolean);
 }
 
 // ---- Stop-versus-target odds ----
