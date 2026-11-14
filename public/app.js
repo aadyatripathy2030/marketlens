@@ -1000,6 +1000,15 @@
     scrollIdle = setTimeout(() => { scrollIdle = 0; document.documentElement.classList.remove('is-scrolling'); }, 160);
   }, { capture: true, passive: true });
   markScrolled();
+  // The hero drawing is decoration shown only on wide screens, so it lives in
+  // a <template> and is added to the page only there: on a phone its ~90
+  // elements never exist.
+  (function heroArt() {
+    const tpl = $('heroArtTpl'); if (!tpl || !window.matchMedia) return;
+    const mq = matchMedia('(min-width: 1180px)');
+    const add = () => { if (mq.matches && !document.querySelector('.hero-art')) tpl.after(tpl.content.cloneNode(true)); };
+    add(); if (mq.addEventListener) mq.addEventListener('change', add);
+  })();
   // The hero search types its examples, with a caret, until someone uses it.
   (function typePlaceholder() {
     const el = $('heroInput');

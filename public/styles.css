@@ -1998,7 +1998,10 @@ body[data-view="verify"] .disclaimer, body[data-view="verify"] .site-foot { disp
 .marquee:hover .marquee-track, .marquee:focus-within .marquee-track { animation-play-state: paused; }
 .marquee a { display: inline-flex; align-items: baseline; gap: 8px; color: var(--muted); text-decoration: none; white-space: nowrap; font-size: 15px; padding: 6px 2px;
   transition: color .2s cubic-bezier(.4,0,.2,1); }
-.marquee a b { color: var(--text); font-weight: 590; letter-spacing: -.01em; transition: color .2s; }
+/* One element per stock: the ticker is the link text, the name comes from data-n. */
+.marquee a { color: var(--text); font-weight: 590; letter-spacing: -.01em; }
+.marquee a::after { content: attr(data-n); color: var(--muted); font-weight: 400; letter-spacing: 0; transition: color .2s; }
+.marquee a:hover::after { color: var(--text); }
 .marquee a:hover { color: var(--text); }
 @keyframes rsScroll { from { transform: translateX(0); } to { transform: translateX(calc(-100% - 32px)); } }
 @media (max-width: 760px) { .marquee { margin: -40px 0 64px; } }
@@ -2036,7 +2039,6 @@ body[data-view="verify"] .disclaimer, body[data-view="verify"] .site-foot { disp
   text-underline-offset: 3px; text-decoration-thickness: 1px; }
 #main p a:not([class]):hover, #main li a:not([class]):hover, .link-btn:hover,
 .home-full:hover, .home-more a:hover, .hero-assure a:hover { color: var(--btn-hi); text-decoration-color: currentColor; }
-.marquee a span { color: var(--muted); }
 /* The risk note: a quiet panel, no colored edge. */
 .risk { border-left: 0; border: 1px solid var(--border); background: var(--wash); }
 .risk.danger { border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
