@@ -575,7 +575,12 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   // Calibrated on daily bars only (see forecastBands).
   // Crypto pairs (BTC/USD) trade every day, so their ranges count calendar days.
   const isPair = String(symbol).includes('/');
-  const bands = interval === '1day' ? I.forecastBands(closes, { crypto: isPair }) : [];
+  // Days showing a pattern that came before bigger moves get a wider range
+  // (tested; see WIDEN in indicators.js). Every past day is flagged too, so the
+  // range's self-correction replays exactly as it was tested.
+  let flags = null;
+  if (interval === '1day') { try { flags = PAT.sizeFlags(candles); } catch (e) { logError(e); } }
+  const bands = interval === '1day' ? I.forecastBands(closes, { crypto: isPair, flags }) : [];
   const levels = I.tradeLevels(candles, a.direction);
   // What actually happened, historically, at scores like today's. Roughly 50ms
   // on a full series; null when there is not enough history to say anything.
@@ -591,7 +596,7 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   // would otherwise write a different row for the same day. The stated
   // chance and the 20-day range go in with it, before the outcome exists.
   if (source === 'live' && interval === '1day') {
-    const rg = I.rangeAt(closes, ACCURACY_HORIZON, { crypto: isPair });
+    const rg = I.rangeAt(closes, ACCURACY_HORIZON, { crypto: isPair, flags });
     recordReading(symbol, data.prices, rating, {
       prob: call && call.freq ? call.freq.up : null, base: call && call.freq ? call.freq.base : null,
       lo: rg ? rg.low : null, hi: rg ? rg.high : null });
@@ -4440,7 +4445,7 @@ function buildAccuracyHtml(st) {
   } else h += P(`Not enough checked readings yet (${c ? c.n : 0} so far; results are shown from 30). Stated chances started being recorded in November 2026.`);
   h += H('Tests on past prices (hypothetical)');
   h += P(`Before going live, each part was tested on daily prices of 134 US stocks, funds and coins: set up using 2006 to 2015 only, then checked once on 2016 to 2026. These are hypothetical results on past data, not live readings, and past results do not guarantee future ones.`)
-    + `<ul><li>The 80% price range (revised in November 2026) contained the real price 77% to 80% of the time for stocks, from 1 day to 1 year ahead, and missed below and above about equally: 9.8% to 11.5% on each side, against 10%. For crypto, from 1 day to 3 months, it held 75% to 81%. Crypto ranges stop at 3 months because longer ones held only about 70%.</li>`
+    + `<ul><li>The 80% price range (revised in November 2026) contained the real price 77% to 80% of the time for stocks, from 1 day to 1 year ahead, and missed below and above about equally: 9.8% to 11.5% on each side, against 10%. For crypto, from 1 day to 3 months, it held 75% to 81%. Crypto ranges stop at 3 months because longer ones held only about 70%. The range is also widened for the next day, week and month after seven chart patterns that came before bigger moves (such as gaps and big down days). Without that, the range held only 74% to 77% of the time after those days; with it, about 79% for stocks, from 2016 to 2026.</li>`
     + `<li>The odds of reaching a target before the stop were within 3 points of what happened, long and short.</li>`
     + `<li>The indicators' lean, and six well-known chart rules, did not tell which way a large stock would go better than chance. That is why ${SITE_NAME} shows how often setups rose, next to the usual rate, instead of a buy or sell call.</li></ul>`;
   h += P(`Small samples swing a lot, so early figures here can move. Nothing on this page is financial advice, and trading can lose money.`);

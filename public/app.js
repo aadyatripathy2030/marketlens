@@ -241,6 +241,7 @@
           rec += `<p class="pat-rec">The next week’s daily moves ran about ${pct}% ${r.moveSize === 'larger' ? 'bigger' : 'smaller'} than usual for the stock, in both test periods. It says how much the price tends to move, not which way.</p>`;
         }
       }
+      if (it.widens) rec += `<p class="pat-rec">The next-day, one-week and one-month price ranges on this page are widened for it.</p>`;
       return `<div class="pat-item"><div><span class="pat-name">${esc(it.name.charAt(0).toUpperCase() + it.name.slice(1))}</span><span class="pat-when">${esc(when)}</span></div><p class="pat-about">${esc(it.about)}</p>${rec}</div>`;
     }).join('');
   }
@@ -266,7 +267,9 @@
     $('bands').innerHTML = bands.map(b => {
       const l = pct(b.low), w = Math.max(1, pct(b.high) - l), m = pct(b.mid);
       return `<div class="band-row"><span class="band-label">${esc(b.label)}</span><div class="band-track"><div class="band-range" style="left:${l}%;width:${w}%"></div><div class="band-mid" style="left:${m}%"></div></div><span class="band-nums"><b>${b.low.toFixed(2)}</b> – <b>${b.high.toFixed(2)}</b></span></div>`;
-    }).join('');
+    }).join('') + (bands.some(b => b.widened)
+      ? `<p class="compare-note">The next-day, one-week and one-month ranges are wider than usual: today’s chart shows a pattern that came before bigger moves in our test (see Patterns on this chart). Without the widening, ranges after these patterns held only 74–77% of the time; with it, about 80%.</p>`
+      : '');
   }
 
   // The measured base rate, stated next to the score it is judging. If the

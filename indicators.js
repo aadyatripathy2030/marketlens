@@ -640,6 +640,14 @@ const BAND80 = [[-1.156, 1.185], [-1.185, 1.206], [-1.152, 1.23], [-1.105, 1.254
 const ACI_ETA = 0.02;   // per-day step, divided by the square root of the horizon
 // Weight on the 20-day volatility for a horizon slot.
 const shortWeight = (slot) => slot >= 2 ? 0.2 : 0.5;
+// Wider range on a day that shows one of the seven patterns that came before
+// bigger moves (patterns.js sizeFlags). Without it the range held only 74-77%
+// of the time after those days at 1 day to 1 month. Factors chosen on
+// 2006-2015; on 2016-2026 coverage after those days rose to 79% for stocks
+// (other days stayed at 80%) and the interval score improved at each of those
+// horizons. Crypto, using the same factors untouched: 78/77/73% -> 82/80/75%.
+// Beyond a month the gain was under a point, so no widening there.
+const WIDEN = [1.18, 1.12, 1.06, 1, 1, 1];
 
 // Rolling 20-day and 252-day volatility of daily log returns at every bar.
 function volSeries(closes) {
@@ -659,9 +667,9 @@ function volSeries(closes) {
 }
 
 // The 80% range for one horizon in bars, self-corrected on this series.
-function bandFor(closes, vs, h, slot) {
+function bandFor(closes, vs, h, slot, flags) {
   const n = closes.length, w = shortWeight(slot), [ml, mu] = BAND80[slot];
-  const eta = ACI_ETA / Math.sqrt(h);
+  const eta = ACI_ETA / Math.sqrt(h), wk = WIDEN[slot] || 1;
   const sig = (i) => w * vs.s20[i] + (1 - w) * vs.s252[i];
   let aL = 0, aU = 0;
   // Replay exactly as tested: at each bar, first score the range made h bars
@@ -675,7 +683,7 @@ function bandFor(closes, vs, h, slot) {
       aU += eta * ((y > up[j] ? 1 : 0) - 0.1);
     }
     const v = sig(i); if (!(v > 0)) continue;
-    const sd = v * Math.sqrt(h);
+    const sd = v * Math.sqrt(h) * (flags && flags[i] ? wk : 1);
     lo[i] = ml * sd * Math.exp(aL); up[i] = mu * sd * Math.exp(aU); made[i] = 1;
   }
   if (!made[n - 1]) return null;
@@ -690,7 +698,7 @@ const slotFor = (days, crypto) => {
 // The 80% range for any horizon in bars. Used by the forward record (20 days).
 function rangeAt(closes, days, opts) {
   if (!closes || closes.length < 61 || !(closes[closes.length - 1] > 0)) return null;
-  return bandFor(closes, volSeries(closes), days, slotFor(days, opts && opts.crypto));
+  return bandFor(closes, volSeries(closes), days, slotFor(days, opts && opts.crypto), opts && opts.flags);
 }
 function forecastBands(closes, opts) {
   const n = closes ? closes.length : 0;
@@ -701,8 +709,9 @@ function forecastBands(closes, opts) {
   if (!(vs.s20[n - 1] > 0) || !(vs.s252[n - 1] > 0)) return [];
   const H = opts && opts.crypto ? BAND_H.crypto : BAND_H.stock;
   return H.map(([label, d], slot) => {
-    const b = bandFor(closes, vs, d, slot);
-    return b && { label, days: d, low: b.low, mid: last, high: b.high, chance: 80 };
+    const b = bandFor(closes, vs, d, slot, opts && opts.flags);
+    const widened = !!(opts && opts.flags && opts.flags[n - 1] && WIDEN[slot] > 1);
+    return b && { label, days: d, low: b.low, mid: last, high: b.high, chance: 80, widened };
   }).filter(Boolean);
 }
 

@@ -207,8 +207,21 @@ function chartPatterns(candles, opts) {
   const cls = classicalSignals(candles);
   for (let i = Math.max(0, n - 5); i < n; i++) for (const name of (cls[i] || [])) found.push({ name, daysAgo: n - 1 - i });
   const S = stats()[crypto ? 'crypto' : 'stocks'] || {};
-  const items = found.map(f => Object.assign({ about: NAMES[f.name] || '' }, f, { record: S[f.name] || null }));
+  const items = found.map(f => Object.assign({ about: NAMES[f.name] || '' }, f, { record: S[f.name] || null, widens: f.daysAgo === 0 && SIZE.has(f.name) }));
   return { items, crypto };
 }
 
-module.exports = { barPatterns, classicalSignals, chartPatterns, NAMES };
+// The seven patterns that came before bigger moves in both test periods.
+// The price range widens on days that show one (indicators.js WIDEN).
+const SIZE = new Set(['Bollinger squeeze', 'gap down, recovered', 'gap down, held', 'big down day', 'gap up, faded', '20-day breakdown, high volume', 'ascending triangle, breaks down']);
+function sizeFlags(candles) {
+  const n = candles.length, f = new Uint8Array(n);
+  if (n < 160) return f;
+  const cls = classicalSignals(candles);
+  for (let i = 140; i < n; i++) {
+    if (barPatterns(candles, i).some(x => SIZE.has(x)) || (cls[i] || []).some(x => SIZE.has(x))) f[i] = 1;
+  }
+  return f;
+}
+
+module.exports = { barPatterns, classicalSignals, chartPatterns, sizeFlags, SIZE, NAMES };
