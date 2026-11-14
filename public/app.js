@@ -466,11 +466,40 @@
     ['SPY', 'SPDR S&P 500 ETF'], ['QQQ', 'Invesco QQQ (Nasdaq-100)'], ['DIA', 'SPDR Dow Jones ETF'],
     ['IWM', 'iShares Russell 2000'], ['VTI', 'Vanguard Total Market'], ['VOO', 'Vanguard S&P 500'],
   ];
-  const TICKERS = (() => {
-    const seen = new Set(CURATED.map(t => t[0]));
-    const extra = (Array.isArray(window.TICKER_LIST) ? window.TICKER_LIST : []).filter(t => Array.isArray(t) && t[0] && !seen.has(t[0]));
-    return CURATED.concat(extra);
-  })();
+  // Loaded on demand: a script is fetched once, the first time it is needed.
+  const scriptLoads = {};
+  function loadScript(src) {
+    return scriptLoads[src] ||= new Promise((ok, fail) => {
+      const el = document.createElement('script'); el.src = src; el.async = true;
+      el.onload = ok; el.onerror = () => { delete scriptLoads[src]; fail(new Error('load ' + src)); };
+      document.head.appendChild(el);
+    });
+  }
+  // The curated list works at once; the full list of ~5,000 US stocks
+  // (tickers.js, 115 KB) is fetched when someone first touches a search box,
+  // or once the page is idle, instead of before the page can draw.
+  let TICKERS = CURATED.slice();
+  let tickersReady = null;
+  function ensureTickers() {
+    return tickersReady ||= loadScript('/tickers.js').then(() => {
+      const seen = new Set(CURATED.map(t => t[0]));
+      const extra = (Array.isArray(window.TICKER_LIST) ? window.TICKER_LIST : []).filter(t => Array.isArray(t) && t[0] && !seen.has(t[0]));
+      TICKERS = CURATED.concat(extra);
+      try { for (const t of extra) if (!(t[0] in nameOf)) nameOf[t[0]] = t[1]; } catch (e) {}
+    }).catch(() => { tickersReady = null; });
+  }
+  // On real intent (a tap or a keystroke in a text box), not on focus: a
+  // box can be focused by the page itself. Once loaded, the box being typed
+  // in is asked to suggest again, so the fuller list shows straight away.
+  const isTextBox = (t) => t && t.matches && t.matches('input[type="text"], input[type="search"], input:not([type])');
+  const wantTickers = (e) => {
+    if (!isTextBox(e.target) || tickersReady) return;
+    ensureTickers().then(() => { const a = document.activeElement; if (isTextBox(a) && a.value) a.dispatchEvent(new Event('input', { bubbles: true })); });
+  };
+  document.addEventListener('pointerdown', wantTickers, true);
+  document.addEventListener('input', wantTickers, true);
+  const idle = window.requestIdleCallback || ((f) => setTimeout(f, 2500));
+  window.addEventListener('load', () => idle(() => ensureTickers(), { timeout: 5000 }));
   // One matcher for both pickers, so the hero search and the practice ticket
   // can never offer different things for the same letters.
   //
@@ -1669,6 +1698,18 @@
 
   // Fundamentals + news (Financial Modeling Prep) — only refetched per ticker.
   let lastFundSymbol = null;
+  // Runs fn once the element comes within about a screen of view, so the
+  // fundamentals and news (two API calls) load only for readers who scroll
+  // that far. A newer reading cancels the wait of the one before.
+  let nearObs = null;
+  function whenNear(el, fn) {
+    if (nearObs) { nearObs.disconnect(); nearObs = null; }
+    if (!el || !('IntersectionObserver' in window)) return fn();
+    nearObs = new IntersectionObserver((entries, obs) => {
+      if (entries.some(e => e.isIntersecting)) { obs.disconnect(); if (nearObs === obs) nearObs = null; fn(); }
+    }, { rootMargin: '0px 0px 900px 0px' });
+    nearObs.observe(el);
+  }
   async function loadFundamentals(symbol) {
     symbol = (symbol || '').toUpperCase();
     if (symbol === lastFundSymbol) return;
@@ -1985,7 +2026,9 @@
       announce(`Analysis loaded for ${d.symbol || symbol}.`);
       setAnalysisPending();
       loadAnalysis(d);
-      loadFundamentals(d.symbol);
+      // The last symbol's cards must not sit under this one while it waits.
+      $('fundCard').classList.add('hidden'); $('newsCard').classList.add('hidden'); lastFundSymbol = '';
+      whenNear($('fundSentinel'), () => loadFundamentals(d.symbol));
       startLive();
     } catch (e) {
       if (seq !== runSeq) return;                    // a newer request owns the UI now
@@ -2701,7 +2744,9 @@
     renderHomePlans();
     if (currentUser) {
       const isPro = currentUser.plan === 'pro';
-      const badge = `<span class="plan ${isPro ? 'pro' : ''}">${isPro ? 'PRO' : 'FREE'}</span>`;
+      const badge = (isPro && currentUser.hasSub)
+        ? `<button class="plan pro plan-link" id="planNav" title="Manage or cancel your subscription" aria-label="Pro plan: manage or cancel">PRO</button>`
+        : `<span class="plan ${isPro ? 'pro' : ''}">${isPro ? 'PRO' : 'FREE'}</span>`;
       const upgrade = (!isPro && billingOn) ? `<button class="upgrade" id="upgradeNav">Upgrade</button>` : '';
       // Only worth showing once there is one. The tooltip carries the rule,
       // because "why didn't my streak break over the weekend" is the obvious
@@ -2716,6 +2761,7 @@
       el.innerHTML = flame + badge + upgrade + `<span class="email">${esc(currentUser.email)}</span><button class="link-btn" id="logoutBtn">Log out</button>`;
       $('logoutBtn').addEventListener('click', logout);
       if ($('upgradeNav')) $('upgradeNav').addEventListener('click', () => showView('pricing'));
+      if ($('planNav')) $('planNav').addEventListener('click', () => { showView('pricing'); openManage(); });
     } else {
       el.innerHTML = `<button class="signin" id="signinBtn">Sign in</button><button class="signin ghost" id="signupBtn">Create account</button>`;
       $('signupBtn').addEventListener('click', () => openAuth('signup'));
@@ -3791,7 +3837,9 @@
       proCards = `<div class="plan-card pro period"><div class="plan-name">Pro</div>`
         + `<div class="plan-price">${paused ? 'Paused' : 'Active'}</div>`
         + `<div class="period-sub">${paused ? (currentUser.pause_until ? `Pro and billing start again on ${esc(dayFmt(currentUser.pause_until))}.` : 'Paused.') : 'Thank you for supporting ChartGauge.'}</div>`
-        + `<button class="btn btn-ghost btn-block" id="manageBtn">Manage subscription</button></div>`;
+        + `<button class="btn btn-ghost btn-block" id="manageBtn">Manage subscription</button>`
+        + (currentUser.hasSub ? `<button class="btn btn-ghost btn-block plan-cancel" id="cancelNow">Cancel subscription</button>` : '')
+        + `</div>`;
     } else if (periods.length) {
       proCards = periods.map(([k, label]) => {
         const p = billingPlans[k];
@@ -3810,7 +3858,8 @@
           + `<div class="period-sub">${sub}</div>`
           + `<div class="period-tag">${isBest ? '<span class="pb-best">best value</span>' : ''}</div>`
           + `<button class="btn btn-ai btn-block plan-btn" data-plan="${k}">`
-          + `${currentUser ? 'Subscribe' : 'Sign in to subscribe'}</button></div>`;
+          + `${trialDays > 0 ? `Start ${trialDays}-day free trial` : currentUser ? 'Subscribe' : 'Sign in to subscribe'}</button>`
+          + `<p class="plan-refund">${trialDays > 0 ? 'We email you before the trial ends. ' : ''}Cancel in one tap from this page. Full refund within 14 days of any charge, no questions asked. <a href="/refunds">Refund terms</a></p></div>`;
       }).join('');
     } else {
       proCards = `<div class="plan-card pro period"><div class="plan-name">Pro</div>`
@@ -3831,7 +3880,8 @@
     // Two cards (a Pro subscriber, or billing not configured) should not sit in
     // a four-column grid leaving two empty tracks.
     $('pricingBody').style.setProperty('--cards', String($('pricingBody').children.length || 1));
-    if ($('manageBtn')) $('manageBtn').addEventListener('click', openManage);
+    if ($('manageBtn')) $('manageBtn').addEventListener('click', () => openManage());
+    if ($('cancelNow')) $('cancelNow').addEventListener('click', e => cancelNow(e.currentTarget, paused));
     if ($('subManage') && !pro) $('subManage').remove();
     // Signed out, the same button opens the sign-in modal rather than checkout.
     $('pricingBody').querySelectorAll('.plan-btn').forEach(b => b.addEventListener('click',
@@ -3925,6 +3975,9 @@
     const unit = (n) => `${n} ${d.pauseUnit}${n > 1 ? 's' : ''}`;
     let html = `<h2 class="sub-h">Your subscription${label ? ` · ${label}` : ''}</h2><p class="sub-status">${status}</p>`;
     if (note) html += `<p class="sub-ok" role="status">${esc(note)}</p>`;
+    // Cancel comes first, one tap, before any alternative is offered.
+    if (!d.canceling) html += `<div class="sub-row"><button class="btn btn-ghost" data-act="cancel">Cancel subscription</button></div>`
+      + `<p class="sub-opt-p">${d.trialing ? 'Cancel before the trial ends and nothing is charged. ' : ''}You keep Pro until ${dayFmt(d.trialEnd || d.periodEnd)}. Full refund within 14 days of any charge.</p>`;
     if (d.paused) html += `<div class="sub-row"><button class="btn btn-ai" data-act="resume">Resume now</button></div>`;
     if (d.canceling) html += `<div class="sub-row"><button class="btn btn-ai" data-act="keep">Keep Pro</button></div>`;
     if (d.pauseSteps && d.pauseSteps.length) {
@@ -3935,20 +3988,28 @@
       html += `<div class="sub-opt"><div class="sub-opt-h">Switch plan</div><p class="sub-opt-p">${d.trialing ? 'Your trial carries on; the new price applies when it ends.' : 'The new plan starts today. Unused time on your current plan is credited toward it.'}</p><div class="sub-row">`
         + d.switchTo.map(o => `<button class="btn btn-ghost" data-act="switch" data-plan="${esc(o.plan)}">${esc(o.label)}: ${esc(o.price)} ${esc(o.every)}${o.savePct > 0 ? ` (save ${o.savePct}%)` : ''}</button>`).join('') + `</div></div>`;
     }
-    html += `<div class="sub-row sub-foot">`
-      + (d.canceling ? '' : `<button class="btn btn-ghost" data-act="cancel">Cancel subscription</button>`)
-      + `<button class="btn btn-ghost" id="smPortal">Card and invoices</button></div>`;
+    html += `<div class="sub-row sub-foot"><button class="btn btn-ghost" id="smPortal">Card and invoices</button></div>`;
     box.innerHTML = html;
     $('smPortal').addEventListener('click', e => openPortal(e.currentTarget));
     box.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => subAction(b, d)));
     if (!note) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
+  // One tap. Canceling keeps Pro to the end of the trial or paid period and
+  // can be undone with Keep Pro, so it needs no confirm. The exception is a
+  // pause already under way, where canceling ends it at once.
+  async function cancelNow(b, pausedNow) {
+    if (pausedNow && !confirm('Cancel your subscription? It ends now and nothing more will be charged.')) return;
+    const was = b.textContent; b.disabled = true; b.textContent = 'Canceling\u2026';
+    let j; try { j = await (await fetch('/api/billing/cancel', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json(); } catch (e) { j = { error: 'Could not reach the server. Nothing was changed.' }; }
+    if (j.error) { alert(j.error); b.disabled = false; b.textContent = was; return; }
+    track('subscription_cancel', {});
+    await checkAuth(); renderPricing();
+    if ($('manageBtn')) openManage(j.message); else alert(j.message);
+  }
   async function subAction(b, d) {
     const act = b.dataset.act;
     let ask = '';
-    if (act === 'cancel') ask = d.paused && d.paused.from <= Date.now()
-      ? 'Cancel your subscription? It ends now and nothing more will be charged.'
-      : `Cancel your subscription? You keep Pro until ${dayFmt(d.trialEnd || d.periodEnd)} and nothing more will be charged.`;
+    if (act === 'cancel' && d.paused && d.paused.from <= Date.now()) ask = 'Cancel your subscription? It ends now and nothing more will be charged.';
     if (act === 'pause') ask = `Pause for ${b.dataset.n} ${d.pauseUnit}${b.dataset.n > 1 ? 's' : ''}? You keep Pro until ${dayFmt(d.periodEnd)}.`;
     if (act === 'switch') ask = `Switch to ${b.textContent}?` + (d.trialing ? '' : ' The difference is charged to your card today.');
     if (act === 'resume' && d.paused && d.paused.from <= Date.now()) ask = `Resume now? ${d.price} is charged today and Pro comes back straight away.`;
@@ -4399,7 +4460,13 @@
   if ($('moversRefresh')) $('moversRefresh').addEventListener('click', loadMovers);
 
   // ---- Learn center ----
-  const LESSONS = window.LESSONS || [];
+  // lessons.js (49 KB) is fetched the first time a lesson or the Learn page
+  // is opened, not on every page load.
+  let LESSONS = window.LESSONS || [];
+  let lessonsReady = null;
+  function ensureLessons() {
+    return lessonsReady ||= loadScript('/lessons.js').then(() => { LESSONS = window.LESSONS || []; }).catch(() => { lessonsReady = null; });
+  }
   // Which style of investing a lesson is for. A filter asks "what applies to
   // me", so picking Day trading includes the lessons marked for both — the
   // point is relevance, not exclusivity.
@@ -4409,6 +4476,7 @@
   const lessonMatches = (l) => learnFilter === 'all' || l.applies === 'both' || l.applies === learnFilter;
 
   function renderLearnGrid() {
+    if (!LESSONS.length) { $('learnHost').innerHTML = skelLines(6); ensureLessons().then(() => { if (LESSONS.length) renderLearnGrid(); else $('learnHost').innerHTML = `<p class="compare-note">Couldn\u2019t load the lessons. Check your connection and reload.</p>`; }); return; }
     const shown = LESSONS.filter(lessonMatches);
     const tabs = [['all', 'All lessons'], ['day', 'Day trading'], ['long', 'Long-term']].map(([k, label]) => {
       const n = LESSONS.filter(l => k === 'all' || l.applies === 'both' || l.applies === k).length;
@@ -4434,6 +4502,7 @@
     }));
   }
   function openLesson(id) {
+    if (!LESSONS.length) { $('learnHost').innerHTML = skelLines(6); ensureLessons().then(() => LESSONS.length ? openLesson(id) : renderLearnGrid()); return; }
     const l = LESSONS.find(x => x.id === id); if (!l) return renderLearnGrid();
     toTop();
     let html = `<div class="learn-detail"><button type="button" class="link-btn learn-back" id="learnBack">← All lessons</button>`;
@@ -4663,6 +4732,12 @@
     }, 2500);
   } else if (billing === 'cancel') {
     showView('pricing');
+  } else if (params.get('manage') === '1') {
+    // The link in every subscription email: straight to the panel where
+    // Cancel is the first button. Signed out, sign in first, then it opens.
+    showView('pricing');
+    (async () => { for (let i = 0; i < 20 && !authResolved; i++) await new Promise(r => setTimeout(r, 250));
+      if (currentUser) openManage(); else openAuth('login'); })();
   } else if (deep) { goAnalyze(deep.toUpperCase()); }
   else routeFromPath(true);          // the path decides the opening view
 })();

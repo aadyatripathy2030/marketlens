@@ -13,7 +13,7 @@ let lastErr = null;
 const mem = { users: new Map(), byEmail: new Map(), sessions: new Map(), watch: new Map(),
   alerts: new Map(), usage: new Map(), preds: new Map(), etokens: new Map(), codes: new Map(),
   paper: new Map(), pos: new Map(), fills: new Map(), payouts: new Map(), ledger: [], settings: new Map(),
-  marks: [], feedback: [] };
+  marks: [], feedback: [], once: new Set() };
 
 // Render's INTERNAL Postgres host has no dot (e.g. dpg-xxxx-a) and speaks plain
 // TCP; hosted/external hosts (Neon, Render external) are dotted and need SSL.
@@ -235,6 +235,9 @@ async function init() {
       await pool.query(`CREATE TABLE IF NOT EXISTS usage_daily (
         k TEXT NOT NULL, kind TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (k, kind, day))`);
+      // One row per thing that must happen at most once, such as a reminder
+      // email that two different triggers could both send.
+      await pool.query(`CREATE TABLE IF NOT EXISTS sent_once (k TEXT PRIMARY KEY, at BIGINT NOT NULL)`);
       mode = 'postgres';
     } catch (e) {
       lastErr = e.message;
@@ -1213,6 +1216,19 @@ async function releaseUsage(k, kind) {
   const n = mem.usage.get(key) || 0; if (n > 0) mem.usage.set(key, n - 1);
 }
 
+// True for the first caller only, ever, for a given key.
+async function claimOnce(k) {
+  if (mode === 'postgres') {
+    const r = await pool.query('INSERT INTO sent_once (k, at) VALUES ($1, $2) ON CONFLICT (k) DO NOTHING', [k, Date.now()]);
+    return r.rowCount > 0;
+  }
+  if (mem.once.has(k)) return false;
+  mem.once.add(k); return true;
+}
+async function releaseOnce(k) {
+  if (mode === 'postgres') { await pool.query('DELETE FROM sent_once WHERE k=$1', [k]); return; }
+  mem.once.delete(k);
+}
 async function peekUsage(k, kind) {
   const day = usageDay();
   if (mode === 'postgres') {
@@ -1353,7 +1369,7 @@ module.exports = {
   getRisk, saveRisk, RISK_DEFAULTS,
   getPaper, openPaper, clearPaper, setCash, listPositions, savePosition, dropPosition, addFill, listFills,
   listWatch, listWatchFull, addWatch, removeWatch, setWatchLevels,
-  listAlerts, addAlert, removeAlert, markTriggered,
+  listAlerts, addAlert, removeAlert, markTriggered, claimOnce, releaseOnce,
   listUsers, counts,
   addMarks, countMarks, purgeMarks, setTrialRisk,
   setPro, setFree, setPause, findByStripeSub, setCustomer, listSubscribers,

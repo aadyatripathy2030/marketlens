@@ -2502,10 +2502,10 @@ async function handleMe(req, res) {
   // stripe_customer, so testing it for one would answer "never subscribed"
   // for everybody and offer a trial the checkout would then refuse to give.
   // Read the row checkout reads.
-  let everSubscribed = false, needsAge = false, since = null;
-  if (u) { try { const full = await db.getUserById(u.id); everSubscribed = !!(full && full.stripe_customer); needsAge = !!full && !full.adult_at && !isAdmin(u); since = full ? Number(full.created) || null : null; } catch (e) { logError(e); } }
+  let everSubscribed = false, needsAge = false, since = null, hasSub = false;
+  if (u) { try { const full = await db.getUserById(u.id); everSubscribed = !!(full && full.stripe_customer); hasSub = !!(full && full.stripe_sub); needsAge = !!full && !full.adult_at && !isAdmin(u); since = full ? Number(full.created) || null : null; } catch (e) { logError(e); } }
   return json(res, 200, {
-    user: u ? { ...u, plan: shownPlan(u), admin: isAdmin(u) } : null,
+    user: u ? { ...u, plan: shownPlan(u), admin: isAdmin(u), hasSub } : null,
     // Set for an affiliate: their code, how many accounts came through it,
     // and whether payout details are on file. Settings shows the card.
     affiliate: u ? await db.affiliateInfo(u.id).catch(() => null) : null,
@@ -3924,9 +3924,9 @@ async function handleCheckout(req, res) {
     }
     // Auto-renewal stated next to the pay button, where the consent is given.
     params['custom_text[submit][message]'] = (giveTrial
-      ? `Nothing is charged during the ${TRIAL_DAYS}-day trial (one per person and card). When it ends, the price above is charged and then renews automatically each period until you cancel.`
+      ? `Nothing is charged during the ${TRIAL_DAYS}-day trial (one per person and card). We email you before it ends. When it ends, the price above is charged and then renews automatically each period until you cancel.`
       : 'This subscription renews automatically at the price above each period until you cancel.')
-      + ' Cancel any time from Manage subscription on the ChartGauge Plans page.';
+      + ' Cancel in one tap from Manage subscription on the ChartGauge Plans page. Full refund within 14 days of any charge, no questions asked.';
     const s = await stripePost('checkout/sessions', params);
     // Told plainly before they reach the card form, so nobody expects a
     // trial and finds a charge. Which signal tripped is not said: that
@@ -4138,9 +4138,11 @@ function subTerms(sub) {
 async function mailSubscriber(user, subject, title, intro, intro2, req) {
   if (!user || !user.email || !mailEnabled()) return;
   const plans = (req ? siteOrigin(req) : 'https://chartgauge.com') + '/pricing';
-  const outro = `Cancel any time: open ${plans}, choose Manage subscription, then Cancel. Canceling stops all future charges. Refund terms: ${plans.replace('/pricing', '/refunds')}. Questions: ${CONTACT_EMAIL}.`;
+  // The link opens the subscription panel directly, where Cancel is one tap.
+  const manage = plans + '?manage=1';
+  const outro = `Cancel in one tap: open ${manage} and press Cancel subscription. Canceling stops all future charges. If you are charged and change your mind, email ${CONTACT_EMAIL} within 14 days of the charge for a full refund (${plans.replace('/pricing', '/refunds')}).`;
   await sendMail(user.email, subject, `${intro}\n\n${intro2}\n\n${outro}`,
-    emailHtml({ title, intro, intro2, button: { label: 'Manage subscription', url: plans }, outro }));
+    emailHtml({ title, intro, intro2, button: { label: 'Cancel or manage subscription', url: manage }, outro }));
 }
 async function sendSubscribedEmail(req, user, subId) {
   const sub = await stripeGet('subscriptions/' + encodeURIComponent(subId));
@@ -4152,12 +4154,33 @@ async function sendSubscribedEmail(req, user, subId) {
   const intro2 = 'Pro renews automatically until you cancel. ' + (trialing ? 'Cancel before the trial ends and you pay nothing.' : 'You can cancel at any time and keep Pro until the end of the period already paid for.');
   await mailSubscriber(user, trialing ? 'Your ChartGauge Pro trial has started' : 'You are subscribed to ChartGauge Pro', trialing ? 'Your trial has started' : 'Welcome to Pro', intro, intro2, req);
 }
+// Sent by Stripe's trial_will_end event (three days before) and, as a backstop
+// in case that event is not ticked on the webhook, by sweepTrialReminders.
+// Whichever comes first sends it; the other finds it already claimed.
 async function sendTrialEndingEmail(sub) {
   const user = await db.findByStripeSub(sub.id); const t = subTerms(sub);
-  if (!user || !t || !sub.trial_end || sub.cancel_at_period_end) return;
-  await mailSubscriber(user, 'Your ChartGauge Pro trial ends soon', 'Your trial ends soon',
-    `Your free trial ends on ${fmtDay(sub.trial_end)}. Unless you cancel before then, ${t.price} will be charged that day and ${t.price} ${t.every} after that.`,
-    'If you want to keep Pro, there is nothing to do.');
+  if (!user || !t || !sub.trial_end || sub.cancel_at_period_end || !mailEnabled()) return;
+  if (!(sub.trial_end * 1000 > Date.now())) return;
+  const key = 'trial_end_mail:' + sub.id + ':' + sub.trial_end;
+  if (!await db.claimOnce(key)) return;
+  try {
+    await mailSubscriber(user, 'Your ChartGauge Pro trial ends soon', 'Your trial ends soon',
+      `Your free trial ends on ${fmtDay(sub.trial_end)}. Unless you cancel before then, ${t.price} will be charged that day and ${t.price} ${t.every} after that.`,
+      'If you want to keep Pro, there is nothing to do. If not, cancel before that date and you pay nothing.');
+  } catch (e) { await db.releaseOnce(key).catch(logError); throw e; }
+}
+// Every trial ending within three days gets its reminder, checked every six
+// hours, independent of which webhook events are switched on in Stripe.
+async function sweepTrialReminders() {
+  const soon = Date.now() / 1000 + 3 * 86400;
+  let after = '';
+  for (let page = 0; page < 50; page++) {
+    const r = await stripeGet('subscriptions?status=trialing&limit=100' + (after ? '&starting_after=' + encodeURIComponent(after) : ''));
+    const list = (r && r.data) || [];
+    for (const sub of list) if (sub.trial_end && sub.trial_end <= soon) await sendTrialEndingEmail(sub).catch(logError);
+    if (!r || !r.has_more || !list.length) break;
+    after = list[list.length - 1].id;
+  }
 }
 async function sendRenewalReminder(inv) {
   if (!inv.subscription || !(inv.amount_due > 0)) return;
@@ -5130,6 +5153,10 @@ db.init().then(async (storeMode) => {
         db.purgeMarks(Date.now() - TG.KEEP_DAYS * 86400000).catch(logError); }, 24 * 3600000);
       if (first.unref) first.unref();
       if (daily.unref) daily.unref();
+      const trialFirst = setTimeout(() => sweepTrialReminders().catch(logError), 3 * 60000);
+      const trialSweep = setInterval(() => sweepTrialReminders().catch(logError), 6 * 3600000);
+      if (trialFirst.unref) trialFirst.unref();
+      if (trialSweep.unref) trialSweep.unref();
       startAutoPay();
     }
     // A database that was unreachable at boot (expired, restarting, a bad
