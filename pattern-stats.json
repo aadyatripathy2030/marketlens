@@ -1,0 +1,1494 @@
+{
+ "meta": {
+  "generated": "2026-11-14",
+  "horizonDays": 5,
+  "stocks": {
+   "symbols": 111,
+   "fit": "2006-2015",
+   "test": "2016-2026"
+  },
+  "crypto": {
+   "symbols": 5,
+   "test": "all years available (about 2017-2026)"
+  },
+  "rule": "direction counts as a measured edge only if the 5-day excess has the same sign and |t| > 2 in both 2006-2015 and 2016-2026; move size counts only if the volatility ratio is above 1.10 or below 0.91 in both periods with at least 300 cases in each"
+ },
+ "stocks": {
+  "doji": {
+   "test": {
+    "n": 31443,
+    "upPct": 50.3,
+    "baseUpPct": 50.3,
+    "excessBps": -1,
+    "t": -0.04,
+    "volRatio": 1.02
+   },
+   "fit": {
+    "n": 21464,
+    "upPct": 50.5,
+    "baseUpPct": 50.1,
+    "excessBps": 3,
+    "t": 0.17,
+    "volRatio": 1.01
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "hammer": {
+   "test": {
+    "n": 9068,
+    "upPct": 50.8,
+    "baseUpPct": 50.3,
+    "excessBps": 3,
+    "t": 0.17,
+    "volRatio": 1.07
+   },
+   "fit": {
+    "n": 6050,
+    "upPct": 49,
+    "baseUpPct": 50.1,
+    "excessBps": -11,
+    "t": -0.56,
+    "volRatio": 1.11
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "NR7": {
+   "test": {
+    "n": 45442,
+    "upPct": 50.1,
+    "baseUpPct": 50.3,
+    "excessBps": 1,
+    "t": 0.1,
+    "volRatio": 0.94
+   },
+   "fit": {
+    "n": 30893,
+    "upPct": 50.5,
+    "baseUpPct": 50.1,
+    "excessBps": 5,
+    "t": 0.34,
+    "volRatio": 0.94
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "bullish marubozu": {
+   "test": {
+    "n": 3511,
+    "upPct": 50.5,
+    "baseUpPct": 50.3,
+    "excessBps": -1,
+    "t": -0.03,
+    "volRatio": 0.94
+   },
+   "fit": {
+    "n": 2592,
+    "upPct": 48.7,
+    "baseUpPct": 50.1,
+    "excessBps": -24,
+    "t": -0.92,
+    "volRatio": 0.93
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "20-day breakout up": {
+   "test": {
+    "n": 18838,
+    "upPct": 50.6,
+    "baseUpPct": 50.3,
+    "excessBps": 2,
+    "t": 0.15,
+    "volRatio": 0.95
+   },
+   "fit": {
+    "n": 12925,
+    "upPct": 48.8,
+    "baseUpPct": 50.1,
+    "excessBps": -12,
+    "t": -0.91,
+    "volRatio": 0.9
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "crosses round number up": {
+   "test": {
+    "n": 13851,
+    "upPct": 50.5,
+    "baseUpPct": 50.3,
+    "excessBps": -7,
+    "t": -0.41,
+    "volRatio": 0.95
+   },
+   "fit": {
+    "n": 6070,
+    "upPct": 48.7,
+    "baseUpPct": 50.1,
+    "excessBps": -23,
+    "t": -1.25,
+    "volRatio": 0.93
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "tweezer top": {
+   "test": {
+    "n": 7794,
+    "upPct": 51.2,
+    "baseUpPct": 50.3,
+    "excessBps": 3,
+    "t": 0.26,
+    "volRatio": 0.98
+   },
+   "fit": {
+    "n": 6083,
+    "upPct": 50.5,
+    "baseUpPct": 50.1,
+    "excessBps": -2,
+    "t": -0.14,
+    "volRatio": 0.97
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "outside day": {
+   "test": {
+    "n": 26343,
+    "upPct": 50.5,
+    "baseUpPct": 50.3,
+    "excessBps": 2,
+    "t": 0.13,
+    "volRatio": 1.04
+   },
+   "fit": {
+    "n": 18167,
+    "upPct": 50.1,
+    "baseUpPct": 50.1,
+    "excessBps": -3,
+    "t": -0.17,
+    "volRatio": 1.03
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "crosses round number down": {
+   "test": {
+    "n": 12833,
+    "upPct": 50.6,
+    "baseUpPct": 50.3,
+    "excessBps": -5,
+    "t": -0.3,
+    "volRatio": 1.03
+   },
+   "fit": {
+    "n": 5333,
+    "upPct": 50.2,
+    "baseUpPct": 50.1,
+    "excessBps": -6,
+    "t": -0.25,
+    "volRatio": 1.05
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "gap up, held": {
+   "test": {
+    "n": 4374,
+    "upPct": 49.7,
+    "baseUpPct": 50.3,
+    "excessBps": -7,
+    "t": -0.33,
+    "volRatio": 1.06
+   },
+   "fit": {
+    "n": 2957,
+    "upPct": 48.3,
+    "baseUpPct": 50.1,
+    "excessBps": 1,
+    "t": 0.06,
+    "volRatio": 0.98
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "inside day": {
+   "test": {
+    "n": 35319,
+    "upPct": 50.5,
+    "baseUpPct": 50.3,
+    "excessBps": 1,
+    "t": 0.1,
+    "volRatio": 0.98
+   },
+   "fit": {
+    "n": 24305,
+    "upPct": 50.7,
+    "baseUpPct": 50.1,
+    "excessBps": 5,
+    "t": 0.3,
+    "volRatio": 0.98
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "hanging man": {
+   "test": {
+    "n": 10414,
+    "upPct": 49.2,
+    "baseUpPct": 50.3,
+    "excessBps": -4,
+    "t": -0.32,
+    "volRatio": 0.98
+   },
+   "fit": {
+    "n": 7582,
+    "upPct": 49.2,
+    "baseUpPct": 50.1,
+    "excessBps": -13,
+    "t": -0.81,
+    "volRatio": 0.95
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "20-day breakdown": {
+   "test": {
+    "n": 10429,
+    "upPct": 51.6,
+    "baseUpPct": 50.3,
+    "excessBps": 8,
+    "t": 0.45,
+    "volRatio": 1.09
+   },
+   "fit": {
+    "n": 6895,
+    "upPct": 51.3,
+    "baseUpPct": 50.1,
+    "excessBps": -1,
+    "t": -0.05,
+    "volRatio": 1.16
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "bullish harami": {
+   "test": {
+    "n": 4874,
+    "upPct": 51.6,
+    "baseUpPct": 50.3,
+    "excessBps": 7,
+    "t": 0.38,
+    "volRatio": 1.02
+   },
+   "fit": {
+    "n": 3493,
+    "upPct": 49.6,
+    "baseUpPct": 50.1,
+    "excessBps": -10,
+    "t": -0.41,
+    "volRatio": 1.06
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "inverted hammer": {
+   "test": {
+    "n": 7968,
+    "upPct": 51,
+    "baseUpPct": 50.3,
+    "excessBps": 5,
+    "t": 0.27,
+    "volRatio": 1.08
+   },
+   "fit": {
+    "n": 5402,
+    "upPct": 49.9,
+    "baseUpPct": 50.1,
+    "excessBps": 4,
+    "t": 0.21,
+    "volRatio": 1.09
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "bounce off 60-day support": {
+   "test": {
+    "n": 7678,
+    "upPct": 51.3,
+    "baseUpPct": 50.3,
+    "excessBps": 9,
+    "t": 0.6,
+    "volRatio": 1.05
+   },
+   "fit": {
+    "n": 4871,
+    "upPct": 49.2,
+    "baseUpPct": 50.1,
+    "excessBps": -15,
+    "t": -0.75,
+    "volRatio": 1.07
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "20-day breakdown, high volume": {
+   "test": {
+    "n": 5857,
+    "upPct": 50,
+    "baseUpPct": 50.3,
+    "excessBps": -13,
+    "t": -0.5,
+    "volRatio": 1.13
+   },
+   "fit": {
+    "n": 3839,
+    "upPct": 52.6,
+    "baseUpPct": 50.1,
+    "excessBps": 40,
+    "t": 0.97,
+    "volRatio": 1.24
+   },
+   "directionEdge": null,
+   "moveSize": "larger"
+  },
+  "volume spike, down day": {
+   "test": {
+    "n": 6287,
+    "upPct": 49.3,
+    "baseUpPct": 50.3,
+    "excessBps": -34,
+    "t": -1.1,
+    "volRatio": 1.1
+   },
+   "fit": {
+    "n": 4008,
+    "upPct": 50.8,
+    "baseUpPct": 50.1,
+    "excessBps": 27,
+    "t": 0.84,
+    "volRatio": 1.12
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "double top": {
+   "test": {
+    "n": 997,
+    "upPct": 49.6,
+    "baseUpPct": 50.3,
+    "excessBps": -18,
+    "t": -0.67,
+    "volRatio": 1.07
+   },
+   "fit": {
+    "n": 705,
+    "upPct": 51.2,
+    "baseUpPct": 50.1,
+    "excessBps": -7,
+    "t": -0.22,
+    "volRatio": 1.12
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "three black crows": {
+   "test": {
+    "n": 264,
+    "upPct": 49.2,
+    "baseUpPct": 50.3,
+    "excessBps": -26,
+    "t": -0.52,
+    "volRatio": 1
+   },
+   "fit": {
+    "n": 164,
+    "upPct": 56.1,
+    "baseUpPct": 50.1,
+    "excessBps": 58,
+    "t": 0.74,
+    "volRatio": 1.04
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "volume spike, up day": {
+   "test": {
+    "n": 5375,
+    "upPct": 49.6,
+    "baseUpPct": 50.3,
+    "excessBps": -42,
+    "t": -1.38,
+    "volRatio": 1.01
+   },
+   "fit": {
+    "n": 3526,
+    "upPct": 48.7,
+    "baseUpPct": 50.1,
+    "excessBps": 0,
+    "t": 0,
+    "volRatio": 1.01
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "bullish engulfing": {
+   "test": {
+    "n": 3609,
+    "upPct": 49.6,
+    "baseUpPct": 50.3,
+    "excessBps": -6,
+    "t": -0.33,
+    "volRatio": 1.01
+   },
+   "fit": {
+    "n": 2382,
+    "upPct": 51.6,
+    "baseUpPct": 50.1,
+    "excessBps": 10,
+    "t": 0.44,
+    "volRatio": 1.04
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "bearish marubozu": {
+   "test": {
+    "n": 3402,
+    "upPct": 50.8,
+    "baseUpPct": 50.3,
+    "excessBps": -5,
+    "t": -0.22,
+    "volRatio": 1.01
+   },
+   "fit": {
+    "n": 2464,
+    "upPct": 52.4,
+    "baseUpPct": 50.1,
+    "excessBps": 23,
+    "t": 0.67,
+    "volRatio": 1.1
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "gap down, recovered": {
+   "test": {
+    "n": 6028,
+    "upPct": 51.1,
+    "baseUpPct": 50.3,
+    "excessBps": 6,
+    "t": 0.29,
+    "volRatio": 1.25
+   },
+   "fit": {
+    "n": 3981,
+    "upPct": 47.9,
+    "baseUpPct": 50.1,
+    "excessBps": -14,
+    "t": -0.51,
+    "volRatio": 1.18
+   },
+   "directionEdge": null,
+   "moveSize": "larger"
+  },
+  "20-day breakout up, high volume": {
+   "test": {
+    "n": 4789,
+    "upPct": 49.7,
+    "baseUpPct": 50.3,
+    "excessBps": -15,
+    "t": -0.58,
+    "volRatio": 0.95
+   },
+   "fit": {
+    "n": 3190,
+    "upPct": 50.3,
+    "baseUpPct": 50.1,
+    "excessBps": 9,
+    "t": 0.43,
+    "volRatio": 0.9
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "symmetric triangle, breaks up": {
+   "test": {
+    "n": 1418,
+    "upPct": 48.9,
+    "baseUpPct": 50.3,
+    "excessBps": -26,
+    "t": -1.06,
+    "volRatio": 0.95
+   },
+   "fit": {
+    "n": 997,
+    "upPct": 52.3,
+    "baseUpPct": 50.1,
+    "excessBps": 26,
+    "t": 0.75,
+    "volRatio": 0.92
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "dark cloud cover": {
+   "test": {
+    "n": 560,
+    "upPct": 53.8,
+    "baseUpPct": 50.3,
+    "excessBps": 24,
+    "t": 0.69,
+    "volRatio": 1.04
+   },
+   "fit": {
+    "n": 446,
+    "upPct": 48.4,
+    "baseUpPct": 50.1,
+    "excessBps": -30,
+    "t": -0.9,
+    "volRatio": 0.96
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "bearish harami": {
+   "test": {
+    "n": 4366,
+    "upPct": 49.7,
+    "baseUpPct": 50.3,
+    "excessBps": -15,
+    "t": -0.56,
+    "volRatio": 0.95
+   },
+   "fit": {
+    "n": 3517,
+    "upPct": 50.2,
+    "baseUpPct": 50.1,
+    "excessBps": -8,
+    "t": -0.37,
+    "volRatio": 0.95
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "rejected at 60-day resistance": {
+   "test": {
+    "n": 13357,
+    "upPct": 50.9,
+    "baseUpPct": 50.3,
+    "excessBps": 4,
+    "t": 0.38,
+    "volRatio": 1.04
+   },
+   "fit": {
+    "n": 9803,
+    "upPct": 51.1,
+    "baseUpPct": 50.1,
+    "excessBps": 8,
+    "t": 0.63,
+    "volRatio": 1.05
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "gap down, held": {
+   "test": {
+    "n": 4867,
+    "upPct": 51,
+    "baseUpPct": 50.3,
+    "excessBps": -4,
+    "t": -0.14,
+    "volRatio": 1.17
+   },
+   "fit": {
+    "n": 2842,
+    "upPct": 47.7,
+    "baseUpPct": 50.1,
+    "excessBps": -20,
+    "t": -0.74,
+    "volRatio": 1.12
+   },
+   "directionEdge": null,
+   "moveSize": "larger"
+  },
+  "ascending triangle, breaks down": {
+   "test": {
+    "n": 1516,
+    "upPct": 49.5,
+    "baseUpPct": 50.3,
+    "excessBps": -2,
+    "t": -0.12,
+    "volRatio": 1.13
+   },
+   "fit": {
+    "n": 1175,
+    "upPct": 51,
+    "baseUpPct": 50.1,
+    "excessBps": 12,
+    "t": 0.56,
+    "volRatio": 1.17
+   },
+   "directionEdge": null,
+   "moveSize": "larger"
+  },
+  "bearish engulfing": {
+   "test": {
+    "n": 4973,
+    "upPct": 50.5,
+    "baseUpPct": 50.3,
+    "excessBps": 5,
+    "t": 0.29,
+    "volRatio": 0.99
+   },
+   "fit": {
+    "n": 3259,
+    "upPct": 49.5,
+    "baseUpPct": 50.1,
+    "excessBps": -3,
+    "t": -0.14,
+    "volRatio": 0.97
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "tweezer bottom": {
+   "test": {
+    "n": 5538,
+    "upPct": 50.8,
+    "baseUpPct": 50.3,
+    "excessBps": 0,
+    "t": -0.01,
+    "volRatio": 1.02
+   },
+   "fit": {
+    "n": 4022,
+    "upPct": 51.3,
+    "baseUpPct": 50.1,
+    "excessBps": 5,
+    "t": 0.29,
+    "volRatio": 1.04
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "inverse head and shoulders": {
+   "test": {
+    "n": 563,
+    "upPct": 50.8,
+    "baseUpPct": 50.3,
+    "excessBps": -10,
+    "t": -0.3,
+    "volRatio": 0.94
+   },
+   "fit": {
+    "n": 410,
+    "upPct": 51.5,
+    "baseUpPct": 50.1,
+    "excessBps": 9,
+    "t": 0.26,
+    "volRatio": 0.94
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "big down day": {
+   "test": {
+    "n": 3872,
+    "upPct": 48.1,
+    "baseUpPct": 50.3,
+    "excessBps": -20,
+    "t": -0.78,
+    "volRatio": 1.15
+   },
+   "fit": {
+    "n": 2107,
+    "upPct": 47.2,
+    "baseUpPct": 50.1,
+    "excessBps": -29,
+    "t": -0.72,
+    "volRatio": 1.21
+   },
+   "directionEdge": null,
+   "moveSize": "larger"
+  },
+  "symmetric triangle, breaks down": {
+   "test": {
+    "n": 1142,
+    "upPct": 51.3,
+    "baseUpPct": 50.3,
+    "excessBps": 15,
+    "t": 0.52,
+    "volRatio": 1.06
+   },
+   "fit": {
+    "n": 857,
+    "upPct": 51.5,
+    "baseUpPct": 50.1,
+    "excessBps": -30,
+    "t": -0.66,
+    "volRatio": 1.11
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "gap up, faded": {
+   "test": {
+    "n": 5336,
+    "upPct": 50.7,
+    "baseUpPct": 50.3,
+    "excessBps": -18,
+    "t": -0.6,
+    "volRatio": 1.15
+   },
+   "fit": {
+    "n": 3297,
+    "upPct": 48.4,
+    "baseUpPct": 50.1,
+    "excessBps": -6,
+    "t": -0.21,
+    "volRatio": 1.17
+   },
+   "directionEdge": null,
+   "moveSize": "larger"
+  },
+  "big up day": {
+   "test": {
+    "n": 2917,
+    "upPct": 51.6,
+    "baseUpPct": 50.3,
+    "excessBps": 7,
+    "t": 0.24,
+    "volRatio": 1
+   },
+   "fit": {
+    "n": 1859,
+    "upPct": 51.5,
+    "baseUpPct": 50.1,
+    "excessBps": 34,
+    "t": 1.32,
+    "volRatio": 0.94
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "descending triangle, breaks down": {
+   "test": {
+    "n": 952,
+    "upPct": 49.3,
+    "baseUpPct": 50.3,
+    "excessBps": -1,
+    "t": -0.06,
+    "volRatio": 1.09
+   },
+   "fit": {
+    "n": 622,
+    "upPct": 49.8,
+    "baseUpPct": 50.1,
+    "excessBps": -39,
+    "t": -1.17,
+    "volRatio": 1.1
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "descending triangle, breaks up": {
+   "test": {
+    "n": 1216,
+    "upPct": 49.4,
+    "baseUpPct": 50.3,
+    "excessBps": -1,
+    "t": -0.03,
+    "volRatio": 1.01
+   },
+   "fit": {
+    "n": 875,
+    "upPct": 50.1,
+    "baseUpPct": 50.1,
+    "excessBps": 11,
+    "t": 0.46,
+    "volRatio": 0.97
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "Bollinger squeeze": {
+   "test": {
+    "n": 9663,
+    "upPct": 50.5,
+    "baseUpPct": 50.3,
+    "excessBps": 6,
+    "t": 0.43,
+    "volRatio": 1.27
+   },
+   "fit": {
+    "n": 7460,
+    "upPct": 51.8,
+    "baseUpPct": 50.1,
+    "excessBps": 12,
+    "t": 0.73,
+    "volRatio": 1.19
+   },
+   "directionEdge": null,
+   "moveSize": "larger"
+  },
+  "morning star": {
+   "test": {
+    "n": 534,
+    "upPct": 51.9,
+    "baseUpPct": 50.3,
+    "excessBps": -8,
+    "t": -0.19,
+    "volRatio": 1
+   },
+   "fit": {
+    "n": 448,
+    "upPct": 52.9,
+    "baseUpPct": 50.1,
+    "excessBps": 64,
+    "t": 1.04,
+    "volRatio": 1.05
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "shooting star": {
+   "test": {
+    "n": 9699,
+    "upPct": 50.7,
+    "baseUpPct": 50.3,
+    "excessBps": -6,
+    "t": -0.3,
+    "volRatio": 0.98
+   },
+   "fit": {
+    "n": 5992,
+    "upPct": 50.1,
+    "baseUpPct": 50.1,
+    "excessBps": -9,
+    "t": -0.47,
+    "volRatio": 0.97
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "piercing line": {
+   "test": {
+    "n": 453,
+    "upPct": 53.4,
+    "baseUpPct": 50.3,
+    "excessBps": 24,
+    "t": 0.67,
+    "volRatio": 1.07
+   },
+   "fit": {
+    "n": 314,
+    "upPct": 53.8,
+    "baseUpPct": 50.1,
+    "excessBps": 11,
+    "t": 0.17,
+    "volRatio": 1.13
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "ascending triangle, breaks up": {
+   "test": {
+    "n": 1635,
+    "upPct": 50.9,
+    "baseUpPct": 50.3,
+    "excessBps": -7,
+    "t": -0.34,
+    "volRatio": 1.02
+   },
+   "fit": {
+    "n": 1188,
+    "upPct": 50.3,
+    "baseUpPct": 50.1,
+    "excessBps": 4,
+    "t": 0.22,
+    "volRatio": 1.03
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "evening star": {
+   "test": {
+    "n": 584,
+    "upPct": 47.1,
+    "baseUpPct": 50.3,
+    "excessBps": -17,
+    "t": -0.56,
+    "volRatio": 0.97
+   },
+   "fit": {
+    "n": 414,
+    "upPct": 49.3,
+    "baseUpPct": 50.1,
+    "excessBps": 11,
+    "t": 0.28,
+    "volRatio": 0.97
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "double bottom": {
+   "test": {
+    "n": 1194,
+    "upPct": 52.8,
+    "baseUpPct": 50.3,
+    "excessBps": 22,
+    "t": 0.94,
+    "volRatio": 0.95
+   },
+   "fit": {
+    "n": 830,
+    "upPct": 50.2,
+    "baseUpPct": 50.1,
+    "excessBps": 2,
+    "t": 0.08,
+    "volRatio": 0.9
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "head and shoulders": {
+   "test": {
+    "n": 487,
+    "upPct": 46.2,
+    "baseUpPct": 50.3,
+    "excessBps": -31,
+    "t": -0.97,
+    "volRatio": 1.06
+   },
+   "fit": {
+    "n": 294,
+    "upPct": 48.3,
+    "baseUpPct": 50.1,
+    "excessBps": -23,
+    "t": -0.44,
+    "volRatio": 1.08
+   },
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "three white soldiers": {
+   "test": {
+    "n": 264,
+    "upPct": 48.9,
+    "baseUpPct": 50.3,
+    "excessBps": -1,
+    "t": -0.02,
+    "volRatio": 0.92
+   },
+   "fit": {
+    "n": 214,
+    "upPct": 51.4,
+    "baseUpPct": 50.1,
+    "excessBps": -9,
+    "t": -0.21,
+    "volRatio": 0.86
+   },
+   "directionEdge": null,
+   "moveSize": null
+  }
+ },
+ "crypto": {
+  "inside day": {
+   "test": {
+    "n": 3108,
+    "upPct": 49.1,
+    "baseUpPct": 51.2,
+    "excessBps": -27,
+    "t": -0.69,
+    "volRatio": 0.98
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "NR7": {
+   "test": {
+    "n": 2675,
+    "upPct": 49.5,
+    "baseUpPct": 51.2,
+    "excessBps": 1,
+    "t": 0.02,
+    "volRatio": 0.96
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "outside day": {
+   "test": {
+    "n": 1562,
+    "upPct": 51.3,
+    "baseUpPct": 51.2,
+    "excessBps": 11,
+    "t": 0.22,
+    "volRatio": 1
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "shooting star": {
+   "test": {
+    "n": 480,
+    "upPct": 51.9,
+    "baseUpPct": 51.2,
+    "excessBps": 44,
+    "t": 0.5,
+    "volRatio": 1.04
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "bullish marubozu": {
+   "test": {
+    "n": 302,
+    "upPct": 51.3,
+    "baseUpPct": 51.2,
+    "excessBps": 68,
+    "t": 0.55,
+    "volRatio": 1.03
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "20-day breakout up, high volume": {
+   "test": {
+    "n": 607,
+    "upPct": 55.4,
+    "baseUpPct": 51.2,
+    "excessBps": 198,
+    "t": 1.82,
+    "volRatio": 1.18
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "volume spike, up day": {
+   "test": {
+    "n": 613,
+    "upPct": 55.8,
+    "baseUpPct": 51.2,
+    "excessBps": 247,
+    "t": 2.13,
+    "volRatio": 1.14
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "big up day": {
+   "test": {
+    "n": 249,
+    "upPct": 61,
+    "baseUpPct": 51.2,
+    "excessBps": 298,
+    "t": 1.84,
+    "volRatio": 1.2
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "bearish harami": {
+   "test": {
+    "n": 399,
+    "upPct": 50.4,
+    "baseUpPct": 51.2,
+    "excessBps": 42,
+    "t": 0.4,
+    "volRatio": 0.98
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "volume spike, down day": {
+   "test": {
+    "n": 383,
+    "upPct": 60.1,
+    "baseUpPct": 51.2,
+    "excessBps": 269,
+    "t": 1.68,
+    "volRatio": 1.09
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "doji": {
+   "test": {
+    "n": 1591,
+    "upPct": 49.7,
+    "baseUpPct": 51.2,
+    "excessBps": 10,
+    "t": 0.22,
+    "volRatio": 0.99
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "hanging man": {
+   "test": {
+    "n": 454,
+    "upPct": 52.2,
+    "baseUpPct": 51.2,
+    "excessBps": 146,
+    "t": 1.51,
+    "volRatio": 1.04
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "rejected at 60-day resistance": {
+   "test": {
+    "n": 305,
+    "upPct": 52.5,
+    "baseUpPct": 51.2,
+    "excessBps": 76,
+    "t": 0.7,
+    "volRatio": 1.01
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "tweezer bottom": {
+   "test": {
+    "n": 285,
+    "upPct": 50.2,
+    "baseUpPct": 51.2,
+    "excessBps": -69,
+    "t": -0.78,
+    "volRatio": 1.08
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "tweezer top": {
+   "test": {
+    "n": 334,
+    "upPct": 51.8,
+    "baseUpPct": 51.2,
+    "excessBps": -24,
+    "t": -0.25,
+    "volRatio": 1.08
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "crosses round number up": {
+   "test": {
+    "n": 2978,
+    "upPct": 50.5,
+    "baseUpPct": 51.2,
+    "excessBps": 5,
+    "t": 0.15,
+    "volRatio": 0.96
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "crosses round number down": {
+   "test": {
+    "n": 2815,
+    "upPct": 55.2,
+    "baseUpPct": 51.2,
+    "excessBps": -6,
+    "t": -0.17,
+    "volRatio": 0.99
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "hammer": {
+   "test": {
+    "n": 582,
+    "upPct": 52.9,
+    "baseUpPct": 51.2,
+    "excessBps": -24,
+    "t": -0.31,
+    "volRatio": 1.03
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "bullish engulfing": {
+   "test": {
+    "n": 349,
+    "upPct": 49,
+    "baseUpPct": 51.2,
+    "excessBps": -58,
+    "t": -0.65,
+    "volRatio": 0.94
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "bearish engulfing": {
+   "test": {
+    "n": 340,
+    "upPct": 52.4,
+    "baseUpPct": 51.2,
+    "excessBps": 13,
+    "t": 0.13,
+    "volRatio": 0.93
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "bullish harami": {
+   "test": {
+    "n": 348,
+    "upPct": 48.9,
+    "baseUpPct": 51.2,
+    "excessBps": -187,
+    "t": -1.82,
+    "volRatio": 1.04
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "bearish marubozu": {
+   "test": {
+    "n": 208,
+    "upPct": 52.9,
+    "baseUpPct": 51.2,
+    "excessBps": -43,
+    "t": -0.25,
+    "volRatio": 1.14
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "20-day breakdown, high volume": {
+   "test": {
+    "n": 158,
+    "upPct": 57.6,
+    "baseUpPct": 51.2,
+    "excessBps": -129,
+    "t": -0.65,
+    "volRatio": 1.17
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "big down day": {
+   "test": {
+    "n": 247,
+    "upPct": 47.8,
+    "baseUpPct": 51.2,
+    "excessBps": -184,
+    "t": -1.14,
+    "volRatio": 1.21
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "symmetric triangle, breaks down": {
+   "test": {
+    "n": 151,
+    "upPct": 50.3,
+    "baseUpPct": 51.2,
+    "excessBps": -128,
+    "t": -0.82,
+    "volRatio": 1.11
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "20-day breakdown": {
+   "test": {
+    "n": 526,
+    "upPct": 53.8,
+    "baseUpPct": 51.2,
+    "excessBps": -106,
+    "t": -1.01,
+    "volRatio": 1.23
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "inverted hammer": {
+   "test": {
+    "n": 384,
+    "upPct": 54.2,
+    "baseUpPct": 51.2,
+    "excessBps": 18,
+    "t": 0.2,
+    "volRatio": 1.03
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "20-day breakout up": {
+   "test": {
+    "n": 511,
+    "upPct": 56.2,
+    "baseUpPct": 51.2,
+    "excessBps": 189,
+    "t": 2.32,
+    "volRatio": 1.2
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "symmetric triangle, breaks up": {
+   "test": {
+    "n": 145,
+    "upPct": 55.2,
+    "baseUpPct": 51.2,
+    "excessBps": 100,
+    "t": 0.72,
+    "volRatio": 1.14
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "Bollinger squeeze": {
+   "test": {
+    "n": 646,
+    "upPct": 49.7,
+    "baseUpPct": 51.2,
+    "excessBps": -13,
+    "t": -0.19,
+    "volRatio": 1.29
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "descending triangle, breaks up": {
+   "test": {
+    "n": 66,
+    "upPct": 54.5,
+    "baseUpPct": 51.2,
+    "excessBps": 79,
+    "t": 0.44,
+    "volRatio": 1.27
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "double bottom": {
+   "test": {
+    "n": 57,
+    "upPct": 43.9,
+    "baseUpPct": 51.2,
+    "excessBps": -16,
+    "t": -0.1,
+    "volRatio": 1.08
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "bounce off 60-day support": {
+   "test": {
+    "n": 227,
+    "upPct": 48.9,
+    "baseUpPct": 51.2,
+    "excessBps": -159,
+    "t": -1.28,
+    "volRatio": 1.16
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "ascending triangle, breaks up": {
+   "test": {
+    "n": 47,
+    "upPct": 57.4,
+    "baseUpPct": 51.2,
+    "excessBps": 338,
+    "t": 1.44,
+    "volRatio": 1.38
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "ascending triangle, breaks down": {
+   "test": {
+    "n": 45,
+    "upPct": 40,
+    "baseUpPct": 51.2,
+    "excessBps": -11,
+    "t": -0.05,
+    "volRatio": 1.02
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "descending triangle, breaks down": {
+   "test": {
+    "n": 46,
+    "upPct": 58.7,
+    "baseUpPct": 51.2,
+    "excessBps": -131,
+    "t": -0.71,
+    "volRatio": 1.25
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "morning star": {
+   "test": {
+    "n": 30,
+    "upPct": 46.7,
+    "baseUpPct": 51.2,
+    "excessBps": 107,
+    "t": 0.42,
+    "volRatio": 0.89
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  },
+  "double top": {
+   "test": {
+    "n": 38,
+    "upPct": 50,
+    "baseUpPct": 51.2,
+    "excessBps": 27,
+    "t": 0.11,
+    "volRatio": 1.02
+   },
+   "fit": null,
+   "directionEdge": null,
+   "moveSize": null
+  }
+ }
+}

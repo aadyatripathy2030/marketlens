@@ -13,6 +13,7 @@ const TG = require('./trialguard');
 const fs = require('fs');
 const path = require('path');
 const I = require('./indicators');
+const PAT = require('./patterns');
 const db = require('./db');
 
 const PORT = process.env.PORT || 3000;
@@ -607,7 +608,14 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
     forecast: [], horizon: a.horizon,
     tech, rating, bands, levels, edge,
     odds: interval === '1day' && levels ? I.stopTargetOdds(candles, levels, 5) : null,
+    // Patterns on the latest bars, each with what our own test measured after
+    // it. Daily bars only: that is what the record was measured on.
+    patterns: interval === '1day' ? safePatterns(candles, isPair) : null,
   }));
+}
+
+function safePatterns(candles, crypto) {
+  try { return PAT.chartPatterns(candles, { crypto }); } catch (e) { logError(e); return null; }
 }
 
 // Appended to every AI prompt.

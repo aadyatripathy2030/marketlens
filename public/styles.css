@@ -57,7 +57,7 @@ html, body { height: 100%; max-width: 100%; overflow-x: hidden; }
 #chartWall { display: none; text-align: center; padding: 40px 24px; }
 .result.locked #chartWall { display: block; }
 .result.locked .head .verdict, .result.locked #reason, .result.locked .ai-score-card,
-.result.locked #tiles, .result.locked #risk, .result.locked #techCard, .result.locked #bandsCard,
+.result.locked #tiles, .result.locked #risk, .result.locked #techCard, .result.locked #patCard, .result.locked #bandsCard,
 .result.locked #thesisCard, .result.locked #levelsCard, .result.locked #fbCard, .result.locked #fundCard, .result.locked #newsCard,
 .result.locked .sidebar { display: none; }
 .result.locked .ov[data-k="fast"], .result.locked .ov[data-k="slow"],
@@ -2520,3 +2520,15 @@ main.app { min-height: 100vh; min-height: 100svh; }
 .fb-rate { flex-wrap: nowrap; gap: 4px; }
 .fb-n { min-width: 36px; flex: 0 0 auto; }
 @media (max-width: 360px) { .fb-end { display: none; } }
+
+/* Patterns on this chart */
+.pat-item { border-top: 1px solid var(--border); padding: 12px 0; }
+.pat-item:first-child { border-top: 0; }
+.pat-name { font-weight: 600; color: var(--text); }
+.pat-when { color: var(--muted); font-size: 13px; margin-left: 6px; }
+.pat-about { color: var(--muted); font-size: 14px; margin: 4px 0 6px; }
+.pat-rec { font-size: 14px; color: var(--text); margin: 0; }
+.pat-rec + .pat-rec { margin-top: 4px; }
+.pat-none { color: var(--muted); font-size: 14px; margin: 0; }
+.pat-foot { font-size: 13px; color: var(--muted); margin: 14px 0 0; }
+.pat-foot a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--border-strong); }
