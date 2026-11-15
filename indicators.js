@@ -574,6 +574,20 @@ function edgeSignal(e) {
 // sentence uses, reads the opposite direction. One rule, so the chip at the
 // top, the badge in the gauge card and the sentence beneath it can never
 // disagree with each other.
+// The chance to state. How often similar setups rose on a symbol's past is
+// a noisy guide to the next one: tested on 111 large US stocks, a reading of
+// "rose 67 in 100" was followed by a rise 55 times in 100, about the
+// symbol's usual rate. So the setup's rate is pulled toward the usual rate,
+// harder when it rests on fewer cases: usual + n / (n + 1000) x (setup -
+// usual). With a typical 280 cases that keeps about a fifth of the gap.
+// 1000 was chosen on 2006-2015. On 2016-2026 the stated chances then sat 2.4
+// points from what happened on average (3.9 before), and 2.1 for crypto (5.9
+// before), and scored better than quoting the usual rate alone.
+const CHANCE_K = 1000;
+function calibratedChance(e) {
+  if (!e || !(e.n > 0)) return null;
+  return e.baseWinRate + e.n / (e.n + CHANCE_K) * (e.winRate - e.baseWinRate);
+}
 function headlineCall(rating, e) {
   if (!rating || rating.score == null) return null;
   // The indicators' lean, described rather than prescribed. Tested on
@@ -593,15 +607,18 @@ function headlineCall(rating, e) {
       why: `${ind} There is not enough history on this symbol to say how setups like this turned out.` };
   }
   const up = Math.round(e.winRate), base = Math.round(e.baseWinRate);
+  const est = Math.round(calibratedChance(e));
   const sig = edgeSignal(e);
   const gap = sig && sig.action !== 'Hold'
     ? (sig.action === 'Buy' ? ' That is more often than usual.' : ' That is less often than usual.')
     : ' That is about the same as any day, so the setup has not told you much here.';
+  const estLine = est === up ? ''
+    : ` Gaps like that have mostly not lasted when tested on later years, so the fairer chance for this time is about ${est} in 100.`;
   return {
     action: lean, label, tone, vetoed: false,
     confirmed: !!(sig && sig.action === lean),
-    freq: { up, base, n: e.n, horizon: e.horizon },
-    why: `${ind} After ${e.n} past setups like this on this symbol, the price was higher ${e.horizon} ${e.unit || 'bars'} later about ${up} times in 100. On any day it was ${base} in 100.${gap}`,
+    freq: { up, base, est, n: e.n, horizon: e.horizon },
+    why: `${ind} After ${e.n} past setups like this on this symbol, the price was higher ${e.horizon} ${e.unit || 'bars'} later about ${up} times in 100. On any day it was ${base} in 100.${gap}${estLine}`,
   };
 }
 
@@ -648,6 +665,23 @@ const shortWeight = (slot) => slot >= 2 ? 0.2 : 0.5;
 // horizons. Crypto, using the same factors untouched: 78/77/73% -> 82/80/75%.
 // Beyond a month the gain was under a point, so no widening there.
 const WIDEN = [1.18, 1.12, 1.06, 1, 1, 1];
+// Stocks only: the VIX (the market's own priced-in volatility for the next
+// month) against its average over the past year, raised to this power per
+// slot. A VIX 30% above its year's average makes tomorrow's range about 14%
+// wider; one 30% below makes it about 16% narrower. Without it the range held
+// only 74-75% of the time when the VIX ran high and 83% when it ran low,
+// 2016-2026; with it, 79-81% in both, for tomorrow, a week and a month.
+// Chosen on 2006-2015. Not used past a month (VIX looks 30 days out, and the
+// three-month and one-year ranges scored worse with it in the test) or for
+// crypto (worse at every horizon). Each bar uses the last VIX close before
+// that day, so nothing from the day itself leaks in.
+const VIX_BETA = [0.5, 0.4, 0.4, 0, 0, 0];
+// Crypto only, per slot: the one-month range missed upward rallies in the
+// 2017 and 2020 booms and held 76% from 2016 to 2020. Widened by 10% (chosen
+// on 2016-2020, the only crypto years before the test): from 2021 to 2026
+// it held 80.9% instead of 79.9%, at the same interval score. Three months
+// is left alone: the factor chosen on 2016-2020 over-covered afterwards.
+const CRYPTO_K = [1, 1, 1.10, 1];
 
 // Rolling 20-day and 252-day volatility of daily log returns at every bar.
 function volSeries(closes) {
@@ -667,9 +701,11 @@ function volSeries(closes) {
 }
 
 // The 80% range for one horizon in bars, self-corrected on this series.
-function bandFor(closes, vs, h, slot, flags) {
+function bandFor(closes, vs, h, slot, o) {
+  const flags = o && o.flags, crypto = !!(o && o.crypto);
+  const vix = !crypto && o && o.vix && VIX_BETA[slot] ? o.vix : null, vb = VIX_BETA[slot];
   const n = closes.length, w = shortWeight(slot), [ml, mu] = BAND80[slot];
-  const eta = ACI_ETA / Math.sqrt(h), wk = WIDEN[slot] || 1;
+  const eta = ACI_ETA / Math.sqrt(h), wk = WIDEN[slot] || 1, ck = crypto ? (CRYPTO_K[slot] || 1) : 1;
   const sig = (i) => w * vs.s20[i] + (1 - w) * vs.s252[i];
   let aL = 0, aU = 0;
   // Replay exactly as tested: at each bar, first score the range made h bars
@@ -683,7 +719,8 @@ function bandFor(closes, vs, h, slot, flags) {
       aU += eta * ((y > up[j] ? 1 : 0) - 0.1);
     }
     const v = sig(i); if (!(v > 0)) continue;
-    const sd = v * Math.sqrt(h) * (flags && flags[i] ? wk : 1);
+    const vr = vix ? vix[i] : 0;
+    const sd = v * Math.sqrt(h) * (flags && flags[i] ? wk : 1) * ck * (vr > 0 ? Math.pow(vr, vb) : 1);
     lo[i] = ml * sd * Math.exp(aL); up[i] = mu * sd * Math.exp(aU); made[i] = 1;
   }
   if (!made[n - 1]) return null;
@@ -698,7 +735,7 @@ const slotFor = (days, crypto) => {
 // The 80% range for any horizon in bars. Used by the forward record (20 days).
 function rangeAt(closes, days, opts) {
   if (!closes || closes.length < 61 || !(closes[closes.length - 1] > 0)) return null;
-  return bandFor(closes, volSeries(closes), days, slotFor(days, opts && opts.crypto), opts && opts.flags);
+  return bandFor(closes, volSeries(closes), days, slotFor(days, opts && opts.crypto), opts);
 }
 function forecastBands(closes, opts) {
   const n = closes ? closes.length : 0;
@@ -709,9 +746,11 @@ function forecastBands(closes, opts) {
   if (!(vs.s20[n - 1] > 0) || !(vs.s252[n - 1] > 0)) return [];
   const H = opts && opts.crypto ? BAND_H.crypto : BAND_H.stock;
   return H.map(([label, d], slot) => {
-    const b = bandFor(closes, vs, d, slot, opts && opts.flags);
+    const b = bandFor(closes, vs, d, slot, opts);
     const widened = !!(opts && opts.flags && opts.flags[n - 1] && WIDEN[slot] > 1);
-    return b && { label, days: d, low: b.low, mid: last, high: b.high, chance: 80, widened };
+    const vr = !(opts && opts.crypto) && opts && opts.vix && VIX_BETA[slot] ? opts.vix[n - 1] : 0;
+    const vixAdj = vr > 0 ? Math.round((Math.pow(vr, VIX_BETA[slot]) - 1) * 100) : null;
+    return b && { label, days: d, low: b.low, mid: last, high: b.high, chance: 80, widened, vixAdj };
   }).filter(Boolean);
 }
 

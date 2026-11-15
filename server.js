@@ -323,6 +323,73 @@ async function awaitSpareCredits(n, timeoutMs) {
   return false;
 }
 
+// ---- VIX, for stocks' price ranges ----
+// The daily VIX close from the St. Louis Fed (FRED; public, no key, nothing
+// about the visitor is sent). Each bar gets the VIX against its own average
+// over the past 252 closes, using the last close before that bar's day, so it
+// replays exactly as tested (see VIX_BETA in indicators.js). If FRED cannot
+// be reached the ranges are drawn without it, as they were before.
+const VIX_TTL = 6 * 3600e3;
+let vixData = null, vixAt = 0, vixLoading = null;
+function fetchText(hostname, path) {
+  return new Promise((resolve, reject) => {
+    // No User-Agent of our own: FRED's edge drops requests with unfamiliar
+    // ones and accepts Node's default.
+    const r = https.request({ method: 'GET', hostname, path }, resp => {
+      if (resp.statusCode !== 200) { resp.resume(); return reject(new Error('upstream ' + resp.statusCode)); }
+      let d = ''; resp.setEncoding('utf8'); resp.on('data', c => { d += c; if (d.length > 2e6) r.destroy(new Error('too large')); });
+      resp.on('end', () => resolve(d));
+    });
+    r.on('error', reject);
+    r.setTimeout(15000, () => r.destroy(new Error('upstream timeout')));
+    r.end();
+  });
+}
+function parseVix(csv) {
+  const obs = [];
+  for (const line of csv.split('\n').slice(1)) {
+    const [d, v] = line.trim().split(',');
+    const x = Number(v);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d) && x > 0) obs.push([d, x]);
+  }
+  const days = [], ratio = [];
+  let sum = 0;
+  for (let i = 0; i < obs.length; i++) {
+    sum += obs[i][1]; if (i >= 252) sum -= obs[i - 252][1];
+    if (i >= 251) { days.push(obs[i][0]); ratio.push(obs[i][1] / (sum / 252)); }
+  }
+  return days.length ? { days, ratio } : null;
+}
+function loadVix() {
+  if (vixLoading) return vixLoading;
+  vixLoading = fetchText('fred.stlouisfed.org', '/graph/fredgraph.csv?id=VIXCLS')
+    .then(t => { const v = parseVix(t); if (v) { vixData = v; vixAt = Date.now(); } })
+    .catch(e => logError(e))
+    .finally(() => { vixLoading = null; });
+  return vixLoading;
+}
+// Per-bar VIX ratio aligned to `prices` (0 where there is none), or null.
+// Waits at most 2.5s for a first load so a slow FRED never holds up a chart.
+async function vixFor(prices) {
+  if (process.env.VIX_OFF === '1') return null;
+  if (!vixData || Date.now() - vixAt > VIX_TTL) {
+    const p = loadVix();
+    if (!vixData) await Promise.race([p, new Promise(r => setTimeout(r, 2500).unref())]);
+  }
+  const v = vixData;
+  if (!v || !Array.isArray(prices) || !prices.length) return null;
+  const out = new Float64Array(prices.length);
+  let k = -1, any = false;
+  for (let i = 0; i < prices.length; i++) {
+    const day = String(prices[i].date || '').slice(0, 10);
+    while (k + 1 < v.days.length && v.days[k + 1] < day) k++;
+    // A VIX close more than 5 days old (FRED stalled, or bars past its end)
+    // is not used: that bar's range is drawn without it.
+    if (k >= 0 && (Date.parse(day) - Date.parse(v.days[k])) <= 5 * 86400e3) { out[i] = v.ratio[k]; any = true; }
+  }
+  return any ? out : null;
+}
+
 // ---- Market data ----
 async function fetchLive(symbol, interval, sizeOverride) {
   const size0 = sizeOverride || OUTPUTSIZE[interval] || 1300;
@@ -580,7 +647,11 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   // range's self-correction replays exactly as it was tested.
   let flags = null;
   if (interval === '1day') { try { flags = PAT.sizeFlags(candles); } catch (e) { logError(e); } }
-  const bands = interval === '1day' ? I.forecastBands(closes, { crypto: isPair, flags }) : [];
+  // The VIX widens or narrows stocks' ranges out to a month (tested; see
+  // VIX_BETA in indicators.js). Not used for crypto.
+  let vix = null;
+  if (interval === '1day' && !isPair) { try { vix = await vixFor(data.prices); } catch (e) { logError(e); } }
+  const bands = interval === '1day' ? I.forecastBands(closes, { crypto: isPair, flags, vix }) : [];
   const levels = I.tradeLevels(candles, a.direction);
   // What actually happened, historically, at scores like today's. Roughly 50ms
   // on a full series; null when there is not enough history to say anything.
@@ -596,9 +667,9 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   // would otherwise write a different row for the same day. The stated
   // chance and the 20-day range go in with it, before the outcome exists.
   if (source === 'live' && interval === '1day') {
-    const rg = I.rangeAt(closes, ACCURACY_HORIZON, { crypto: isPair, flags });
+    const rg = I.rangeAt(closes, ACCURACY_HORIZON, { crypto: isPair, flags, vix });
     recordReading(symbol, data.prices, rating, {
-      prob: call && call.freq ? call.freq.up : null, base: call && call.freq ? call.freq.base : null,
+      prob: call && call.freq ? (call.freq.est != null ? call.freq.est : call.freq.up) : null, base: call && call.freq ? call.freq.base : null,
       lo: rg ? rg.low : null, hi: rg ? rg.high : null });
     gradeReadings(symbol, data.prices);
   }
@@ -4463,12 +4534,14 @@ function buildAccuracyHtml(st) {
   const c = st.chance;
   if (c && c.n >= 30) {
     const sk = c.skill;
-    h += P(`Each reading states how often the price rose after similar setups on that stock. Scored with the Brier score (0 is perfect; lower is better), the stated chances scored <strong>${c.brier.toFixed(3)}</strong>, against <strong>${c.baseBrier.toFixed(3)}</strong> for simply quoting each stock's usual rate of rising. ${sk == null ? '' : sk > 0.005 ? `That is ${(sk * 100).toFixed(1)}% better than the usual rate.` : sk < -0.005 ? `That is ${(-sk * 100).toFixed(1)}% worse than the usual rate: the setups have not added anything.` : 'That is no better than the usual rate: the setups have not added anything.'}`)
+    h += P(`Each reading states a chance of the price being higher: how often it rose after similar setups on that stock, pulled toward the stock's usual rate (from 14 November 2026; earlier readings stated the unadjusted rate, which tested as overconfident). Scored with the Brier score (0 is perfect; lower is better), the stated chances scored <strong>${c.brier.toFixed(3)}</strong>, against <strong>${c.baseBrier.toFixed(3)}</strong> for simply quoting each stock's usual rate of rising. ${sk == null ? '' : sk > 0.005 ? `That is ${(sk * 100).toFixed(1)}% better than the usual rate.` : sk < -0.005 ? `That is ${(-sk * 100).toFixed(1)}% worse than the usual rate: the setups have not added anything.` : 'That is no better than the usual rate: the setups have not added anything.'}`)
       + tbl(['Stated chance', 'Readings', 'Average stated', 'Actually higher'], c.bins.map(b => [`${b.from}–${b.to}%`, b.n.toLocaleString('en-US'), pct1(b.said), pct1(b.happened)]));
   } else h += P(`Not enough checked readings yet (${c ? c.n : 0} so far; results are shown from 30). Stated chances started being recorded in November 2026.`);
   h += H('Tests on past prices (hypothetical)');
   h += P(`Before going live, each part was tested on daily prices of 134 US stocks, funds and coins: set up using 2006 to 2015 only, then checked once on 2016 to 2026. These are hypothetical results on past data, not live readings, and past results do not guarantee future ones.`)
-    + `<ul><li>The 80% price range (revised in November 2026) contained the real price 77% to 80% of the time for stocks, from 1 day to 1 year ahead, and missed below and above about equally: 9.8% to 11.5% on each side, against 10%. For crypto, from 1 day to 3 months, it held 75% to 81%. Crypto ranges stop at 3 months because longer ones held only about 70%. The range is also widened for the next day, week and month after seven chart patterns that came before bigger moves (such as gaps and big down days). Without that, the range held only 74% to 77% of the time after those days; with it, about 79% for stocks, from 2016 to 2026.</li>`
+    + `<ul><li>The 80% price range (revised in November 2026) contained the real price 79% to 80% of the time on 111 large US stocks, from 1 day to 1 year ahead, and missed below and above about equally: 9.6% to 10.7% on each side, against 10%. Out to a month it moves with the VIX, the market's priced-in volatility: before that, it held only 74% to 75% of the time when the VIX ran well above its past-year average and 83% when it ran low; with it, 79% to 81% in both. The range is also widened for the next day, week and month after seven chart patterns that came before bigger moves (such as gaps and big down days). Without that, it held only 74% to 77% of the time after those days; with it, about 79%.</li>`
+    + `<li>For crypto, from 1 day to 3 months, the range held 77% to 80% from 2016 to 2026. The one-month crypto range is drawn 10% wider than the stock rule gives, because it missed upward rallies in the 2017 and 2020 booms (held 76% from 2016 to 2020); chosen on those years, it then held 80.9% from 2021 to 2026. Crypto ranges stop at 3 months because longer ones held only about 70%.</li>`
+    + `<li>Stated chances, tested on 111 large US stocks: a setup that rose, say, 67 times in 100 on a stock's past was followed by a rise about 55 times in 100, close to the stock's usual rate. Pulled toward the usual rate (chosen on 2006 to 2015), stated chances sat 2.4 points from what happened on average from 2016 to 2026, against 3.9 unadjusted; for crypto, 2.1 against 5.9.</li>`
     + `<li>The odds of reaching a target before the stop were within 3 points of what happened, long and short.</li>`
     + `<li>The indicators' lean, and six well-known chart rules, did not tell which way a large stock would go better than chance. That is why ${SITE_NAME} shows how often setups rose, next to the usual rate, instead of a buy or sell call.</li></ul>`;
   h += P(`Small samples swing a lot, so early figures here can move. Nothing on this page is financial advice, and trading can lose money.`);
@@ -5164,6 +5237,7 @@ db.init().then(async (storeMode) => {
     startSessionPurge();
     startStreakMail();
     startAccuracyLoop();
+    if (process.env.VIX_OFF !== '1') loadVix();
     // Affiliate commissions are reconciled against Stripe a minute after boot
     // and then daily, so a missed webhook never leaves an affiliate short.
     // Connect is probed at boot and hourly until it answers, so enabling it

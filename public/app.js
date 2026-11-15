@@ -269,7 +269,18 @@
       return `<div class="band-row"><span class="band-label">${esc(b.label)}</span><div class="band-track"><div class="band-range" style="left:${l}%;width:${w}%"></div><div class="band-mid" style="left:${m}%"></div></div><span class="band-nums"><b>${b.low.toFixed(2)}</b> – <b>${b.high.toFixed(2)}</b></span></div>`;
     }).join('') + (bands.some(b => b.widened)
       ? `<p class="compare-note">The next-day, one-week and one-month ranges are wider than usual: today’s chart shows a pattern that came before bigger moves in our test (see Patterns on this chart). Without the widening, ranges after these patterns held only 74–77% of the time; with it, about 80%.</p>`
-      : '');
+      : '') + vixNote(bands);
+  }
+  // Stocks' ranges out to a month move with the VIX, the market's priced-in
+  // volatility, against its average over the past year (see VIX_BETA).
+  function vixNote(bands) {
+    const adj = bands.map(b => b.vixAdj).filter(v => typeof v === 'number');
+    if (!adj.length) return '';
+    const big = adj.reduce((a, v) => Math.abs(v) > Math.abs(a) ? v : a, 0);
+    const how = Math.abs(big) < 2 ? 'near its average for the past year, so the ranges out to a month are drawn about as usual'
+      : big > 0 ? `above its average for the past year, so the ranges out to a month are drawn up to ${big}% wider`
+        : `below its average for the past year, so the ranges out to a month are drawn up to ${-big}% narrower`;
+    return `<p class="compare-note">The VIX, the market’s own priced-in swing for the next month, is ${how}. Tested on 2016–2026, this kept those ranges holding about 8 times in 10 in calm and stormy markets alike; before, they held 83% of the time in calm markets and only 74–75% in stormy ones.</p>`;
   }
 
   // The measured base rate, stated next to the score it is judging. If the
@@ -1994,7 +2005,7 @@
         $('vKicker').textContent = 'Indicators';
         $('vAction').textContent = call.label || call.action;
         const fq = call.freq;
-        $('vMeta').textContent = [rt.score != null ? `score ${rt.score}/100` : '', fq ? `higher after ${fq.up} of 100 similar setups (any day: ${fq.base})` : ''].filter(Boolean).join(' · ');
+        $('vMeta').textContent = [rt.score != null ? `score ${rt.score}/100` : '', fq ? `higher after ${fq.up} of 100 similar setups (any day: ${fq.base})` + (fq.est != null && fq.est !== fq.up ? ` · fair chance about ${fq.est} in 100` : '') : ''].filter(Boolean).join(' · ');
         $('verdict').className = 'verdict ' + (call.tone || 'neutral');
       } else {
         $('vKicker').textContent = 'Indicators';
