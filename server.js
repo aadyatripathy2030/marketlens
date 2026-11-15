@@ -4543,7 +4543,7 @@ function replayHtml(P, H, tbl) {
   if (!R || !R.all) return '';
   const a = R.all, m = R.meta, f = (x) => pct1(x);
   // Exact figures from the replay, not re-derived from rounded rows.
-  const ls = { upShare: a.leanUp.share, dnShare: a.leanDown.share, midShare: 100 - a.leanUp.share - a.leanDown.share,
+  const ls = { upShare: a.leanUp.share, dnShare: a.leanDown.share, midShare: (a.labels.find(l => l.label === 'Mixed') || {}).share,
     upRose: a.leanUp.rose, dnFell: a.leanDown.fell, right: a.direction.right };
   let h = H(`${a.n.toLocaleString('en-US')} readings replayed on past prices (hypothetical)`);
   h += P(`To see what a much larger record would look like, today's rules were run on ${a.n.toLocaleString('en-US')} past days picked at random from ${m.symbols.stocks} large US stocks and ${m.symbols.crypto} coins, between ${esc(fmtIsoDay(m.first))} and ${esc(fmtIsoDay(m.last))}. Each reading used only the prices up to its own day and was checked ${m.horizon} trading days later, exactly as the live record is. These are not live readings: they were made after the fact, on past data, and past results do not guarantee future ones.`);
