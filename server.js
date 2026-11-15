@@ -324,8 +324,8 @@ async function awaitSpareCredits(n, timeoutMs) {
 }
 
 // ---- VIX, for stocks' price ranges ----
-// The daily VIX close from the St. Louis Fed (FRED; public, no key, nothing
-// about the visitor is sent). Each bar gets the VIX against its own average
+// The daily VIX close from Cboe, or the St. Louis Fed's copy of it (public
+// files, no key, nothing about the visitor is sent). Each bar gets the VIX against its own average
 // over the past 252 closes, using the last close before that bar's day, so it
 // replays exactly as tested (see VIX_BETA in indicators.js). If FRED cannot
 // be reached the ranges are drawn without it, as they were before.
@@ -345,13 +345,17 @@ function fetchText(hostname, path) {
     r.end();
   });
 }
+// Accepts FRED's "YYYY-MM-DD,close" and Cboe's "MM/DD/YYYY,open,high,low,close".
 function parseVix(csv) {
   const obs = [];
   for (const line of csv.split('\n').slice(1)) {
-    const [d, v] = line.trim().split(',');
-    const x = Number(v);
+    const f = line.trim().split(',');
+    let d = f[0], x;
+    const us = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(d);
+    if (us) { d = `${us[3]}-${us[1]}-${us[2]}`; x = Number(f[4]); } else x = Number(f[1]);
     if (/^\d{4}-\d{2}-\d{2}$/.test(d) && x > 0) obs.push([d, x]);
   }
+  obs.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   const days = [], ratio = [];
   let sum = 0;
   for (let i = 0; i < obs.length; i++) {
@@ -362,9 +366,18 @@ function parseVix(csv) {
 }
 function loadVix() {
   if (vixLoading) return vixLoading;
-  vixLoading = fetchText('fred.stlouisfed.org', '/graph/fredgraph.csv?id=VIXCLS')
-    .then(t => { const v = parseVix(t); if (v) { vixData = v; vixAt = Date.now(); } })
-    .catch(e => logError(e))
+  // Cboe's own file first (it is the source of the index), FRED's copy of the
+  // same closes if Cboe cannot be reached.
+  const SOURCES = [['cdn-api.cboe.com', '/api/global/us_indices/daily_prices/VIX_History.csv'],
+    ['fred.stlouisfed.org', '/graph/fredgraph.csv?id=VIXCLS']];
+  vixLoading = (async () => {
+    for (const [host, path] of SOURCES) {
+      try {
+        const v = parseVix(await fetchText(host, path));
+        if (v && v.days.length > 1000) { vixData = v; vixAt = Date.now(); return; }
+      } catch (e) { logError(e); }
+    }
+  })()
     .finally(() => { vixLoading = null; });
   return vixLoading;
 }
@@ -674,6 +687,7 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
     gradeReadings(symbol, data.prices);
   }
   json(res, 200, Object.assign(head, {
+    vixAsOf: vix && vixData ? vixData.days[vixData.days.length - 1] : null,
     tradeSignal: signal, call,
     direction: a.direction, strategyLabel: stratLabel(strategy, a.direction),
     maFast: a.maFast, maSlow: a.maSlow,
