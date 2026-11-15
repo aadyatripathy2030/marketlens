@@ -1,0 +1,281 @@
+{
+ "meta": {
+  "generated": "2026-11-15",
+  "readings": 10000,
+  "period": "2016-01-01 to 2026-10",
+  "horizon": 20,
+  "symbols": {
+   "stocks": 111,
+   "crypto": 5
+  },
+  "first": "2016-01-05",
+  "last": "2026-10-20",
+  "dates": 1950
+ },
+ "all": {
+  "n": 10000,
+  "rose": 55.6,
+  "labels": [
+   {
+    "label": "Strongly up",
+    "n": 2805,
+    "share": 28.1,
+    "rose": 56.1
+   },
+   {
+    "label": "Leans up",
+    "n": 1891,
+    "share": 18.9,
+    "rose": 55.3
+   },
+   {
+    "label": "Mixed",
+    "n": 2337,
+    "share": 23.4,
+    "rose": 53.3
+   },
+   {
+    "label": "Leans down",
+    "n": 1552,
+    "share": 15.5,
+    "rose": 57.1
+   },
+   {
+    "label": "Strongly down",
+    "n": 1415,
+    "share": 14.2,
+    "rose": 57.4
+   }
+  ],
+  "leanUp": {
+   "n": 4696,
+   "share": 47,
+   "rose": 55.8
+  },
+  "leanDown": {
+   "n": 2967,
+   "share": 29.7,
+   "fell": 42.7
+  },
+  "direction": {
+   "n": 7663,
+   "right": 50.7
+  },
+  "range": {
+   "n": 10000,
+   "inside": 79.4,
+   "below": 10.1,
+   "above": 10.5
+  },
+  "chance": {
+   "n": 9849,
+   "brier": 0.2474,
+   "baseBrier": 0.2476,
+   "bins": [
+    {
+     "from": 40,
+     "to": 50,
+     "n": 539,
+     "said": 47.5,
+     "happened": 49
+    },
+    {
+     "from": 50,
+     "to": 60,
+     "n": 7084,
+     "said": 54.9,
+     "happened": 55.6
+    },
+    {
+     "from": 60,
+     "to": 70,
+     "n": 2172,
+     "said": 62.2,
+     "happened": 57.4
+    },
+    {
+     "from": 70,
+     "to": 80,
+     "n": 23,
+     "said": 71.6,
+     "happened": 56.5
+    }
+   ]
+  }
+ },
+ "stocks": {
+  "n": 9556,
+  "rose": 55.8,
+  "labels": [
+   {
+    "label": "Strongly up",
+    "n": 2699,
+    "share": 28.2,
+    "rose": 56.4
+   },
+   {
+    "label": "Leans up",
+    "n": 1826,
+    "share": 19.1,
+    "rose": 55.4
+   },
+   {
+    "label": "Mixed",
+    "n": 2233,
+    "share": 23.4,
+    "rose": 53.3
+   },
+   {
+    "label": "Leans down",
+    "n": 1467,
+    "share": 15.4,
+    "rose": 57.4
+   },
+   {
+    "label": "Strongly down",
+    "n": 1331,
+    "share": 13.9,
+    "rose": 57.4
+   }
+  ],
+  "leanUp": {
+   "n": 4525,
+   "share": 47.4,
+   "rose": 56
+  },
+  "leanDown": {
+   "n": 2798,
+   "share": 29.3,
+   "fell": 42.5
+  },
+  "direction": {
+   "n": 7323,
+   "right": 50.8
+  },
+  "range": {
+   "n": 9556,
+   "inside": 79.5,
+   "below": 10.1,
+   "above": 10.4
+  },
+  "chance": {
+   "n": 9460,
+   "brier": 0.2471,
+   "baseBrier": 0.2473,
+   "bins": [
+    {
+     "from": 40,
+     "to": 50,
+     "n": 457,
+     "said": 47.9,
+     "happened": 48.1
+    },
+    {
+     "from": 50,
+     "to": 60,
+     "n": 6838,
+     "said": 54.9,
+     "happened": 55.7
+    },
+    {
+     "from": 60,
+     "to": 70,
+     "n": 2116,
+     "said": 62.2,
+     "happened": 57.5
+    },
+    {
+     "from": 70,
+     "to": 80,
+     "n": 20,
+     "said": 71.7,
+     "happened": 65
+    }
+   ]
+  }
+ },
+ "crypto": {
+  "n": 444,
+  "rose": 52.9,
+  "labels": [
+   {
+    "label": "Strongly up",
+    "n": 106,
+    "share": 23.9,
+    "rose": 50.9
+   },
+   {
+    "label": "Leans up",
+    "n": 65,
+    "share": 14.6,
+    "rose": 52.3
+   },
+   {
+    "label": "Mixed",
+    "n": 104,
+    "share": 23.4,
+    "rose": 52.9
+   },
+   {
+    "label": "Leans down",
+    "n": 85,
+    "share": 19.1,
+    "rose": 51.8
+   },
+   {
+    "label": "Strongly down",
+    "n": 84,
+    "share": 18.9,
+    "rose": 57.1
+   }
+  ],
+  "leanUp": {
+   "n": 171,
+   "share": 38.5,
+   "rose": 51.5
+  },
+  "leanDown": {
+   "n": 169,
+   "share": 38.1,
+   "fell": 45.6
+  },
+  "direction": {
+   "n": 340,
+   "right": 48.5
+  },
+  "range": {
+   "n": 444,
+   "inside": 77.3,
+   "below": 10.8,
+   "above": 11.9
+  },
+  "chance": {
+   "n": 389,
+   "brier": 0.2536,
+   "baseBrier": 0.2541,
+   "bins": [
+    {
+     "from": 40,
+     "to": 50,
+     "n": 82,
+     "said": 45.3,
+     "happened": 53.7
+    },
+    {
+     "from": 50,
+     "to": 60,
+     "n": 246,
+     "said": 53.6,
+     "happened": 53.7
+    },
+    {
+     "from": 60,
+     "to": 70,
+     "n": 56,
+     "said": 63.1,
+     "happened": 53.6
+    }
+   ]
+  }
+ }
+}
