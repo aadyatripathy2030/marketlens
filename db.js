@@ -187,6 +187,13 @@ async function init() {
       await pool.query('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS base_prob INTEGER');
       await pool.query('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS band_lo DOUBLE PRECISION');
       await pool.query('ALTER TABLE predictions ADD COLUMN IF NOT EXISTS band_hi DOUBLE PRECISION');
+      // Added Nov 2026: the same reading checked on the next trading day, for
+      // day traders. Its own chance and range (next day) are written with the
+      // reading; readings from before then are checked for direction only.
+      for (const col of ['prob1 INTEGER', 'base1 INTEGER', 'lo1 DOUBLE PRECISION', 'hi1 DOUBLE PRECISION',
+        'out1 DOUBLE PRECISION', 'out1_day TEXT', 'ret1 DOUBLE PRECISION', 'graded1 BIGINT'])
+        await pool.query(`ALTER TABLE predictions ADD COLUMN IF NOT EXISTS ${col}`);
+      await pool.query('CREATE INDEX IF NOT EXISTS predictions_ungraded1 ON predictions (symbol) WHERE graded1 IS NULL');
       // Lookups the webhook, the affiliate pages and the purge make by
       // something other than the primary key.
       for (const ix of [
@@ -1248,10 +1255,10 @@ async function recordPrediction(p) {
     // Do nothing on conflict: the first reading of the day is the one that
     // counts, so a later view cannot quietly revise it.
     await pool.query(
-      `INSERT INTO predictions (id, symbol, day, score, label, price, created, prob, base_prob, band_lo, band_hi)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (symbol, day) DO NOTHING`,
+      `INSERT INTO predictions (id, symbol, day, score, label, price, created, prob, base_prob, band_lo, band_hi, prob1, base1, lo1, hi1)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT (symbol, day) DO NOTHING`,
       [crypto.randomUUID(), p.symbol, p.day, p.score, p.label, p.price, Date.now(),
-       p.prob == null ? null : p.prob, p.base == null ? null : p.base, p.lo == null ? null : p.lo, p.hi == null ? null : p.hi]);
+       ...[p.prob, p.base, p.lo, p.hi, p.prob1, p.base1, p.lo1, p.hi1].map(v => v == null ? null : v)]);
     return;
   }
   if (!mem.preds.has(key)) mem.preds.set(key, { id: key, ...p, created: Date.now(), graded: null });
@@ -1265,6 +1272,23 @@ async function ungradedFor(symbol) {
   return [...mem.preds.values()].filter(p => p.symbol === symbol && !p.graded).map(p => ({ id: p.id, day: p.day, price: p.price }));
 }
 
+// Readings not yet checked on the next trading day.
+async function ungraded1For(symbol) {
+  if (mode === 'postgres') {
+    const r = await pool.query('SELECT id, day, price FROM predictions WHERE symbol=$1 AND graded1 IS NULL', [symbol]);
+    return r.rows;
+  }
+  return [...mem.preds.values()].filter(p => p.symbol === symbol && !p.graded1).map(p => ({ id: p.id, day: p.day, price: p.price }));
+}
+async function gradeNextDay(id, outPrice, outDay, ret) {
+  if (mode === 'postgres') {
+    await pool.query('UPDATE predictions SET out1=$1, out1_day=$2, ret1=$3, graded1=$4 WHERE id=$5 AND graded1 IS NULL',
+      [outPrice, outDay, ret, Date.now(), id]);
+    return;
+  }
+  const p = mem.preds.get(id);
+  if (p && !p.graded1) { p.out1 = outPrice; p.out1_day = outDay; p.ret1 = ret; p.graded1 = Date.now(); }
+}
 async function gradePrediction(id, outPrice, outDay, ret) {
   if (mode === 'postgres') {
     await pool.query('UPDATE predictions SET out_price=$1, out_day=$2, ret=$3, graded=$4 WHERE id=$5 AND graded IS NULL',
@@ -1293,6 +1317,8 @@ async function accuracyStats() {
   if (mode === 'postgres') {
     const r = await pool.query('SELECT label, ret, price, out_price, prob, base_prob, band_lo, band_hi FROM predictions WHERE graded IS NOT NULL');
     rows = r.rows;
+    const r1 = await pool.query('SELECT label, ret1 AS ret, price, out1 AS out_price, prob1 AS prob, base1 AS base_prob, lo1 AS band_lo, hi1 AS band_hi FROM predictions WHERE graded1 IS NOT NULL');
+    var rows1 = r1.rows;
     const t = await pool.query('SELECT COUNT(*)::int AS n FROM predictions');
     var total = t.rows[0].n;
     // The earliest reading still waiting on its outcome, so a record with
@@ -1302,11 +1328,15 @@ async function accuracyStats() {
     oldestPending = (o.rows[0] && o.rows[0].d) || null;
   } else {
     rows = [...mem.preds.values()].filter(p => p.graded).map(p => ({ label: p.label, ret: p.ret, price: p.price, out_price: p.out_price, prob: p.prob, base_prob: p.base, band_lo: p.lo, band_hi: p.hi }));
+    var rows1 = [...mem.preds.values()].filter(p => p.graded1).map(p => ({ label: p.label, ret: p.ret1, price: p.price, out_price: p.out1, prob: p.prob1, base_prob: p.base1, band_lo: p.lo1, band_hi: p.hi1 }));
     var total = mem.preds.size;
     for (const p of mem.preds.values()) {
       if (!p.graded && (!oldestPending || p.day < oldestPending)) oldestPending = p.day;
     }
   }
+  return Object.assign(summarizeReadings(rows), { recorded: total, oldestPending, next: summarizeReadings(rows1 || []) });
+}
+function summarizeReadings(rows) {
   const byLabel = {};
   // Readings recorded before the labels changed wording are folded into the
   // row they now belong to, so the record stays one record.
@@ -1342,7 +1372,7 @@ async function accuracyStats() {
     chance = { n: probd.length, brier: bs, baseBrier: bb, skill: bb > 0 ? 1 - bs / bb : null, bins };
   }
   return {
-    recorded: total, graded: rows.length, oldestPending, range, chance,
+    graded: rows.length, range, chance,
     baseline: mean(all),
     labels: Object.entries(byLabel).map(([label, a]) => ({
       label, n: a.length, mean: mean(a),
@@ -1353,7 +1383,7 @@ async function accuracyStats() {
 
 module.exports = {
   deleteUser, addFeedback, listFeedback,
-  recordPrediction, ungradedFor, gradePrediction, accuracyStats, latestPrediction,
+  recordPrediction, ungradedFor, gradePrediction, ungraded1For, gradeNextDay, accuracyStats, latestPrediction,
   bumpUsage, peekUsage,
   getUserByGoogleId, linkGoogleId, createGoogleUser,
   init, storeMode, hasUrl, lastError, verifyPw,

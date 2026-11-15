@@ -542,6 +542,7 @@ async function recordReading(symbol, prices, rating, extra) {
 }
 
 async function gradeReadings(symbol, prices) {
+  await gradeNextDay(symbol, prices);
   if (prices.length < ACCURACY_HORIZON + 1) return;
   try {
     const pending = await db.ungradedFor(symbol);
@@ -555,10 +556,45 @@ async function gradeReadings(symbol, prices) {
       if (i == null) continue;
       const j = i + ACCURACY_HORIZON;
       if (j >= prices.length) continue;          // outcome has not happened yet
+      if (!barFinal(prices[j].date, String(symbol).includes('/'))) continue;   // still trading
       const out = Number(prices[j].close), start = Number(row.price);
       if (!Number.isFinite(out) || !start) continue;
       await db.gradePrediction(row.id, out, String(prices[j].date || '').slice(0, 10),
         ((out - start) / start) * 100);
+    }
+  } catch (e) { logError(e); }
+}
+
+// Whether a daily bar's close is final. During the session the newest bar is
+// still moving, and grading against it would score a price that was never a
+// close. Stocks: any earlier New York day, or today from 5pm New York time.
+// Crypto bars are UTC days, final once that day has ended.
+function barFinal(date, crypto) {
+  const d = String(date || '').slice(0, 10);
+  if (!d) return false;
+  if (crypto) return d < new Date().toISOString().slice(0, 10);
+  const today = MKT.etDay();
+  if (d < today) return true;
+  if (d > today) return false;
+  const h = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: '2-digit', hour12: false }).format(new Date())) % 24;
+  return h >= 17;
+}
+// Each reading checked against the close of the very next bar (the next
+// trading session; the next day for crypto).
+async function gradeNextDay(symbol, prices) {
+  if (prices.length < 2) return;
+  try {
+    const pending = await db.ungraded1For(symbol);
+    if (!pending.length) return;
+    const idx = new Map();
+    prices.forEach((p, i) => idx.set(String(p.date || '').slice(0, 10), i));
+    for (const row of pending) {
+      const i = idx.get(row.day);
+      if (i == null || i + 1 >= prices.length) continue;
+      if (!barFinal(prices[i + 1].date, String(symbol).includes('/'))) continue;
+      const out = Number(prices[i + 1].close), start = Number(row.price);
+      if (!Number.isFinite(out) || !start) continue;
+      await db.gradeNextDay(row.id, out, String(prices[i + 1].date || '').slice(0, 10), ((out - start) / start) * 100);
     }
   } catch (e) { logError(e); }
 }
@@ -681,7 +717,15 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   // chance and the 20-day range go in with it, before the outcome exists.
   if (source === 'live' && interval === '1day') {
     const rg = I.rangeAt(closes, ACCURACY_HORIZON, { crypto: isPair, flags, vix });
+    // The same reading for day traders: the chance of a higher close on the
+    // next trading day, and tomorrow's 80% range, from the same rules.
+    let e1 = null;
+    if (rating.score != null) { try { e1 = I.historicalEdge(candles, rating.score, 1); } catch (e) { logError(e); } }
+    const c1 = e1 && e1.n >= 30 ? I.calibratedChance(e1) : null;
+    const b1 = bands.find(b => b.days === 1);
     recordReading(symbol, data.prices, rating, {
+      prob1: c1 == null ? null : Math.round(c1), base1: c1 == null ? null : Math.round(e1.baseWinRate),
+      lo1: b1 ? b1.low : null, hi1: b1 ? b1.high : null,
       prob: call && call.freq ? (call.freq.est != null ? call.freq.est : call.freq.up) : null, base: call && call.freq ? call.freq.base : null,
       lo: rg ? rg.low : null, hi: rg ? rg.high : null });
     gradeReadings(symbol, data.prices);
@@ -4538,53 +4582,66 @@ function leanSummary(labels, all) {
   const right = n(up) + n(dn) ? (upRose * n(up) + (100 - dnRose) * n(dn)) / (n(up) + n(dn)) : null;
   return { upShare: n(up) / all * 100, dnShare: n(dn) / all * 100, midShare: n(mid) / all * 100, upRose, dnFell: dnRose == null ? null : 100 - dnRose, right };
 }
-function replayHtml(P, H, tbl) {
-  const R = REPLAY;
+// One horizon of the live record: lean, range, stated chance.
+// `when` reads after "the price ..." ("on the next trading day").
+function liveHorizonHtml(st, when, startedNote, P, H3, tbl) {
+  let h = '';
+  const all = st.labels.reduce((a, l) => a + l.n, 0);
+  const allUp = all ? st.labels.reduce((a, l) => a + (l.winRate || 0) * l.n, 0) / all : null;
+  h += H3('Which way it leaned, and how often that was right');
+  h += all >= 30
+    ? (() => {
+      const ls = leanSummary(st.labels, all);
+      return P(`<strong>${pct1(ls.upShare)}</strong> of ${all.toLocaleString('en-US')} checked readings leaned up and <strong>${pct1(ls.dnShare)}</strong> leaned down; the other ${pct1(ls.midShare)} were mixed. When they leaned up, the price was higher ${when} ${pct1(ls.upRose)} of the time; when they leaned down, it was lower ${pct1(ls.dnFell)} of the time. Taken together, the lean was right <strong>${pct1(ls.right)}</strong> of the time.`)
+        + tbl(['Indicators', 'Readings', 'Share of readings', 'Price higher'],
+          st.labels.slice().sort((a, b) => b.n - a.n).map(l => [esc(l.label), l.n.toLocaleString('en-US'), pct1(l.n / all * 100), pct1(l.winRate)]).concat([['All readings', all.toLocaleString('en-US'), '100%', pct1(allUp)]]));
+    })()
+    : P(`Not enough checked readings yet (${all} so far; results are shown from 30).`);
+  h += H3('The 80% price range');
+  const r = st.range;
+  h += r && r.n >= 30
+    ? P(`Across <strong>${r.n.toLocaleString('en-US')}</strong> checked readings, the price ${when} landed inside the range <strong>${pct1(r.inside)}</strong> of the time, below it ${pct1(r.below)} and above it ${pct1(r.above)}. The target is 80%, with about 10% missed on each side.`)
+    : P(`Not enough checked readings yet (${r ? r.n : 0} so far; results are shown from 30). ${startedNote}`);
+  h += H3('The stated chance');
+  const c = st.chance;
+  if (c && c.n >= 30) {
+    const sk = c.skill;
+    h += P(`Each reading states a chance of the price being higher ${when}: how often it rose after similar setups on that symbol, pulled toward its usual rate. Scored with the Brier score (0 is perfect; lower is better), the stated chances scored <strong>${c.brier.toFixed(3)}</strong>, against <strong>${c.baseBrier.toFixed(3)}</strong> for simply quoting each symbol's usual rate of rising. ${sk == null ? '' : sk > 0.005 ? `That is ${(sk * 100).toFixed(1)}% better than the usual rate.` : sk < -0.005 ? `That is ${(-sk * 100).toFixed(1)}% worse than the usual rate: the setups have not added anything.` : 'That is no better than the usual rate: the setups have not added anything.'}`)
+      + tbl(['Stated chance', 'Readings', 'Average stated', 'Actually higher'], c.bins.map(b => [`${b.from}–${b.to}%`, b.n.toLocaleString('en-US'), pct1(b.said), pct1(b.happened)]));
+  } else h += P(`Not enough checked readings yet (${c ? c.n : 0} so far; results are shown from 30). ${startedNote}`);
+  return h;
+}
+// 10,000 readings by today's rules on past days, for one horizon.
+function replayHtml(R, when, P, H3, tbl) {
   if (!R || !R.all) return '';
   const a = R.all, m = R.meta, f = (x) => pct1(x);
-  // Exact figures from the replay, not re-derived from rounded rows.
-  const ls = { upShare: a.leanUp.share, dnShare: a.leanDown.share, midShare: (a.labels.find(l => l.label === 'Mixed') || {}).share,
-    upRose: a.leanUp.rose, dnFell: a.leanDown.fell, right: a.direction.right };
-  let h = H(`${a.n.toLocaleString('en-US')} readings replayed on past prices (hypothetical)`);
-  h += P(`To see what a much larger record would look like, today's rules were run on ${a.n.toLocaleString('en-US')} past days picked at random from ${m.symbols.stocks} large US stocks and ${m.symbols.crypto} coins, between ${esc(fmtIsoDay(m.first))} and ${esc(fmtIsoDay(m.last))}. Each reading used only the prices up to its own day and was checked ${m.horizon} trading days later, exactly as the live record is. These are not live readings: they were made after the fact, on past data, and past results do not guarantee future ones.`);
-  h += P(`<strong>${f(ls.upShare)}</strong> of the readings leaned up and <strong>${f(ls.dnShare)}</strong> leaned down; the other ${f(ls.midShare)} were mixed. When they leaned up, the price rose ${f(ls.upRose)} of the time. When they leaned down, it fell ${f(ls.dnFell)} of the time. Taken together, the lean was right <strong>${f(ls.right)}</strong> of the time, about a coin flip, while prices rose on ${f(a.rose)} of all the days.`)
-    + tbl(['Indicators', 'Share of readings', `Higher ${m.horizon} trading days later`], a.labels.map(l => [esc(l.label), f(l.share), f(l.rose)]).concat([['All readings', '100%', f(a.rose)]]));
-  h += P(`The 80% price range held <strong>${f(a.range.inside)}</strong> of the time, below it ${f(a.range.below)} and above it ${f(a.range.above)}. The stated chance scored ${a.chance.brier.toFixed(3)} on the Brier score, against ${a.chance.baseBrier.toFixed(3)} for quoting each symbol's usual rate: about the same. Pulling it toward that rate stops it overstating, but the setups add almost nothing. Chances stated in the 60s came true only ${f((a.chance.bins.find(b => b.from === 60) || {}).happened)} of the time.`)
+  const mid = (a.labels.find(l => l.label === 'Mixed') || {}).share;
+  let h = H3(`${a.n.toLocaleString('en-US')} readings replayed on past prices (hypothetical)`);
+  h += P(`Today's rules were run on ${a.n.toLocaleString('en-US')} past days picked at random from ${m.symbols.stocks} large US stocks and ${m.symbols.crypto} coins, between ${esc(fmtIsoDay(m.first))} and ${esc(fmtIsoDay(m.last))}. Each reading used only the prices up to its own day and was checked ${when}, the same way the live record is. These are not live readings: they were made after the fact, on past data, and past results do not guarantee future ones.`);
+  h += P(`<strong>${f(a.leanUp.share)}</strong> of the readings leaned up and <strong>${f(a.leanDown.share)}</strong> leaned down; the other ${f(mid)} were mixed. When they leaned up, the price was higher ${when} ${f(a.leanUp.rose)} of the time. When they leaned down, it was lower ${f(a.leanDown.fell)} of the time. Taken together, the lean was right <strong>${f(a.direction.right)}</strong> of the time, about a coin flip, while prices rose on ${f(a.rose)} of all the days.`)
+    + tbl(['Indicators', 'Share of readings', 'Price higher'], a.labels.map(l => [esc(l.label), f(l.share), f(l.rose)]).concat([['All readings', '100%', f(a.rose)]]));
+  const b60 = a.chance.bins.find(b => b.from === 60 && b.n >= 100);
+  h += P(`The 80% price range held <strong>${f(a.range.inside)}</strong> of the time, below it ${f(a.range.below)} and above it ${f(a.range.above)}. The stated chance scored ${a.chance.brier.toFixed(3)} on the Brier score, against ${a.chance.baseBrier.toFixed(3)} for quoting each symbol's usual rate: about the same: the setups add almost nothing beyond the usual rate.${b60 ? ` Chances stated in the 60s came true only ${f(b60.happened)} of the time.` : ''}`)
     + tbl(['Stated chance', 'Readings', 'Average stated', 'Actually higher'], a.chance.bins.map(b => [`${b.from}–${b.to}%`, b.n.toLocaleString('en-US'), f(b.said), f(b.happened)]));
   return h;
 }
 function buildAccuracyHtml(st) {
   const P = (t) => `<p>${t}</p>`;
   const H = (t) => `<h2>${t}</h2>`;
+  const H3 = (t) => `<h3>${t}</h3>`;
   const tbl = (head, rows) => `<div class="guide-table-wrap"><table class="guide-table"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
-  const since = st.oldestPending ? ` The oldest reading still waiting on its outcome is from ${esc(st.oldestPending)}.` : '';
-  let h = P(`Every day a stock's daily chart is opened, ${SITE_NAME} writes down that day's reading: which way the indicators lean, the stated chance of the price being higher ${ACCURACY_HORIZON} trading days later, and an 80% price range for that day. Each one is saved before the outcome exists and is never changed afterwards. ${ACCURACY_HORIZON} trading days later it is checked against the real closing price. This page shows every checked reading, good or bad.`)
-    + P(`So far: <strong>${st.recorded.toLocaleString('en-US')}</strong> readings recorded, <strong>${st.graded.toLocaleString('en-US')}</strong> checked.${since}`);
-  h += H('The price range');
-  const r = st.range;
-  h += r && r.n >= 30
-    ? P(`The range is meant to contain the price 8 times in 10. Across <strong>${r.n.toLocaleString('en-US')}</strong> checked readings, the price ${ACCURACY_HORIZON} trading days later landed inside it <strong>${pct1(r.inside)}</strong> of the time, below it ${pct1(r.below)} and above it ${pct1(r.above)}. The target is 80%, with about 10% missed on each side.`)
-    : P(`Not enough checked readings yet (${r ? r.n : 0} so far; results are shown from 30). Ranges started being recorded in November 2026.`);
-  h += H('How often the price rose');
-  const all = st.labels.reduce((a, l) => a + l.n, 0);
-  const allUp = all ? st.labels.reduce((a, l) => a + (l.winRate || 0) * l.n, 0) / all : null;
-  h += all >= 30
-    ? (() => {
-      const ls = leanSummary(st.labels, all);
-      return P(`Grouped by which way the indicators leaned on the day. If the lean meant something, "leans up" days would rise more often than average and "leans down" days less often.`)
-        + P(`<strong>${pct1(ls.upShare)}</strong> of checked readings leaned up and <strong>${pct1(ls.dnShare)}</strong> leaned down; the other ${pct1(ls.midShare)} were mixed. When they leaned up, the price rose ${pct1(ls.upRose)} of the time; when they leaned down, it fell ${pct1(ls.dnFell)} of the time. Taken together, the lean was right <strong>${pct1(ls.right)}</strong> of the time.`)
-        + tbl(['Indicators', 'Readings', 'Share of readings', `Higher ${ACCURACY_HORIZON} trading days later`],
-          st.labels.sort((a, b) => b.n - a.n).map(l => [esc(l.label), l.n.toLocaleString('en-US'), pct1(l.n / all * 100), pct1(l.winRate)]).concat([['All readings', all.toLocaleString('en-US'), '100%', pct1(allUp)]]));
-    })()
-    : P('Not enough checked readings yet.');
-  h += H('The stated chance');
-  const c = st.chance;
-  if (c && c.n >= 30) {
-    const sk = c.skill;
-    h += P(`Each reading states a chance of the price being higher: how often it rose after similar setups on that stock, pulled toward the stock's usual rate (from 14 November 2026; earlier readings stated the unadjusted rate, which tested as overconfident). Scored with the Brier score (0 is perfect; lower is better), the stated chances scored <strong>${c.brier.toFixed(3)}</strong>, against <strong>${c.baseBrier.toFixed(3)}</strong> for simply quoting each stock's usual rate of rising. ${sk == null ? '' : sk > 0.005 ? `That is ${(sk * 100).toFixed(1)}% better than the usual rate.` : sk < -0.005 ? `That is ${(-sk * 100).toFixed(1)}% worse than the usual rate: the setups have not added anything.` : 'That is no better than the usual rate: the setups have not added anything.'}`)
-      + tbl(['Stated chance', 'Readings', 'Average stated', 'Actually higher'], c.bins.map(b => [`${b.from}–${b.to}%`, b.n.toLocaleString('en-US'), pct1(b.said), pct1(b.happened)]));
-  } else h += P(`Not enough checked readings yet (${c ? c.n : 0} so far; results are shown from 30). Stated chances started being recorded in November 2026.`);
-  h += replayHtml(P, H, tbl);
+  const next = st.next || { labels: [], graded: 0 };
+  let h = P(`Every day a stock's daily chart is opened, ${SITE_NAME} writes down that day's reading: which way the indicators lean, the stated chance of the price being higher, and an 80% price range. Each one is saved before the outcome exists and is never changed afterwards. It is then checked twice against the real closing price: on the next trading day, for day traders, and ${ACCURACY_HORIZON} trading days later, for longer holds. This page shows every checked reading, good or bad.`)
+    + P(`So far: <strong>${st.recorded.toLocaleString('en-US')}</strong> readings recorded; <strong>${next.graded.toLocaleString('en-US')}</strong> checked on the next trading day and <strong>${st.graded.toLocaleString('en-US')}</strong> after ${ACCURACY_HORIZON} trading days.${st.oldestPending ? ` The oldest reading still waiting on its ${ACCURACY_HORIZON}-day outcome is from ${esc(st.oldestPending)}.` : ''}`);
+  const whenNext = 'at the next trading day’s close';
+  h += H('Next trading day (day trading)');
+  h += P(`Checked against the close of the next trading session (the next day, for crypto), from the price when the reading was made. Next-day chances and ranges started being recorded on 15 November 2026; readings from before then are checked for direction only.`);
+  h += liveHorizonHtml(next, whenNext, 'Next-day chances and ranges started being recorded in November 2026.', P, H3, tbl);
+  h += replayHtml(REPLAY && REPLAY.h1, whenNext, P, H3, tbl);
+  const when20 = `${ACCURACY_HORIZON} trading days later`;
+  h += H(`${ACCURACY_HORIZON} trading days later (longer holds)`);
+  h += liveHorizonHtml(st, when20, 'Ranges and stated chances started being recorded in November 2026. Chances recorded before 14 November 2026 were the unadjusted rate, which tested as overconfident.', P, H3, tbl);
+  h += replayHtml(REPLAY && REPLAY.h20, when20, P, H3, tbl);
   h += H('Tests on past prices (hypothetical)');
   h += P(`Before going live, each part was tested on daily prices of 134 US stocks, funds and coins: set up using 2006 to 2015 only, then checked once on 2016 to 2026. These are hypothetical results on past data, not live readings, and past results do not guarantee future ones.`)
     + `<ul><li>The 80% price range (revised in November 2026) contained the real price 79% to 80% of the time on 111 large US stocks, from 1 day to 1 year ahead, and missed below and above about equally: 9.6% to 10.7% on each side, against 10%. Out to a month it moves with the VIX, the market's priced-in volatility: before that, it held only 74% to 75% of the time when the VIX ran well above its past-year average and 83% when it ran low; with it, 79% to 81% in both. The range is also widened for the next day, week and month after seven chart patterns that came before bigger moves (such as gaps and big down days). Without that, it held only 74% to 77% of the time after those days; with it, about 79%.</li>`
@@ -4632,7 +4689,7 @@ function seoFor(urlPath, req) {
   }
   if (parts[0] === 'accuracy' && TRACK_RECORD_ON && accuracyPage) {
     return { view: 'legal', legal: accuracyPage, title: accuracyPage.title,
-      desc: `Every ${SITE_NAME} reading, written down before the outcome and checked ${ACCURACY_HORIZON} trading days later: how often the price range held, how often prices rose, and how the stated chances scored.`,
+      desc: `Every ${SITE_NAME} reading, written down before the outcome and checked on the next trading day and ${ACCURACY_HORIZON} trading days later: how often the price range held, how often prices rose, and how the stated chances scored.`,
       canonical: `${origin}/accuracy` };
   }
   if (LEGAL.PAGES[parts[0]] || GUIDES.PAGES[parts[0]]) {

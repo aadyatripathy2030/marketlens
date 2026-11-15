@@ -868,6 +868,6 @@ function tradeLevels(candles, direction, atrMult = 1.5) {
 module.exports = {
   sma, rsi, linearForecast, computeSignal, demoCloses, demoCandles, analyze, verdict, STRAT, RISK,
   ema, macd, bollinger, atr, vwap, supportResistance, fibonacci, volatility, trendStrength,
-  techReport, overallRating, forecastBands, tradeLevels, historicalEdge, edgeSignal, headlineCall, stopTargetOdds, rangeAt,
+  techReport, overallRating, forecastBands, tradeLevels, historicalEdge, edgeSignal, headlineCall, calibratedChance, stopTargetOdds, rangeAt,
 };
 
