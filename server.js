@@ -807,6 +807,85 @@ function companyFacts(symbol) {
     };
   });
 }
+// The free extras. Public files, no keys; nothing about the visitor is sent.
+function getText(hostname, path, cap, ua) {
+  return new Promise((resolve, reject) => {
+    const headers = ua ? { 'User-Agent': 'Mozilla/5.0 (compatible; ChartGauge)', Accept: 'application/json,text/plain,*/*' } : {};
+    const r = https.request({ method: 'GET', hostname, path, headers }, resp => {
+      if (resp.statusCode === 404) { resp.resume(); return resolve(null); }
+      if (resp.statusCode !== 200) { resp.resume(); return reject(new Error(hostname + ' ' + resp.statusCode)); }
+      let d = ''; resp.setEncoding('utf8');
+      resp.on('data', c => { d += c; if (d.length > cap) r.destroy(new Error('too large')); });
+      resp.on('end', () => resolve(d));
+    });
+    r.on('error', reject);
+    r.setTimeout(15000, () => r.destroy(new Error('upstream timeout')));
+    r.end();
+  });
+}
+// Cboe delayed option chain (15 min), boiled down so the 1-8 MB file is not kept.
+function optionChain(symbol) {
+  return cached('opt:' + symbol, 30 * 60e3, async () => {
+    const t = await getText('cdn-api.cboe.com', '/api/global/delayed_quotes/options/' + encodeURIComponent(symbol) + '.json', 12e6, true);
+    if (!t) return null;
+    const d = JSON.parse(t).data || {};
+    const now = Date.now();
+    const keep = (d.options || []).filter(r => {
+      const k = DRV.parseOcc(r.option); return k && (k.exp - now) / 86400e3 <= 60 && (k.exp - now) / 86400e3 >= -1;
+    }).map(r => ({ option: r.option, volume: r.volume, open_interest: r.open_interest, bid: r.bid, ask: r.ask, gamma: r.gamma }));
+    return { price: Number(d.current_price) || Number(d.close) || null, iv30ChangePct: Number(d.iv30_change_percent), options: keep };
+  });
+}
+// FINRA daily short-sale volume, one file per trading day for every symbol.
+// Each day is fetched once and kept as symbol -> short share of volume.
+function finraDay(ymd) {
+  return cached('finra:' + ymd, 7 * 86400e3, async () => {
+    const t = await getText('cdn.finra.org', '/equity/regsho/daily/CNMSshvol' + ymd.replace(/-/g, '') + '.txt', 3e6, false);
+    // Not published yet (files land in the evening): not cached, tried again later.
+    if (!t) throw new Error('finra file not out yet');
+    const m = new Map();
+    for (const line of t.split('\n')) {
+      const f = line.split('|'); const sh = Number(f[2]), tot = Number(f[4]);
+      if (f.length >= 5 && tot > 0) m.set(f[1], Math.round(sh / tot * 1000) / 1000);
+    }
+    return m;
+  });
+}
+let finraWarm = null;
+async function shortRatios(symbol) {
+  const days = [];
+  let d = MKT.etDay(new Date());
+  while (days.length < 22) { d = MKT.prevTradingDay(d); days.push(d); }
+  days.reverse();
+  // Twenty-odd files the first time: load them in the background and use
+  // whatever is already in.
+  if (!finraWarm) finraWarm = Promise.all(days.map(x => finraDay(x).catch(() => null))).finally(() => { finraWarm = null; });
+  const got = days.map(x => dataCache.get('finra:' + x)).map(h => h && h.value ? h.value : null);
+  if (got.filter(Boolean).length < 12) return null;
+  return got.filter(Boolean).map(m => m.has(symbol) ? m.get(symbol) : null);
+}
+function dividends(symbol) {
+  return cached('div:' + symbol, 12 * 3600e3, async () => {
+    const t = await getText('api.nasdaq.com', '/api/quote/' + encodeURIComponent(symbol) + '/dividends?assetclass=stocks', 1e6, true);
+    const d = t && JSON.parse(t).data;
+    if (!d) return null;
+    const us = (x) => { const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(x || '')); return m ? Date.UTC(+m[3], +m[1] - 1, +m[2]) : null; };
+    const rows = (d.dividends && d.dividends.rows || []).slice(0, 8)
+      .map(r => ({ type: r.type, ex: us(r.exOrEffDate), amount: Number(String(r.amount || '').replace(/[^0-9.]/g, '')) }))
+      .filter(r => r.ex);
+    return { rows, nextEx: us(d.exDividendDate) };
+  });
+}
+function stocktwits(symbol) {
+  return cached('twits:' + symbol, 30 * 60e3, async () => {
+    const t = await getText('api.stocktwits.com', '/api/2/streams/symbol/' + encodeURIComponent(symbol) + '.json', 2e6, true);
+    const j = t && JSON.parse(t);
+    if (!j || !Array.isArray(j.messages)) return null;
+    return j.messages.map(m => ({ time: Date.parse(m.created_at) || 0, s: m.entities && m.entities.sentiment ? m.entities.sentiment.basic : null }));
+  });
+}
+const EXTRAS_OFF = new Set(String(process.env.DRIVER_EXTRAS_OFF || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean));
+const extra = (name, fn) => EXTRAS_OFF.has(name) ? null : fn();
 const closesOf = (d) => d && Array.isArray(d.prices) ? d.prices.map(p => p.close) : null;
 async function gatherDrivers(symbol, rating) {
   const safe = (pr) => Promise.resolve(pr).catch(() => null);
@@ -820,15 +899,20 @@ async function gatherDrivers(symbol, rating) {
     crypto ? null : safe(fredSeries('DGS10')),
     crypto ? null : safe(fredSeries('DTWEXBGS')),
     crypto ? null : safe(fredSeries('BAMLH0A0HYM2')),
+    crypto ? null : safe(extra('options', () => optionChain(symbol))),
+    crypto ? null : safe(extra('shorts', () => shortRatios(symbol))),
+    crypto ? null : safe(extra('dividends', () => dividends(symbol))),
+    crypto ? null : safe(extra('social', () => stocktwits(symbol))),
   ]);
   // A slow source must not hold up the summary: whatever arrived in time is used.
   const got = await Promise.race([work, new Promise(r => setTimeout(() => r(null), 6000).unref())]);
-  const [facts, bars, spy, btc, t10, usd, hy] = got || [];
+  const [facts, bars, spy, btc, t10, usd, hy, options, shortR, divs, social] = got || [];
   const vixRatio = vixData && vixData.ratio.length ? vixData.ratio[vixData.ratio.length - 1] : null;
   if (!vixData) loadVix();
   return DRV.weigh(Object.assign({}, facts || {}, {
     symbol, rating, bars: bars ? bars.prices : null, closes: closesOf(bars),
     spy: closesOf(spy), btc: closesOf(btc), t10, usd, hy, vixRatio: crypto ? null : vixRatio,
+    options, shortRatios: shortR, dividends: divs, social,
   }));
 }
 
@@ -857,7 +941,10 @@ function ruleBasedReport(p) {
   let two = '';
   if (d.earningsIn != null) two = `Earnings ${d.earningsIn === 0 ? 'today' : d.earningsIn === 1 ? 'tomorrow' : 'in ' + d.earningsIn + ' days'} could override that.`;
   else if (d.lean !== 'mixed' && d.against.length) two = `The main risk is ${d.against[0]}.`;
+  else if (d.exDivIn != null) two = `It goes ex-dividend ${d.exDivIn === 0 ? 'today' : d.exDivIn === 1 ? 'tomorrow' : 'in ' + d.exDivIn + ' days'}, which trims the price by the payout.`;
+  else if (d.opex && d.pin) two = `This week's ${d.opex} can pin it near $${d.pin}.`;
   else if (d.opex) two = `This week's ${d.opex} can pin the price near big strikes.`;
+  else if (d.gamma === 'short') two = 'Options positioning can make moves bigger than usual.';
   return { summary: (one + (two ? ' ' + two : '')).replace(/^./, c => c.toUpperCase()), bull: [], bear: [], conclusion: '' };
 }
 // Hard cap, whatever the model returns.
@@ -910,7 +997,9 @@ function reportPrompt(p) {
   const system = 'You write the one-glance summary on a stock page for active traders. Respond with ONLY a JSON object: {"summary": string}. The summary is AT MOST two short sentences, about 30 words in total. Sentence one: which way the stock leans overall (up, down or mixed) and the one to three strongest reasons, in plain words. Sentence two, only if useful: the main thing pushing the other way, or an upcoming event that could override it. Name only the reasons given to you; never list the other factors, never mention scores, weights or how many factors were weighed, and never invent news, numbers or targets. Say "leans up/down", never "will". Write in plain sentences and do not use em dashes. ' + AI_GUARD;
   const user = `STOCK: ${p.symbol}\n`
     + (d ? `OVERALL LEAN: ${d.label}\n${d.lean === 'mixed' ? 'STRONGEST PUSH UP' : 'STRONGEST REASONS FOR IT'}: ${d.reasons.join('; ') || 'none stand out'}\n${d.lean === 'mixed' ? 'STRONGEST PUSH DOWN' : 'PUSHING THE OTHER WAY'}: ${d.against.join('; ') || 'nothing notable'}\n`
-         + (d.earningsIn != null ? `EARNINGS DUE IN ${d.earningsIn} DAYS\n` : '') + (d.opex ? `THIS WEEK: ${d.opex}\n` : '')
+         + (d.earningsIn != null ? `EARNINGS DUE IN ${d.earningsIn} DAYS\n` : '') + (d.opex ? `THIS WEEK: ${d.opex}${d.pin ? ', biggest nearby strike $' + d.pin : ''}\n` : '')
+         + (d.exDivIn != null ? `EX-DIVIDEND IN ${d.exDivIn} DAYS\n` : '')
+         + (d.gamma === 'short' ? 'OPTIONS POSITIONING MAY AMPLIFY MOVES\n' : '')
       : r.insufficient ? 'Too little price history to read. Say so in one sentence.\n'
       : `OVERALL LEAN (chart only, nothing else available): ${r.label}\n`)
     + `Return the JSON now.`;

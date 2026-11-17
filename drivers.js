@@ -251,6 +251,95 @@ function eventRisk(nextEarnings, now) {
   return { days, date: nextEarnings };
 }
 
+// ---- Free extras: options (Cboe), short volume (FINRA), dividends
+// (Nasdaq), social chatter (StockTwits) ----
+
+// 16. Options. Cboe's delayed chain: one row per contract, symbol like
+// AAPL261218C00270000 (root, YYMMDD, C/P, strike x 1000).
+function parseOcc(sym) {
+  const m = /^(.+?)(\d{2})(\d{2})(\d{2})([CP])(\d{8})$/.exec(String(sym || ''));
+  return m ? { exp: Date.UTC(2000 + +m[2], +m[3] - 1, +m[4]), put: m[5] === 'P', strike: +m[6] / 1000 } : null;
+}
+// Index funds are where everyone buys protection, so far more puts is normal there.
+const HEDGE_FUNDS = new Set(['SPY', 'QQQ', 'IWM', 'DIA', 'VOO', 'IVV', 'VTI']);
+function optionsDriver(o, now, symbol) {
+  if (!o || !Array.isArray(o.options) || !(o.price > 0)) return null;
+  const S = o.price;
+  let cv = 0, pv = 0, cPrem = 0, pPrem = 0, gex = 0;
+  const oiByStrike = new Map();
+  let nextExp = Infinity;
+  for (const r of o.options) {
+    const k = parseOcc(r.option); if (!k) continue;
+    const days = (k.exp - now) / DAY;
+    if (days < -1 || days > 60) continue;
+    const vol = num(r.volume) || 0, oi = num(r.open_interest) || 0;
+    const mid = (num(r.bid) || 0) / 2 + (num(r.ask) || 0) / 2;
+    if (k.put) pv += vol; else cv += vol;
+    // Big trades: volume well above open interest means new positions today.
+    if (vol >= 500 && vol > 2 * oi && mid > 0) { const prem = vol * mid * 100; if (k.put) pPrem += prem; else cPrem += prem; }
+    // Naive dealer gamma: customers long calls and long puts, dealers short both
+    // sides' gamma on puts and long on calls (the common GEX convention).
+    const g = num(r.gamma) || 0;
+    gex += (k.put ? -1 : 1) * g * oi * 100 * S * S * 0.01;
+    if (days >= 0 && days < nextExp) nextExp = days;
+    if (days >= 0 && days <= 7) oiByStrike.set(k.strike, (oiByStrike.get(k.strike) || 0) + oi);
+  }
+  if (cv + pv < 200) return null;
+  const pcr = pv / Math.max(1, cv);
+  const center = HEDGE_FUNDS.has(symbol) ? 1.3 : 0.8;
+  const vPcr = clamp((center - pcr) / 0.6, -1, 1);
+  const big = cPrem + pPrem;
+  const vBig = big > 250000 ? clamp((cPrem - pPrem) / big, -1, 1) : 0;
+  const ivUp = num(o.iv30ChangePct);
+  const vIv = ivUp != null ? clamp(-ivUp / 25, -1, 0.3) : 0;
+  const v = clamp(0.4 * vPcr + 0.45 * vBig + 0.15 * vIv, -1, 1);
+  const say = vBig > 0.4 && big > 250000 ? 'large call buying in options'
+    : vBig < -0.4 && big > 250000 ? 'large put buying in options'
+    : vPcr > 0.5 ? 'heavy call volume' : vPcr < -0.5 ? 'heavy put volume' : null;
+  // Pinning: the biggest open-interest strike in the coming week, if it is near.
+  let pin = null, best = 0;
+  for (const [k, oi] of oiByStrike) if (oi > best && Math.abs(k - S) / S < 0.05) { best = oi; pin = k; }
+  return { key: 'options', v, w: 0.08, say, gamma: gex < 0 ? 'short' : 'long', pin: best > 5000 ? pin : null };
+}
+
+// 15. Short selling: FINRA's daily share of volume sold short, recent week
+// against its own month. Market makers keep the level near half on most
+// names, so only the change carries anything.
+function shortDriver(ratios) {
+  const r = (ratios || []).filter(x => x != null);
+  if (r.length < 12) return null;
+  const recent = avg(r.slice(-5)), base = avg(r.slice(0, -5));
+  const v = clamp(-(recent - base) / 0.08, -1, 1);
+  return { key: 'shorts', v, w: 0.04, say: v < -0.4 ? 'rising short selling' : v > 0.4 ? 'falling short selling' : null };
+}
+
+// 3. Dividends: a change in the payout, and the mechanical drop on the
+// ex-dividend date.
+function dividendDriver(d, now) {
+  if (!d || !Array.isArray(d.rows) || !d.rows.length) return null;
+  const cash = d.rows.filter(r => /cash/i.test(r.type || '') && r.amount > 0).sort((a, b) => b.ex - a.ex);
+  let v = 0, say = null;
+  if (cash.length >= 2 && now - cash[0].ex < 120 * DAY) {
+    const ch = cash[0].amount / cash[1].amount - 1;
+    if (ch > 0.02) { v = 0.4; say = 'a dividend increase'; }
+    else if (ch < -0.05) { v = -0.7; say = 'a dividend cut'; }
+  }
+  const toEx = d.nextEx ? (d.nextEx - now) / DAY : null;
+  const exSoon = toEx != null && toEx >= 0 && toEx <= 5 ? Math.round(toEx) : null;
+  if (v === 0 && exSoon == null) return null;
+  return { key: 'dividend', v, w: 0.05, say, exIn: exSoon };
+}
+
+// 18. Social chatter: StockTwits posts tagged bullish or bearish. The crowd
+// there leans bullish by habit (about two in three), so that is the zero.
+function socialDriver(msgs, now) {
+  const tagged = (msgs || []).filter(m => now - m.time < 3 * DAY && (m.s === 'Bullish' || m.s === 'Bearish'));
+  if (tagged.length < 10) return null;
+  const bull = tagged.filter(m => m.s === 'Bullish').length / tagged.length;
+  const v = clamp((bull - 0.65) / 0.3, -1, 1);
+  return { key: 'social', v, w: 0.04, say: v > 0.5 ? 'bullish chatter online' : v < -0.5 ? 'bearish chatter online' : null };
+}
+
 // ---- Combine ----
 function weigh(input) {
   const now = input.now || Date.now();
@@ -279,6 +368,10 @@ function weigh(input) {
     vixDriver(input.vixRatio),
     cryptoDriver(input.symbol, input.btc),
     timing,
+    optionsDriver(input.options, now, input.symbol),
+    shortDriver(input.shortRatios),
+    dividendDriver(input.dividends, now),
+    socialDriver(input.social, now),
   ].filter(Boolean);
   if (!ds.length) return null;
   const wsum = ds.reduce((s, d) => s + d.w, 0);
@@ -301,9 +394,12 @@ function weigh(input) {
     score: Math.round(score * 100), count: ds.length,
     reasons: forIt.map(d => d.say), against: against.map(d => d.say),
     earningsIn: risk ? risk.days : null, opex: timing.opex,
+    exDivIn: (ds.find(d => d.key === 'dividend') || {}).exIn ?? null,
+    gamma: (ds.find(d => d.key === 'options') || {}).gamma || null,
+    pin: (ds.find(d => d.key === 'options') || {}).pin || null,
     // Kept server-side for logs and tuning; not sent to the page.
     detail: ds.map(d => ({ key: d.key, v: Math.round(d.v * 100) / 100, w: d.w })),
   };
 }
 
-module.exports = { weigh, EVENTS, CRYPTO_LINKED, newsDriver, timingDriver, thirdFriday };
+module.exports = { weigh, EVENTS, CRYPTO_LINKED, optionsDriver, shortDriver, dividendDriver, socialDriver, parseOcc, newsDriver, timingDriver, thirdFriday };
