@@ -82,7 +82,7 @@ function newsDriver(news, filings, now) {
     const t = String(n.title || '') + ' ' + String(n.summary || '').slice(0, 200);
     const age = now - (n.time || now);
     const fade = clamp(1 - age / (14 * DAY), 0.3, 1);       // fresher news counts more
-    for (const [re, v, say, not] of EVENTS) if (re.test(t) && !(not && not.test(t))) { hits.push({ v: v * fade, say }); break; }
+    for (const [re, v, say, not] of EVENTS) if (re.test(t) && !(not && not.test(t))) { hits.push({ v: v * fade, say, title: String(n.title || '') }); break; }
   }
   for (const f of filings || []) {
     const form = String(f.form || '');
@@ -96,7 +96,10 @@ function newsDriver(news, filings, now) {
   const list = [...best.values()].sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
   const v = clamp(list.reduce((s, h) => s + h.v, 0), -1, 1);
   const lead = list.filter(h => Math.sign(h.v) === Math.sign(v)).slice(0, 2).map(h => h.say);
-  return { key: 'news', v, w: 0.16, say: lead.length ? lead.join(' and ') : null, events: list.map(h => h.say) };
+  return { key: 'news', v, w: 0.16, say: lead.length ? lead.join(' and ') : null, events: list.map(h => h.say),
+    // The strongest event, with the headlines behind it: the precedent check
+    // looks up how this company's stock did after past events of this kind.
+    top: list[0] ? { kind: list[0].say, v: list[0].v, titles: hits.filter(h => h.say === list[0].say).map(h => h.title).slice(0, 3) } : null };
 }
 
 // 5. Earnings surprise, with post-earnings drift fading over ~60 days.
@@ -383,13 +386,59 @@ function forwardDriver(f, price) {
 // run is earnings growth and rates; days are events, macro, options and
 // sentiment. Multipliers on each driver's base weight.
 const HORIZON = {
-  longterm: { chart: 0.5, news: 0.8, earnings: 0.7, analysts: 1.2, insiders: 1, fundamentals: 1.5, forward: 1.8,
+  longterm: { precedent: 1.5, chart: 0.5, news: 0.8, earnings: 0.7, analysts: 1.2, insiders: 1, fundamentals: 1.5, forward: 1.8,
     market: 0.8, relative: 0.6, rates: 1.5, dollar: 1, credit: 1, fear: 0.6, bitcoin: 1, timing: 0.3,
     options: 0.3, shorts: 0.5, dividend: 1, social: 0.3 },
-  daytrade: { chart: 1.3, news: 1.2, earnings: 1, analysts: 0.6, insiders: 0.6, fundamentals: 0.3, forward: 0.3,
+  daytrade: { precedent: 1, chart: 1.3, news: 1.2, earnings: 1, analysts: 0.6, insiders: 0.6, fundamentals: 0.3, forward: 0.3,
     market: 1.2, relative: 1, rates: 0.8, dollar: 0.8, credit: 0.8, fear: 1.2, bitcoin: 1.2, timing: 1.5,
     options: 1.6, shorts: 1.2, dividend: 1, social: 1.3 },
 };
+
+// ---- Precedent: what this stock did after its own past events of the same
+// kind (GTA V for Take-Two, earlier iPhones for Apple, earlier approvals for
+// a drug maker). The dates come from the server (named by Claude, which is
+// all it supplies); the returns are measured here from real prices, against
+// the S&P 500 over the same days. Starts at the last close before the event,
+// so the reaction on the day counts.
+function measureEvents(bars, spy, events, H) {
+  if (!Array.isArray(bars) || bars.length < 30 || !Array.isArray(events)) return [];
+  const idxOf = (arr, day) => { let lo = 0, hi = arr.length - 1, ans = -1; while (lo <= hi) { const m = (lo + hi) >> 1; if (String(arr[m].date).slice(0, 10) >= day) { ans = m; hi = m - 1; } else lo = m + 1; } return ans; };
+  const out = [];
+  for (let r = 0; r < events.length; r++) {
+    const e = events[r];
+    const day = String(e.date || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    const i = idxOf(bars, day);
+    if (i < 1 || i - 1 + H >= bars.length) continue;          // before the history, or too recent to have played out
+    if (Math.abs(Date.parse(bars[i].date) - Date.parse(day)) > 7 * DAY) continue;   // a gap in the data
+    const a = bars[i - 1].close, b = bars[i - 1 + H].close;
+    if (!(a > 0 && b > 0)) continue;
+    let mkt = 0;
+    if (Array.isArray(spy) && spy.length) {
+      const j = idxOf(spy, String(bars[i - 1].date).slice(0, 10)), k = idxOf(spy, String(bars[i - 1 + H].date).slice(0, 10));
+      if (j >= 0 && k >= 0 && spy[j].close > 0 && spy[k].close > 0) mkt = spy[k].close / spy[j].close - 1;
+    }
+    out.push({ name: String(e.name || '').slice(0, 60), date: day, rank: r, ret: b / a - 1, excess: (b / a - 1) - mkt });
+  }
+  return out;
+}
+const KIND_NOUN = { 'a major product launch': 'launches', 'an FDA approval': 'approvals', 'an FDA setback': 'drug setbacks',
+  'raised guidance': 'guidance raises', 'lowered guidance': 'guidance cuts', 'a buyback': 'buybacks', 'a share offering': 'share offerings',
+  'a takeover offer': 'takeover offers', 'S&P 500 inclusion': 'index additions', 'an earnings beat': 'earnings beats', 'an earnings miss': 'earnings misses',
+  'a stock split': 'splits', 'a CEO exit': 'CEO exits', 'a contract win': 'contract wins' };
+function precedentDriver(p, strategy) {
+  if (!p || !Array.isArray(p.measured) || p.measured.length < 2) return null;
+  // Listed most comparable first (same franchise, same size of event), so
+  // earlier entries count more: 1, 0.77, 0.63, 0.53 ...
+  const m = p.measured;
+  const wts = m.map((x, i) => 1 / (1 + 0.3 * (x.rank != null ? x.rank : i)));
+  const avgEx = m.reduce((a, x, i) => a + x.excess * wts[i], 0) / wts.reduce((a, b) => a + b, 0);
+  const scale = strategy === 'daytrade' ? 0.04 : 0.25;          // a 25-point beat over a year is a full vote
+  const v = clamp(avgEx / scale, -1, 1);
+  const noun = KIND_NOUN[p.kind] || 'similar events';
+  const say = v > 0.25 ? `how it rose after past ${noun}` : v < -0.25 ? `how it fell after past ${noun}` : null;
+  return { key: 'precedent', v, w: 0.14, say, avgExcess: avgEx, n: m.length };
+}
 
 // ---- Combine ----
 function weigh(input) {
@@ -417,6 +466,7 @@ function weigh(input) {
   if (fwd && fwdIn && fwdIn.fallback && !fwd.say && fwd.v > 0.3) fwd.say = 'strong analyst support';
   const ds = [
     fwd,
+    precedentDriver(input.precedent, input.strategy),
     chartDriver(input.rating),
     newsDriver(input.news, input.filings, now),
     earningsDriver(input.earnings, now),
@@ -464,9 +514,12 @@ function weigh(input) {
     exDivIn: (ds.find(d => d.key === 'dividend') || {}).exIn ?? null,
     gamma: (ds.find(d => d.key === 'options') || {}).gamma || null,
     pin: (ds.find(d => d.key === 'options') || {}).pin || null,
+    // For the summary: the past events behind the precedent vote, if any.
+    precedent: input.precedent && input.precedent.measured && input.precedent.measured.length >= 2
+      ? { kind: input.precedent.kind, events: input.precedent.measured.map(x => ({ name: x.name, year: x.date.slice(0, 4), excess: Math.round(x.excess * 100) })) } : null,
     // Kept server-side for logs and tuning; not sent to the page.
     detail: ds.map(d => ({ key: d.key, v: Math.round(d.v * 100) / 100, w: d.w })),
   };
 }
 
-module.exports = { weigh, forwardDriver, HORIZON, EVENTS, CRYPTO_LINKED, optionsDriver, shortDriver, dividendDriver, socialDriver, parseOcc, newsDriver, timingDriver, thirdFriday };
+module.exports = { weigh, measureEvents, precedentDriver, KIND_NOUN, forwardDriver, HORIZON, EVENTS, CRYPTO_LINKED, optionsDriver, shortDriver, dividendDriver, socialDriver, parseOcc, newsDriver, timingDriver, thirdFriday };
