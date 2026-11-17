@@ -1113,6 +1113,11 @@ async function setPause(uid, from, until) {
   if (mode === 'postgres') { await pool.query('UPDATE users SET pause_from=$2, pause_until=$3 WHERE id=$1', [uid, from || null, until || null]); return; }
   const u = mem.users.get(uid); if (u) { u.pause_from = from || null; u.pause_until = until || null; }
 }
+// Drops a subscription id Stripe no longer has, only if the row still holds it.
+async function clearStripeSub(uid, expectedSub) {
+  if (mode === 'postgres') { await pool.query('UPDATE users SET stripe_sub=NULL WHERE id=$1 AND stripe_sub=$2', [uid, expectedSub]); return; }
+  const u = mem.users.get(uid); if (u && u.stripe_sub === expectedSub) u.stripe_sub = null;
+}
 async function setFree(uid) {
   if (mode === 'postgres') await pool.query("UPDATE users SET plan='free' WHERE id=$1", [uid]);
   else { const u = mem.users.get(uid); if (u) u.plan = 'free'; }
@@ -1402,5 +1407,5 @@ module.exports = {
   listAlerts, addAlert, removeAlert, markTriggered, claimOnce, releaseOnce,
   listUsers, counts,
   addMarks, countMarks, purgeMarks, setTrialRisk,
-  setPro, setFree, setPause, findByStripeSub, setCustomer, listSubscribers,
+  setPro, setFree, clearStripeSub, setPause, findByStripeSub, setCustomer, listSubscribers,
 };

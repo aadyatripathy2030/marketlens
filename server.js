@@ -4288,7 +4288,9 @@ function addPeriods(sec, interval, n) {
 async function loadSub(user) {
   const full = await db.getUserById(user.id);
   if (!STRIPE_SECRET_KEY || !full || !full.stripe_sub) return { full, sub: null };
-  const sub = await stripeGet('subscriptions/' + encodeURIComponent(full.stripe_sub));
+  // A subscription Stripe no longer has (old account) is no subscription.
+  const sub = await stripeGet('subscriptions/' + encodeURIComponent(full.stripe_sub))
+    .catch(e => { if (stripeMissing(e)) return null; throw e; });
   return { full, sub: sub && LIVE_SUB.includes(sub.status) ? sub : null };
 }
 function subState(full, sub, info) {
@@ -4635,6 +4637,7 @@ async function cancelDuplicateSub(before, newSub) {
 async function syncPlans() {
   if (!STRIPE_SECRET_KEY) return { checked: 0 };
   let checked = 0, fixed = 0;
+  const missing = [];
   for (const u of await db.listSubscribers()) {
     try {
       const sub = await stripeGet('subscriptions/' + encodeURIComponent(u.stripe_sub));
@@ -4643,9 +4646,34 @@ async function syncPlans() {
       if (on && u.plan !== 'pro') { await db.setPlanPro(u.id); fixed++; }
       if (!on && u.plan === 'pro') { await db.setFree(u.id); fixed++; }
       if (on) await syncPause(sub, u);
-    } catch (e) { logError(e); }
+    } catch (e) {
+      // A subscription this Stripe account has never heard of: almost always
+      // one made under the old Stripe account (replaced Oct 18, 2026). The
+      // account is left exactly as it is; this only says which one it is, so
+      // it can be sorted out by hand from the admin page.
+      // Nothing can bill it or send its events here, so it is treated as a
+      // canceled one: the same rule as above (Pro from Stripe ends; a
+      // hand-granted comp is a separate flag and is kept), and the dead id is
+      // cleared so this stops every day and the Plans page works again. Kept
+      // in settings 'orphan_subs' and logged, so it can be looked up.
+      if (stripeMissing(e)) {
+        const was = { email: u.email, plan: u.plan, sub: u.stripe_sub };
+        missing.push(Object.assign({ at: new Date().toISOString() }, was));
+        await db.withLock('sub:' + u.id, async () => {
+          const now = await db.getUserById(u.id);
+          if (!now || now.stripe_sub !== was.sub) return;
+          if (now.plan === 'pro') { await db.setFree(u.id); fixed++; }
+          await db.clearStripeSub(u.id, was.sub);
+        }).catch(logError);
+        console.warn(`[syncPlans] ${was.email}: subscription ${was.sub} is not in this Stripe account (made under the old one). Treated as canceled and cleared${was.plan === 'pro' ? '; plan set to free' : ''}.`);
+      } else logError(e);
+    }
   }
-  return { checked, fixed };
+  if (missing.length) {
+    const prev = await db.getSetting('orphan_subs').catch(() => null);
+    await db.setSetting('orphan_subs', (Array.isArray(prev) ? prev : []).concat(missing).slice(-50)).catch(logError);
+  }
+  return { checked, fixed, missing };
 }
 
 // ---- SEO ----
