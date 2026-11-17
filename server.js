@@ -884,10 +884,32 @@ function stocktwits(symbol) {
     return j.messages.map(m => ({ time: Date.parse(m.created_at) || 0, s: m.entities && m.entities.sentiment ? m.entities.sentiment.basic : null }));
   });
 }
+// Analyst consensus: yearly EPS forecasts, revisions, average price target
+// and the buy/hold/sell mix (Nasdaq's public analyst pages).
+function analystForward(symbol) {
+  return cached('fwd:' + symbol, 12 * 3600e3, async () => {
+    const s = encodeURIComponent(symbol);
+    const [a, b] = await Promise.all([
+      getText('api.nasdaq.com', `/api/analyst/${s}/earnings-forecast`, 1e6, true).catch(() => null),
+      getText('api.nasdaq.com', `/api/analyst/${s}/targetprice`, 1e6, true).catch(() => null),
+    ]);
+    const ef = a && (JSON.parse(a).data || {}).yearlyForecast;
+    const tp = b && ((JSON.parse(b).data || {}).consensusOverview);
+    const rows = ef && Array.isArray(ef.rows) ? ef.rows : [];
+    if (!rows.length && !tp) return null;
+    return {
+      years: rows.slice(0, 3).map(r => ({ end: r.fiscalEnd, eps: Number(r.consensusEPSForecast), n: Number(r.noOfEstimates) })),
+      up: rows.slice(0, 2).reduce((x, r) => x + (Number(r.up) || 0), 0),
+      down: rows.slice(0, 2).reduce((x, r) => x + (Number(r.down) || 0), 0),
+      target: tp ? Number(tp.priceTarget) || null : null,
+      buy: tp ? Number(tp.buy) || 0 : 0, hold: tp ? Number(tp.hold) || 0 : 0, sell: tp ? Number(tp.sell) || 0 : 0,
+    };
+  });
+}
 const EXTRAS_OFF = new Set(String(process.env.DRIVER_EXTRAS_OFF || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean));
 const extra = (name, fn) => EXTRAS_OFF.has(name) ? null : fn();
 const closesOf = (d) => d && Array.isArray(d.prices) ? d.prices.map(p => p.close) : null;
-async function gatherDrivers(symbol, rating) {
+async function gatherDrivers(symbol, rating, strategy) {
   const safe = (pr) => Promise.resolve(pr).catch(() => null);
   const live = !!STOCK_API_KEY;
   const crypto = symbol.includes('/');
@@ -903,16 +925,17 @@ async function gatherDrivers(symbol, rating) {
     crypto ? null : safe(extra('shorts', () => shortRatios(symbol))),
     crypto ? null : safe(extra('dividends', () => dividends(symbol))),
     crypto ? null : safe(extra('social', () => stocktwits(symbol))),
+    crypto ? null : safe(extra('forward', () => analystForward(symbol))),
   ]);
   // A slow source must not hold up the summary: whatever arrived in time is used.
   const got = await Promise.race([work, new Promise(r => setTimeout(() => r(null), 6000).unref())]);
-  const [facts, bars, spy, btc, t10, usd, hy, options, shortR, divs, social] = got || [];
+  const [facts, bars, spy, btc, t10, usd, hy, options, shortR, divs, social, forward] = got || [];
   const vixRatio = vixData && vixData.ratio.length ? vixData.ratio[vixData.ratio.length - 1] : null;
   if (!vixData) loadVix();
   return DRV.weigh(Object.assign({}, facts || {}, {
     symbol, rating, bars: bars ? bars.prices : null, closes: closesOf(bars),
     spy: closesOf(spy), btc: closesOf(btc), t10, usd, hy, vixRatio: crypto ? null : vixRatio,
-    options, shortRatios: shortR, dividends: divs, social,
+    options, shortRatios: shortR, dividends: divs, social, forward, strategy,
   }));
 }
 
@@ -935,7 +958,7 @@ function ruleBasedReport(p) {
   const word = d.lean === 'up' ? 'leans up' : d.lean === 'down' ? 'leans down' : 'is mixed';
   let one = `${p.symbol} ${word}`;
   if (d.lean !== 'mixed') one += d.reasons.length ? `, driven by ${joinAnd(d.reasons)}.` : '.';
-  else if (d.reasons.length && d.against.length) one += `: ${d.reasons[0]} helps, but ${d.against[0]} weighs on it.`;
+  else if (d.reasons.length && d.against.length) one += `, with ${d.reasons[0]} pulling it up and ${d.against[0]} pulling it down.`;
   else if (d.reasons.length || d.against.length) one += `, with ${(d.reasons[0] || d.against[0])} the only clear ${d.reasons.length ? 'tailwind' : 'headwind'}.`;
   else one += ', with nothing pushing hard either way.';
   let two = '';
@@ -967,7 +990,7 @@ function cleanReportInput(b) {
   if (!sym) return null;
   const t = b.tech || {}, r = b.rating || {}, sma = t.sma || {}, c = b.call, e = b.edge;
   return {
-    symbol: sym, latest: num(b.latest), currency: word(b.currency, 5) || 'USD', changePct: num(b.changePct),
+    symbol: sym, strategy: b.strategy === 'daytrade' ? 'daytrade' : 'longterm', latest: num(b.latest), currency: word(b.currency, 5) || 'USD', changePct: num(b.changePct),
     tech: {
       price: num(t.price), rsi14: num(t.rsi14), vwap: num(t.vwap), atr: num(t.atr),
       sma: { 20: num(sma[20]), 50: num(sma[50]), 200: num(sma[200]) },
@@ -995,7 +1018,7 @@ const proCapNote = () => `That is today's ${PRO_AI_DAILY} written reports, the d
 function reportPrompt(p) {
   const r = p.rating || {}, d = p.drivers;
   const system = 'You write the one-glance summary on a stock page for active traders. Respond with ONLY a JSON object: {"summary": string}. The summary is AT MOST two short sentences, about 30 words in total. Sentence one: which way the stock leans overall (up, down or mixed) and the one to three strongest reasons, in plain words. Sentence two, only if useful: the main thing pushing the other way, or an upcoming event that could override it. Name only the reasons given to you; never list the other factors, never mention scores, weights or how many factors were weighed, and never invent news, numbers or targets. Say "leans up/down", never "will". Write in plain sentences and do not use em dashes. ' + AI_GUARD;
-  const user = `STOCK: ${p.symbol}\n`
+  const user = `STOCK: ${p.symbol}\nHORIZON: ${p.strategy === 'daytrade' ? 'the next few days' : 'the long term'}\n`
     + (d ? `OVERALL LEAN: ${d.label}\n${d.lean === 'mixed' ? 'STRONGEST PUSH UP' : 'STRONGEST REASONS FOR IT'}: ${d.reasons.join('; ') || 'none stand out'}\n${d.lean === 'mixed' ? 'STRONGEST PUSH DOWN' : 'PUSHING THE OTHER WAY'}: ${d.against.join('; ') || 'nothing notable'}\n`
          + (d.earningsIn != null ? `EARNINGS DUE IN ${d.earningsIn} DAYS\n` : '') + (d.opex ? `THIS WEEK: ${d.opex}${d.pin ? ', biggest nearby strike $' + d.pin : ''}\n` : '')
          + (d.exDivIn != null ? `EX-DIVIDEND IN ${d.exDivIn} DAYS\n` : '')
@@ -1066,7 +1089,7 @@ function summaryPrefix(buf) {
 async function handleAnalyzeStream(req, res) {
   const p = cleanReportInput(await readBody(req));
   if (!p) return json(res, 400, { error: 'Missing data.' });
-  p.drivers = await gatherDrivers(p.symbol, p.rating).catch((e) => { logError(e); return null; });
+  p.drivers = await gatherDrivers(p.symbol, p.rating, p.strategy).catch((e) => { logError(e); return null; });
   res.writeHead(200, {
     'Content-Type': 'application/x-ndjson; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
@@ -1163,7 +1186,7 @@ async function aiSlot(res, key, kind, limit) {
 async function handleAnalyze(req, res) {
   const p = cleanReportInput(await readBody(req));
   if (!p) return json(res, 400, { error: 'Missing data.' });
-  p.drivers = await gatherDrivers(p.symbol, p.rating).catch((e) => { logError(e); return null; });
+  p.drivers = await gatherDrivers(p.symbol, p.rating, p.strategy).catch((e) => { logError(e); return null; });
   if (ANTHROPIC_API_KEY) {
     const { pro, key } = await plan(req);
     let model = AI_MODEL;

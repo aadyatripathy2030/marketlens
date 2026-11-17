@@ -22,7 +22,7 @@ const EVENTS = [
   [/\b(buyback|share repurchase|repurchase (program|plan)|buy back)\b/i, 0.6, 'a buyback'],
   [/\breverse (stock )?split\b/i, -0.6, 'a reverse split'],
   [/\b(stock split|share split)\b/i, 0.3, 'a stock split'],
-  [/\b(secondary offering|public offering|follow-on offering|at-the-market|atm (program|offering)|share sale|prices offering|dilut)/i, -0.6, 'a share offering'],
+  [/\b(secondary offering|public offering|follow-on offering|at-the-market|atm (program|offering)|share sale|prices offering|(million|billion) (stock |share |common stock )?offering|dilut)/i, -0.6, 'a share offering'],
   [/\bconvertible (senior )?notes?\b/i, -0.4, 'a convertible note sale'],
   // 2. Debt
   [/\b(going concern|default(ed|s)? on|covenant (breach|waiver)|chapter 11|bankruptcy)\b/i, -1, 'debt distress'],
@@ -36,6 +36,8 @@ const EVENTS = [
   [/\bfda (approv|clears|grants)|receives? fda approval/i, 0.8, 'an FDA approval'],
   [/\b(complete response letter|fda (reject|declin)|fails? (phase|trial)|trial fail)/i, -0.8, 'an FDA setback'],
   [/\b(wins?|awarded|secures?|lands?) .{0,40}\b(contract|deal|order)\b/i, 0.4, 'a contract win'],
+  [/\b(launch(es|ed|ing)?|release date|releas(es|ed|ing)|debuts?|arrives?|goes on sale|hits (stores|shelves)|pre-?orders?)\b/i, 0.35, 'a major product launch',
+    /\b(results|earnings|quarter(ly)?|report|statement|guidance|outlook|data|filing|offering|notes)\b/i],
   [/\b(recall|outage|cyberattack|data breach|hack(ed)?)\b/i, -0.4, 'an outage or recall'],
   [/\b(lawsuit|sued|class action)\b/i, -0.2, 'a lawsuit'],
   // 5. Earnings and guidance
@@ -80,7 +82,7 @@ function newsDriver(news, filings, now) {
     const t = String(n.title || '') + ' ' + String(n.summary || '').slice(0, 200);
     const age = now - (n.time || now);
     const fade = clamp(1 - age / (14 * DAY), 0.3, 1);       // fresher news counts more
-    for (const [re, v, say] of EVENTS) if (re.test(t)) { hits.push({ v: v * fade, say }); break; }
+    for (const [re, v, say, not] of EVENTS) if (re.test(t) && !(not && not.test(t))) { hits.push({ v: v * fade, say }); break; }
   }
   for (const f of filings || []) {
     const form = String(f.form || '');
@@ -141,15 +143,19 @@ function insiderDriver(tx, now) {
 }
 
 // 6. Fundamentals and valuation (long run).
-function fundamentalsDriver(m) {
+function fundamentalsDriver(m, fwdGrowth) {
   if (!m) return null;
   const parts = [];
   const g = num(m.revenueGrowthTTMYoy), eg = num(m.epsGrowthTTMYoy), nm = num(m.netProfitMarginTTM);
   const pe = num(m.peTTM ?? m.peBasicExclExtraTTM), de = num(m['totalDebt/totalEquityQuarterly']);
   if (g != null) parts.push(clamp(g / 25, -1, 1));
   if (eg != null) parts.push(clamp(eg / 40, -1, 1));
-  if (nm != null) parts.push(nm < 0 ? -0.5 : clamp(nm / 30, 0, 0.5));
-  if (pe != null) parts.push(pe <= 0 ? -0.3 : pe > 80 ? -0.5 : pe > 45 ? -0.2 : pe < 12 ? 0.2 : 0);
+  // Losses and a sky-high trailing P/E say little when analysts expect
+  // earnings to grow fast from here: that is what investing into a launch
+  // looks like.
+  const growing = fwdGrowth != null && fwdGrowth > 0.2;
+  if (nm != null) parts.push(nm < 0 ? (growing ? -0.1 : -0.5) : clamp(nm / 30, 0, 0.5));
+  if (pe != null && !growing) parts.push(pe <= 0 ? -0.3 : pe > 80 ? -0.5 : pe > 45 ? -0.2 : pe < 12 ? 0.2 : 0);
   if (de != null && de > 2.5) parts.push(-0.4);
   if (!parts.length) return null;
   const v = clamp(parts.reduce((a, b) => a + b, 0) / parts.length * 1.5, -1, 1);
@@ -340,6 +346,51 @@ function socialDriver(msgs, now) {
   return { key: 'social', v, w: 0.04, say: v > 0.5 ? 'bullish chatter online' : v < -0.5 ? 'bearish chatter online' : null };
 }
 
+// 6 / 11. What analysts expect next, from Nasdaq's consensus pages: earnings
+// growth from this fiscal year to the next, the average price target against
+// today's price, the buy/hold/sell mix and the last month's estimate
+// revisions. This is the long-run view that trailing numbers miss: a company
+// spending into a big launch shows losses now and growth ahead.
+// Targets run optimistic on average (about 10% above the price), so that is
+// the zero.
+function forwardDriver(f, price) {
+  if (!f) return null;
+  const parts = [], says = [];
+  const yr = (f.years || []).filter(r => num(r.eps) != null);
+  let g = null;
+  if (yr.length >= 2) {
+    const a = yr[0].eps, b = yr[1].eps;
+    g = a > 0 ? b / a - 1 : (b > 0 ? 1 : null);
+    if (g != null) { parts.push([clamp(g / 0.3, -1, 1), 0.4]); if (g > 0.2) says.push('strong expected earnings growth'); else if (g < -0.05) says.push('falling earnings estimates'); }
+  }
+  if (num(f.target) && price > 0) {
+    const u = f.target / price - 1;
+    parts.push([clamp((u - 0.1) / 0.3, -1, 1), 0.35]);
+    if (u > 0.25) says.push('analyst targets well above the price'); else if (u < 0) says.push('a price above analyst targets');
+  }
+  const t = (f.buy || 0) + (f.hold || 0) + (f.sell || 0);
+  if (t >= 3) parts.push([clamp(((f.buy || 0) - (f.sell || 0)) / t - 0.5, -1, 1), 0.1]);
+  const rv = (f.up || 0) + (f.down || 0);
+  if (rv >= 2) { const x = ((f.up || 0) - (f.down || 0)) / rv; parts.push([x, 0.15]); if (x > 0.5 && !says.length) says.push('rising earnings estimates'); if (x < -0.5) says.unshift('falling earnings estimates'); }
+  if (!parts.length) return null;
+  const ws = parts.reduce((s2, x) => s2 + x[1], 0);
+  const v = clamp(parts.reduce((s2, x) => s2 + x[0] * x[1], 0) / ws, -1, 1);
+  const say = says.find(x => (v > 0) === !/falling|above analyst/.test(x)) || null;
+  return { key: 'forward', v, w: 0.16, say, growth: g };
+}
+
+// Each horizon cares about different forces (the timeframe table): the long
+// run is earnings growth and rates; days are events, macro, options and
+// sentiment. Multipliers on each driver's base weight.
+const HORIZON = {
+  longterm: { chart: 0.5, news: 0.8, earnings: 0.7, analysts: 1.2, insiders: 1, fundamentals: 1.5, forward: 1.8,
+    market: 0.8, relative: 0.6, rates: 1.5, dollar: 1, credit: 1, fear: 0.6, bitcoin: 1, timing: 0.3,
+    options: 0.3, shorts: 0.5, dividend: 1, social: 0.3 },
+  daytrade: { chart: 1.3, news: 1.2, earnings: 1, analysts: 0.6, insiders: 0.6, fundamentals: 0.3, forward: 0.3,
+    market: 1.2, relative: 1, rates: 0.8, dollar: 0.8, credit: 0.8, fear: 1.2, bitcoin: 1.2, timing: 1.5,
+    options: 1.6, shorts: 1.2, dividend: 1, social: 1.3 },
+};
+
 // ---- Combine ----
 function weigh(input) {
   const now = input.now || Date.now();
@@ -353,13 +404,16 @@ function weigh(input) {
     if (first && first.close > 0) ytd = input.bars[input.bars.length - 1].close / first.close - 1;
   }
   const timing = timingDriver(now, ytd);
+  const last = closes && closes.length ? closes[closes.length - 1] : (input.options && input.options.price) || null;
+  const fwd = forwardDriver(input.forward, last);
   const ds = [
+    fwd,
     chartDriver(input.rating),
     newsDriver(input.news, input.filings, now),
     earningsDriver(input.earnings, now),
     analystDriver(input.recs),
     insiderDriver(input.insiders, now),
-    fundamentalsDriver(input.metric),
+    fundamentalsDriver(input.metric, fwd ? fwd.growth : null),
     marketDriver(input.spy, beta),
     relativeDriver(closes, input.spy),
     ratesDriver(input.t10, pe, beta),
@@ -374,11 +428,15 @@ function weigh(input) {
     socialDriver(input.social, now),
   ].filter(Boolean);
   if (!ds.length) return null;
+  const hz = HORIZON[input.strategy === 'daytrade' ? 'daytrade' : 'longterm'];
+  for (const d of ds) d.w *= (hz[d.key] != null ? hz[d.key] : 1);
   const wsum = ds.reduce((s, d) => s + d.w, 0);
   let score = ds.reduce((s, d) => s + d.v * d.w, 0) / wsum;
   const risk = eventRisk(input.nextEarnings, now);
   // Earnings within days: the report itself will swamp everything else.
-  if (risk) score *= 0.6;
+  // Earnings within days: the report itself can swamp everything else,
+  // far more over the next few days than over the next year.
+  if (risk) score *= input.strategy === 'daytrade' ? 0.5 : 0.85;
   const lean = score >= 0.1 ? 'up' : score <= -0.1 ? 'down' : 'mixed';
   const dir = lean === 'up' ? 1 : lean === 'down' ? -1 : 0;
   // The few reasons named in public: strongest pushes in the lean's
@@ -402,4 +460,4 @@ function weigh(input) {
   };
 }
 
-module.exports = { weigh, EVENTS, CRYPTO_LINKED, optionsDriver, shortDriver, dividendDriver, socialDriver, parseOcc, newsDriver, timingDriver, thirdFriday };
+module.exports = { weigh, forwardDriver, HORIZON, EVENTS, CRYPTO_LINKED, optionsDriver, shortDriver, dividendDriver, socialDriver, parseOcc, newsDriver, timingDriver, thirdFriday };
