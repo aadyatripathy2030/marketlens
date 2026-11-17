@@ -941,6 +941,11 @@ async function gatherDrivers(symbol, rating, strategy) {
   if (out) out.sources = { finnhub: !!facts, bars: !!bars, spy: !!spy, fred: !!(t10 && usd && hy), vix: vixRatio != null,
     options: !!(options && options.options && options.options.length), shorts: !!shortR, dividends: !!divs,
     social: !!(social && social.length), forward: !!forward, timedOut: !got };
+  if (out) {
+    const miss = Object.entries(out.sources).filter(([k, v]) => k !== 'timedOut' && !v).map(([k]) => k);
+    console.log(`[drivers] ${symbol} ${strategy || 'longterm'}: ${out.label} (${out.score})` + (miss.length ? `; missing: ${miss.join(', ')}` : '') + (out.sources.timedOut ? '; TIMED OUT' : '')
+      + ` | ${out.detail.map(d => d.key + ' ' + d.v).join(', ')}`);
+  }
   return out;
 }
 
@@ -4201,8 +4206,16 @@ async function handleCheckout(req, res) {
     // fresh customer per checkout, paying in two tabs made two subscriptions,
     // and the one not on file could not be canceled from the site.
     let customer = prior && prior.stripe_customer;
+    let subs = null;
     if (customer) {
-      const subs = await stripeGet('subscriptions?status=all&limit=10&customer=' + encodeURIComponent(customer));
+      // A customer this Stripe account does not have was made under the old
+      // Stripe account (replaced Oct 18, 2026). A new one is made below. They
+      // did check out before, so no second free trial.
+      subs = await stripeGet('subscriptions?status=all&limit=10&customer=' + encodeURIComponent(customer))
+        .catch(e => { if (stripeMissing(e)) return null; throw e; });
+      if (!subs) { customer = null; firstTime = false; }
+    }
+    if (customer) {
       const live = ((subs && subs.data) || []).find(x => ['active', 'trialing', 'past_due'].includes(x.status));
       if (live) {
         await db.setPro(user.id, customer, live.id);
@@ -4210,7 +4223,10 @@ async function handleCheckout(req, res) {
       }
       firstTime = !((subs && subs.data) || []).length;
     } else {
-      const c = await stripePost('customers', { email: user.email, 'metadata[uid]': user.id }, { 'Idempotency-Key': 'cust-' + user.id });
+      // The idempotency key names the account, plus 'r' when replacing an
+      // old-account customer, so the replacement is never answered with a
+      // cached reply about the old one.
+      const c = await stripePost('customers', { email: user.email, 'metadata[uid]': user.id }, { 'Idempotency-Key': 'cust-' + user.id + (prior && prior.stripe_customer ? '-r' : '') });
       customer = c.id;
       await db.setCustomer(user.id, customer);
     }
@@ -4258,7 +4274,10 @@ async function handlePortal(req, res) {
   try {
     const s = await stripePost('billing_portal/sessions', { customer, return_url: baseUrl(req) + '/' });
     return json(res, 200, { url: s.url });
-  } catch (e) { logError(e); return json(res, 200, { error: 'Could not open the billing portal. Try again in a minute.' }); }
+  } catch (e) {
+    // Customer from the old Stripe account: nothing to show in this one.
+    if (stripeMissing(e)) return json(res, 200, { error: 'No subscription to manage yet.' });
+    logError(e); return json(res, 200, { error: 'Could not open the billing portal. Try again in a minute.' }); }
 }
 // ---- manage subscription: pause, switch plan, cancel ----
 // Shown when a subscriber opens Manage subscription. Pausing and switching

@@ -405,7 +405,16 @@ function weigh(input) {
   }
   const timing = timingDriver(now, ytd);
   const last = closes && closes.length ? closes[closes.length - 1] : (input.options && input.options.price) || null;
-  const fwd = forwardDriver(input.forward, last);
+  // Backup when Nasdaq's consensus pages do not answer (they can block cloud
+  // servers): Finnhub's latest buy/hold/sell counts, which the server already
+  // has with its key.
+  let fwdIn = input.forward;
+  if (!fwdIn && Array.isArray(input.recs) && input.recs.length) {
+    const r = input.recs.slice().sort((a, b) => String(b.period).localeCompare(String(a.period)))[0];
+    fwdIn = { buy: (num(r.strongBuy) || 0) + (num(r.buy) || 0), hold: num(r.hold) || 0, sell: (num(r.sell) || 0) + (num(r.strongSell) || 0), fallback: true };
+  }
+  const fwd = forwardDriver(fwdIn, last);
+  if (fwd && fwdIn && fwdIn.fallback && !fwd.say && fwd.v > 0.3) fwd.say = 'strong analyst support';
   const ds = [
     fwd,
     chartDriver(input.rating),
