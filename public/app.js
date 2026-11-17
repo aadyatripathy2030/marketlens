@@ -2164,7 +2164,21 @@
     'ai-partial': 'written by Claude, reply was cut short',
     rule: 'rule-based fallback, no model key set',
   };
+  // The headline reading shows the lean with everything weighed (chart,
+  // company news, analysts, market, options, timing) once the report brings
+  // it; the chart-only lean moves to the small line beneath.
+  function applyLean(lean) {
+    const d = lastData;
+    if (!lean || !lean.label || !d) return;
+    const call = d.call, rt = d.rating || {};
+    $('vKicker').textContent = 'Everything weighed';
+    $('vAction').textContent = lean.label;
+    $('verdict').className = 'verdict ' + (lean.tone || 'neutral');
+    const chart = (call && call.label) || rt.label;
+    $('vMeta').textContent = [chart ? 'Chart alone: ' + chart.toLowerCase() : '', rt.score != null ? `score ${rt.score}/100` : ''].filter(Boolean).join(' · ');
+  }
   function applyReport(j) {
+    applyLean(j.lean);
     $('aiBody').textContent = j.summary || 'No analysis available.';
     $('aiTag').textContent = SOURCE_LABEL[j.source] || SOURCE_LABEL.rule;
     $('bullList').innerHTML = (j.bull && j.bull.length ? j.bull : ['—']).map(x => `<li>${esc(x)}</li>`).join('');

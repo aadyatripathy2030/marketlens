@@ -932,11 +932,16 @@ async function gatherDrivers(symbol, rating, strategy) {
   const [facts, bars, spy, btc, t10, usd, hy, options, shortR, divs, social, forward] = got || [];
   const vixRatio = vixData && vixData.ratio.length ? vixData.ratio[vixData.ratio.length - 1] : null;
   if (!vixData) loadVix();
-  return DRV.weigh(Object.assign({}, facts || {}, {
+  const out = DRV.weigh(Object.assign({}, facts || {}, {
     symbol, rating, bars: bars ? bars.prices : null, closes: closesOf(bars),
     spy: closesOf(spy), btc: closesOf(btc), t10, usd, hy, vixRatio: crypto ? null : vixRatio,
     options, shortRatios: shortR, dividends: divs, social, forward, strategy,
   }));
+  // Which sources answered, for the admin check (never sent to readers).
+  if (out) out.sources = { finnhub: !!facts, bars: !!bars, spy: !!spy, fred: !!(t10 && usd && hy), vix: vixRatio != null,
+    options: !!(options && options.options && options.options.length), shorts: !!shortR, dividends: !!divs,
+    social: !!(social && social.length), forward: !!forward, timedOut: !got };
+  return out;
 }
 
 // Appended to every AI prompt.
@@ -947,6 +952,9 @@ const AI_GUARD = 'Rules that always apply: never tell the reader to buy, sell or
 // from every driver weighed together and the two strongest reasons; the
 // second, only if there is one, the main thing pushing the other way or an
 // event that could swamp it. Nothing else is listed.
+// The overall lean travels with every report so the page's headline reading
+// can show it instead of the chart-only lean.
+const leanOf = (p) => p.drivers ? { label: p.drivers.label, tone: p.drivers.lean === 'up' ? 'bullish' : p.drivers.lean === 'down' ? 'bearish' : 'neutral' } : null;
 const joinAnd = (a) => a.length <= 1 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
 function ruleBasedReport(p) {
   const d = p.drivers, r = p.rating || {};
@@ -968,7 +976,7 @@ function ruleBasedReport(p) {
   else if (d.opex && d.pin) two = `This week's ${d.opex} can pin it near $${d.pin}.`;
   else if (d.opex) two = `This week's ${d.opex} can pin the price near big strikes.`;
   else if (d.gamma === 'short') two = 'Options positioning can make moves bigger than usual.';
-  return { summary: (one + (two ? ' ' + two : '')).replace(/^./, c => c.toUpperCase()), bull: [], bear: [], conclusion: '' };
+  return { summary: (one + (two ? ' ' + two : '')).replace(/^./, c => c.toUpperCase()), bull: [], bear: [], conclusion: '', lean: leanOf(p) };
 }
 // Hard cap, whatever the model returns.
 function twoSentences(t) {
@@ -1139,7 +1147,7 @@ async function handleAnalyzeStream(req, res) {
     const m = full.match(/\{[\s\S]*\}/);
     const parsed = JSON.parse(m ? m[0] : full);
     if (!parsed.summary) throw new Error('empty AI report');
-    send({ t: 'done', summary: twoSentences(parsed.summary), bull: [], bear: [], conclusion: '', source: 'ai' });
+    send({ t: 'done', summary: twoSentences(parsed.summary), bull: [], bear: [], conclusion: '', source: 'ai', lean: leanOf(p) });
     await chargeStream();
   } catch (e) {
     logError(e);
@@ -1150,7 +1158,7 @@ async function handleAnalyzeStream(req, res) {
     // structured parts mechanically, so only fall back wholesale if there is
     // nothing substantial to keep.
     if (partial && partial.length > 20) {
-      send({ t: 'done', summary: twoSentences(partial), bull: [], bear: [], conclusion: '', source: 'ai-partial' });
+      send({ t: 'done', summary: twoSentences(partial), bull: [], bear: [], conclusion: '', source: 'ai-partial', lean: leanOf(p) });
     } else {
       send({ t: 'done', ...rb, source: 'rule',
         note: aiFallbackNote(e, 'stream') });
@@ -1204,7 +1212,7 @@ async function handleAnalyze(req, res) {
     try {
       const rep = await callClaudeReport(p, model);
       if (!rep.summary) throw new Error('empty AI report');
-      return json(res, 200, { ...rep, source: 'ai' });
+      return json(res, 200, { ...rep, source: 'ai', lean: leanOf(p) });
     } catch (e) { await slot.refund(); return json(res, 200, { ...ruleBasedReport(p), source: 'rule', note: aiFallbackNote(e, 'analyze') }); }
   }
   return json(res, 200, { ...ruleBasedReport(p), source: 'rule', note: 'Set ANTHROPIC_API_KEY for an AI-written report.' });
@@ -2852,6 +2860,21 @@ async function handleFeedback(req, res) {
   if (use.over) return json(res, 429, { error: 'Thanks, that is plenty for today.' });
   await db.addFeedback({ uid: u.id, rating, body, mayQuote, quoteName, symbol });
   return json(res, 200, { ok: true });
+}
+// Admin: the full weighing for one stock, with every driver's vote and which
+// data sources answered from this server.
+async function handleAdminDrivers(req, res) {
+  const u = await currentUser(req);
+  if (!isAdmin(u)) return json(res, 403, { error: 'Admin access only.' });
+  const q = new URL(req.url, 'http://x').searchParams;
+  const symbol = cleanSymbol(q.get('symbol'));
+  if (!symbol) return json(res, 400, { error: 'symbol required' });
+  const strategy = q.get('strategy') === 'daytrade' ? 'daytrade' : 'longterm';
+  let rating = null;
+  try { const b = await fetchLive(symbol, '1day'); rating = I.overallRating(I.techReport(b.prices.map(p => ({ open: p.open, high: p.high, low: p.low, close: p.close, volume: p.volume || 0 })))); } catch (e) {}
+  const d = await gatherDrivers(symbol, rating, strategy);
+  const p = { symbol, strategy, rating: rating || {}, drivers: d };
+  return json(res, 200, { symbol, strategy, chart: rating && { score: rating.score, label: rating.label }, drivers: d, summary: ruleBasedReport(p).summary });
 }
 async function handleAdminFeedback(req, res) {
   const u = await currentUser(req);
@@ -5367,6 +5390,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (url === '/api/admin' && req.method === 'GET') return await handleAdmin(req, res);
     if (url === '/api/admin/feedback' && req.method === 'GET') return await handleAdminFeedback(req, res);
+    if (url === '/api/admin/drivers' && req.method === 'GET') return await handleAdminDrivers(req, res);
     if (url === '/api/admin/plan' && req.method === 'POST') return await handleAdminPlan(req, res);
     if (url === '/api/admin/affiliate' && req.method === 'POST') return await handleAdminAffiliate(req, res);
     if (url === '/api/admin/payout' && req.method === 'GET') return await handleAdminPayout(req, res);
