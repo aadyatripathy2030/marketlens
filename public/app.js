@@ -2124,13 +2124,13 @@
   // waited out in full), so say so rather than showing a bare spinner-word
   // that looks identical to a dead request.
   function setAnalysisPending() {
-    $('aiBody').innerHTML = `<span class="sr-only">Writing the summary. This usually takes a few seconds.</span>${skelLines(4)}`;
+    $('aiBody').innerHTML = `<span class="sr-only">Writing the summary. This usually takes a few seconds.</span>${skelLines(2)}`;
     $('aiTag').textContent = '';
     const skelLi = '<li class="skel-li" aria-hidden="true"><span class="skel skel-line"></span></li><li class="skel-li" aria-hidden="true"><span class="skel skel-line short"></span></li><li class="skel-li" aria-hidden="true"><span class="skel skel-line"></span></li>';
     $('bullList').innerHTML = skelLi;
     $('bearList').innerHTML = skelLi;
     $('conclusion').textContent = '';
-    $('thesisCard').classList.remove('hidden');
+    $('thesisCard').classList.add('hidden');
   }
 
   // A plain fetch has no deadline, so a stalled request would leave the panel
@@ -2170,7 +2170,9 @@
     $('bullList').innerHTML = (j.bull && j.bull.length ? j.bull : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
     $('bearList').innerHTML = (j.bear && j.bear.length ? j.bear : ['—']).map(x => `<li>${esc(x)}</li>`).join('');
     $('conclusion').textContent = j.conclusion || '';
-    $('thesisCard').classList.remove('hidden');
+    // The summary is now two sentences and the whole report; the bull and
+    // bear columns only show if a report still carries them.
+    $('thesisCard').classList.toggle('hidden', !((j.bull && j.bull.length) || (j.bear && j.bear.length)));
   }
 
   // Streams the summary so the panel fills as Claude writes rather than sitting
