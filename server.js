@@ -973,6 +973,12 @@ async function gatherDrivers(symbol, rating, strategy) {
   const barsP = live ? safe(fetchLive(symbol, '1day')) : null;
   const spyP = live && !crypto ? safe(fetchLive('SPY', '1day')) : null;
   const precP = crypto ? null : factsP.then(f => precedentFor(symbol, f, barsP, spyP, strategy)).catch((e) => { logError(e); return null; });
+  // Each source gets the same deadline on its own. Racing the whole set
+  // against one timer threw away every source that had answered whenever a
+  // single slow one (usually the precedent check) ran past it, which left
+  // the chart deciding the "everything weighed" lean by itself.
+  const deadline = new Promise(r => setTimeout(() => r(null), 12000).unref());
+  const timely = (pr) => pr ? Promise.race([Promise.resolve(pr).catch(() => null), deadline]) : null;
   const work = Promise.all([
     factsP,
     barsP,
@@ -987,10 +993,10 @@ async function gatherDrivers(symbol, rating, strategy) {
     crypto ? null : safe(extra('social', () => stocktwits(symbol))),
     crypto ? null : safe(extra('forward', () => analystForward(symbol))),
     precP,
-  ]);
+  ].map(timely));
   // A slow source must not hold up the summary: whatever arrived in time is used.
-  const got = await Promise.race([work, new Promise(r => setTimeout(() => r(null), 12000).unref())]);
-  const [facts, bars, spy, btc, t10, usd, hy, options, shortR, divs, social, forward, precedent] = got || [];
+  const got = await work;
+  const [facts, bars, spy, btc, t10, usd, hy, options, shortR, divs, social, forward, precedent] = got;
   const vixRatio = vixData && vixData.ratio.length ? vixData.ratio[vixData.ratio.length - 1] : null;
   if (!vixData) loadVix();
   const out = DRV.weigh(Object.assign({}, facts || {}, {
@@ -1002,10 +1008,10 @@ async function gatherDrivers(symbol, rating, strategy) {
   if (out) out.sources = { finnhub: !!facts, bars: !!bars, spy: !!spy, fred: !!(t10 && usd && hy), vix: vixRatio != null,
     options: !!(options && options.options && options.options.length), shorts: !!shortR, dividends: !!divs,
     social: !!(social && social.length), forward: !!forward,
-    precedent: precedent ? precedent.measured.length : 'none', timedOut: !got };
+    precedent: precedent ? precedent.measured.length : 'none' };
   if (out) {
-    const miss = Object.entries(out.sources).filter(([k, v]) => k !== 'timedOut' && !v).map(([k]) => k);
-    console.log(`[drivers] ${symbol} ${strategy || 'longterm'}: ${out.label} (${out.score})` + (miss.length ? `; missing: ${miss.join(', ')}` : '') + (out.sources.timedOut ? '; TIMED OUT' : '')
+    const miss = Object.entries(out.sources).filter(([k, v]) => !v).map(([k]) => k);
+    console.log(`[drivers] ${symbol} ${strategy || 'longterm'}: ${out.label} (${out.score})` + (miss.length ? `; missing: ${miss.join(', ')}` : '')
       + ` | ${out.detail.map(d => d.key + ' ' + d.v).join(', ')}`);
   }
   return out;
@@ -1172,6 +1178,8 @@ async function handleAnalyzeStream(req, res) {
     'X-Accel-Buffering': 'no',
   });
   const send = (o) => { try { res.write(JSON.stringify(o) + '\n'); } catch (e) {} };
+  // The headline reading goes out first, before the summary is written.
+  if (leanOf(p)) send({ t: 'lean', lean: leanOf(p) });
 
   if (!ANTHROPIC_API_KEY) {
     send({ t: 'done', ...ruleBasedReport(p), source: 'rule', note: 'Set ANTHROPIC_API_KEY for an AI-written report.' });

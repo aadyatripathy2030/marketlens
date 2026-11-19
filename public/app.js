@@ -1998,24 +1998,13 @@
       const rt = d.rating || {};
       const v = d.verdict || {};
       const call = d.call;
-      if (call && call.action) {
-        // The headline reading: the indicators' lean, described, not advised,
-        // held back only when the measured record clearly disagrees. The
-        // score rides along as the small line beneath it.
-        $('vKicker').textContent = 'Indicators';
-        $('vAction').textContent = call.label || call.action;
-        const fq = call.freq;
-        $('vMeta').textContent = [rt.score != null ? `score ${rt.score}/100` : '', fq ? `higher after ${fq.up} of 100 similar setups (any day: ${fq.base})` + (fq.est != null && fq.est !== fq.up ? ` · fair chance about ${fq.est} in 100` : '') : ''].filter(Boolean).join(' · ');
-        $('verdict').className = 'verdict ' + (call.tone || 'neutral');
-      } else {
-        $('vKicker').textContent = 'Indicators';
-        $('vAction').textContent = rt.label || v.action || d.signal.label;
-        // Falling back to the older per-strategy score here would print a
-        // confident number directly beside "Not enough history".
-        $('vMeta').textContent = rt.score != null ? rt.score + '/100'
-          : rt.insufficient ? '' : (v.score != null ? 'score ' + v.score : '');
-        $('verdict').className = 'verdict ' + (rt.tone || v.tone || 'neutral');
-      }
+      showChartCall(d);
+      // The headline waits for every factor (news, analysts, market, options,
+      // past events and the rest), not just the chart; the chart-only call
+      // shows only if that never arrives.
+      $('vKicker').textContent = 'Everything weighed';
+      $('vAction').textContent = 'Weighing\u2026';
+      $('verdict').className = 'verdict neutral';
       $('reason').textContent = ratingReason(d);
       const GAUGE_C = 2 * Math.PI * 52;
       const arc = $('gaugeArc');
@@ -2167,6 +2156,26 @@
   // The headline reading shows the lean with everything weighed (chart,
   // company news, analysts, market, options, timing) once the report brings
   // it; the chart-only lean moves to the small line beneath.
+  function showChartCall(d) {
+    const rt = d.rating || {}, v = d.verdict || {}, call = d.call;
+    $('vKicker').textContent = 'Indicators';
+    if (call && call.action) {
+      $('vAction').textContent = call.label || call.action;
+      const fq = call.freq;
+      $('vMeta').textContent = [rt.score != null ? `score ${rt.score}/100` : '', fq ? `higher after ${fq.up} of 100 similar setups (any day: ${fq.base})` + (fq.est != null && fq.est !== fq.up ? ` · fair chance about ${fq.est} in 100` : '') : ''].filter(Boolean).join(' · ');
+      $('verdict').className = 'verdict ' + (call.tone || 'neutral');
+    } else {
+      $('vAction').textContent = rt.label || v.action || (d.signal && d.signal.label) || '';
+      $('vMeta').textContent = rt.score != null ? rt.score + '/100'
+        : rt.insufficient ? '' : (v.score != null ? 'score ' + v.score : '');
+      $('verdict').className = 'verdict ' + (rt.tone || v.tone || 'neutral');
+    }
+  }
+  // Called once the report is settled: if no overall lean came with it, the
+  // headline falls back to the chart call rather than sitting on "Weighing".
+  function settleLean(d) {
+    if (d && !stale(d) && $('vAction').textContent === 'Weighing\u2026') showChartCall(d);
+  }
   function applyLean(lean) {
     const d = lastData;
     if (!lean || !lean.label || !d) return;
@@ -2214,6 +2223,7 @@
           let msg; try { msg = JSON.parse(line); } catch { continue; }
           if (stale(d)) { ac.abort(); return true; }        // superseded; stop quietly
           if (msg.t === 'd') { started = true; shown += msg.v; $('aiBody').textContent = shown; }
+          else if (msg.t === 'lean') applyLean(msg.lean);
           else if (msg.t === 'done') done = msg;
         }
       }
@@ -2227,6 +2237,9 @@
   }
 
   async function loadAnalysis(d) {
+    try { await loadAnalysisInner(d); } finally { settleLean(d); }
+  }
+  async function loadAnalysisInner(d) {
     try {
       if (await streamAnalysis(d)) return;
       const r = await fetchTimeout('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(d) }, 45000);
