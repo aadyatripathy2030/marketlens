@@ -17,8 +17,9 @@
   var mq = function (q) { return window.matchMedia && window.matchMedia(q).matches; };
   // Also off on phone-width screens: the refraction filter re-renders the
   // backdrop on every scroll frame, which cost seconds of main-thread time on
-  // a mid-range phone. The frosted glass itself stays.
-  if (!chromium || mq('(prefers-reduced-motion: reduce)') || mq('(prefers-reduced-transparency: reduce)') || mq('(max-width: 760px)')) return;
+  // a mid-range phone. The frosted glass itself stays. Off on every touch
+  // device too (tablets are wider than 760px but have the same GPU budget).
+  if (!chromium || mq('(prefers-reduced-motion: reduce)') || mq('(prefers-reduced-transparency: reduce)') || mq('(max-width: 760px)') || (window.CG_DEVICE && window.CG_DEVICE.touch)) return;
   document.documentElement.classList.add('lg-refract');
 
   var SEL = '.topbar, .otp-box';

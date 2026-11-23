@@ -1059,7 +1059,12 @@
     const y = scrollY();
     if (y !== lastScrollY) { scrollUp = y < lastScrollY; lastScrollY = y; }
   }, { capture: true, passive: true });
+  // Phones and tablets: each block plays once, then stays put. Replaying on
+  // every flick made content blink in and out under the thumb.
+  const revealOnce = !!(window.CG_DEVICE && window.CG_DEVICE.touch);
+  const revealPlayed = new WeakSet();
   function revealArm(el) {
+    if (revealOnce && revealPlayed.has(el)) return;
     if (el.classList.contains('rv') && !el.classList.contains('in')) return;
     const i = el.parentElement ? Array.prototype.indexOf.call(el.parentElement.children, el) % 4 : 0;
     el.style.setProperty('--rd', (i * 80) + 'ms');
@@ -1068,7 +1073,8 @@
   }
   function revealPlay(el) {
     if (!el.classList.contains('rv') || el.classList.contains('in')) return;
-    el.classList.toggle('rv-up', scrollUp);
+    revealPlayed.add(el);
+    el.classList.toggle('rv-up', scrollUp && !revealOnce);
     void el.offsetWidth;  // commit the start position before moving
     el.addEventListener('transitionend', function done(ev) {
       if (ev.target !== el || ev.propertyName !== 'opacity') return;
@@ -1670,8 +1676,15 @@
           drawChart(); lastTap = 0; touch = null; e.preventDefault(); return;
         }
         lastTap = now;
-        touch = { mode: 'one', zone: zoneOf(t), x: t.clientX, y: t.clientY,
+        const zone = zoneOf(t);
+        touch = { mode: 'one', zone, x: t.clientX, y: t.clientY, x0: t.clientX, y0: t.clientY,
+                  // On the plot, wait for the first move: sideways pans the
+                  // chart, up or down scrolls the page (the chart fills most
+                  // of a phone screen, so taking every drag trapped the page).
+                  axis: zone === 'plot' ? null : 'chart',
                   span: view.end - view.start, man: yManual ? { lo: yManual.lo, hi: yManual.hi } : null };
+        if (touch.axis) e.preventDefault();
+        return;
       } else if (e.touches.length === 2) {
         touch = { mode: 'pinch', s0: spread(e.touches) };
         lastTap = 0;
@@ -1681,7 +1694,13 @@
 
     canvas.addEventListener('touchmove', (e) => {
       if (!touch || !lastData || !view) return;
-      e.preventDefault();
+      if (touch.mode === 'one' && !touch.axis && e.touches.length === 1) {
+        const t0 = e.touches[0], dx = Math.abs(t0.clientX - touch.x0), dy = Math.abs(t0.clientY - touch.y0);
+        if (dx < 6 && dy < 6) return;                 // not decided yet
+        if (dy > dx || !e.cancelable) { touch = null; return; }   // the page scrolls
+        touch.axis = 'chart';
+      }
+      if (e.cancelable) e.preventDefault();
       const r = canvas.getBoundingClientRect();
       if (touch.mode === 'pinch' && e.touches.length === 2) {
         const s = spread(e.touches);

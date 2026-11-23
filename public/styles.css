@@ -2543,3 +2543,68 @@ main.app { min-height: 100vh; min-height: 100svh; }
 .plan-refund a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
 .plan-cancel { margin-top: 8px; }
 button.plan-link { border: 0; cursor: pointer; font: inherit; }
+
+/* ===================================================================
+   Phones and tablets (Nov 23 2026). theme.js tags <html> before paint:
+   .touch (any touch-first device), .phone, .tablet, and .weak (low-end
+   or data saver). Desktop is unchanged; everything here is scoped.
+   =================================================================== */
+/* Let the window scroll, not <body>. With html and body both at
+   height:100% + overflow hidden, body became the scroller, so on phones the
+   address bar never collapsed, tapping the status bar did not jump to the
+   top, and scrolling felt heavier. Sideways overflow is still clipped. */
+html.touch { height: auto; overflow-x: hidden; }
+html.touch body { height: auto; min-height: 100svh; overflow-x: clip; }
+
+/* No grey flash on tap, no double-tap zoom delay on controls. */
+html.touch { -webkit-tap-highlight-color: transparent; }
+html.touch :is(a, button, .btn, .chip, .ov, .range-btn, .tp-btn, .strat-btn, .dir-btn, .nav-toggle, input, select, label, summary) { touch-action: manipulation; }
+/* Press feedback stands in for hover, which never happens with a finger. */
+html.touch :is(.tool, .learn-card, a.card, .plan-card, .wl-card, .quote-card, .mover, .rk, .pos):active { background: var(--card-hi); transition-duration: 0s; }
+
+/* The background glow stays, but still. Four layers the size of the screen
+   drifting forever kept the GPU busy and the battery draining. */
+html.touch .bg-blobs i { animation: none; will-change: auto; }
+
+/* Header glass: a lighter blur (saturate doubles the cost on mobile GPUs).
+   On weak devices, no blur at all, just a denser fill. */
+html.touch .topbar { -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+html.weak { --glass-float: rgba(14, 15, 20, .96); }
+html.weak[data-theme="light"] { --glass-float: rgba(255, 255, 255, .97); }
+html.weak .topbar, html.weak .otp-box { -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* Scroll reveal: shorter, quicker, always easing out, and (app.js) played
+   once per block rather than on every pass. A 40px ease-in that replayed
+   on every flick made content blink in and out under the thumb. */
+html.touch .rv, html.touch .rv.rv-up { transform: translateY(14px); will-change: auto; }
+html.touch .rv.in, html.touch .rv.in.rv-up { transform: none;
+  transition: opacity .35s cubic-bezier(.2,.7,.2,1), transform .4s cubic-bezier(.2,.7,.2,1);
+  transition-delay: var(--rd, 0ms); }
+
+/* Entrances: shorter so the page is usable sooner on a phone. */
+html.touch .view:not(.hidden) > :not(.hero-wrap) { animation-duration: .25s; }
+html.touch .hero-wrap .hero > * { animation-duration: .55s; }
+html.touch .hero-split .hw { animation-duration: .5s; animation-delay: calc(.03s + var(--wi, 0) * 25ms); }
+html.touch .hero-wrap .home-chart { animation-duration: .6s; animation-delay: .15s; }
+
+/* Endless loops off: the CTA glow and the hero pulse hold still. */
+html.touch .home-end-btns::before { animation: none; opacity: .18; will-change: auto; }
+html.touch .ha-pulse { animation: none; opacity: .7; }
+
+/* Sign-in code page: the color field animated blur() and hue-rotate(),
+   which repaints the whole screen every frame. Held still on touch; on
+   weak devices the blur goes too (the gradients are soft already). */
+html.touch body[data-view="verify"]::before { animation: none; }
+html.weak body[data-view="verify"]::before { filter: saturate(1.2); }
+
+/* Full-height pages use the small viewport so the address bar does not
+   push the bottom out of sight. */
+html.touch .code-page { min-height: calc(100svh - 160px); }
+
+/* Chart: one finger sideways pans it, up and down scrolls the page
+   (app.js decides from the first move), two fingers pinch. */
+html.touch #chart { touch-action: pan-y; }
+/* Chart instructions in the words of the device in hand. */
+.hint-touch { display: none; }
+html.touch .hint-touch { display: block; }
+html.touch .hint-mouse { display: none; }
