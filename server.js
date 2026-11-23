@@ -235,17 +235,28 @@ function capMap(map, max) { while (map.size > max) map.delete(map.keys().next().
 const DATA_CACHE_MAX = Number(process.env.DATA_CACHE_MAX || 600);
 const dataCache = new Map();   // key -> { at, value }
 const inFlight = new Map();    // key -> Promise
-function cached(key, ttlMs, producer) {
+// Failures are normally retried on the next call. A source that is down or
+// refusing us (Nasdaq resetting connections, Cboe's 403) was retried on every
+// analysis and made each one wait out its timeout, so callers that pass
+// failTtl get the failure back at once for that long instead.
+const failedAt = new Map();    // key -> { at, ttl, err }
+function cached(key, ttlMs, producer, failTtl) {
   const hit = dataCache.get(key);
   if (hit && Date.now() - hit.at < ttlMs) return Promise.resolve(hit.value);
   const pending = inFlight.get(key);
   if (pending) return pending;
+  const bad = failedAt.get(key);
+  if (bad && Date.now() - bad.at < bad.ttl) return Promise.reject(bad.err);
   const p = Promise.resolve().then(producer)
-    .then(v => { dataCache.delete(key); dataCache.set(key, { at: Date.now(), value: v }); capMap(dataCache, DATA_CACHE_MAX); return v; })
+    .then(v => { failedAt.delete(key); dataCache.delete(key); dataCache.set(key, { at: Date.now(), value: v }); capMap(dataCache, DATA_CACHE_MAX); return v; },
+      e => { if (failTtl) { failedAt.delete(key); failedAt.set(key, { at: Date.now(), ttl: failTtl, err: e }); capMap(failedAt, DATA_CACHE_MAX); } throw e; })
     .finally(() => inFlight.delete(key));
   inFlight.set(key, p);
   return p;
 }
+// How long a source that failed is left alone before it is tried again.
+const SOURCE_FAIL_TTL = 15 * 60e3;
+const cachedSource = (key, ttl, producer) => cached(key, ttl, producer, SOURCE_FAIL_TTL);
 // When the value behind a key was actually fetched. Without this a handler can
 // only report when it built the response, which for cached data is a different
 // thing — and reporting "just updated" for a fifteen-minute-old reading is the
@@ -629,6 +640,7 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   // can be a paid price-API call.
   const user = await currentUser(req).catch(() => null);
   if (!user && throttled(res, [['stock:ip:' + clientIp(req), 30, 60000]])) return;
+  if (user && !knownUnknown(symbol)) warmDrivers(symbol, strategy);
   let source = 'demo', note = '', data;
   if (STOCK_API_KEY) {
     if (knownUnknown(symbol)) return json(res, 404, noSuchTicker(symbol));
@@ -762,7 +774,7 @@ function safePatterns(candles, crypto) {
 const DRIVERS_TTL = 3 * 3600e3;
 const FRED_TTL = 6 * 3600e3;
 function fredSeries(id) {
-  return cached('fred:' + id, FRED_TTL, async () => {
+  return cachedSource('fred:' + id, FRED_TTL, async () => {
     const csv = await fetchText('fred.stlouisfed.org', '/graph/fredgraph.csv?id=' + encodeURIComponent(id));
     const out = [];
     for (const line of csv.split('\n').slice(1)) { const x = Number(line.split(',')[1]); if (Number.isFinite(x)) out.push(x); }
@@ -821,13 +833,17 @@ function getText(hostname, path, cap, ua) {
       resp.on('end', () => resolve(d));
     });
     r.on('error', reject);
-    r.setTimeout(15000, () => r.destroy(new Error('upstream timeout')));
+    // setTimeout only fires on an idle socket; a server that trickles bytes
+    // never trips it, so there is also a cap on the whole request.
+    r.setTimeout(8000, () => r.destroy(new Error('upstream timeout')));
+    const hard = setTimeout(() => r.destroy(new Error('upstream timeout')), 10000); hard.unref();
+    r.on('close', () => clearTimeout(hard));
     r.end();
   });
 }
 // Cboe delayed option chain (15 min), boiled down so the 1-8 MB file is not kept.
 function optionChain(symbol) {
-  return cached('opt:' + symbol, 30 * 60e3, async () => {
+  return cachedSource('opt:' + symbol, 30 * 60e3, async () => {
     const t = await getText('cdn-api.cboe.com', '/api/global/delayed_quotes/options/' + encodeURIComponent(symbol) + '.json', 12e6, true);
     if (!t) return null;
     const d = JSON.parse(t).data || {};
@@ -867,7 +883,7 @@ async function shortRatios(symbol) {
   return got.filter(Boolean).map(m => m.has(symbol) ? m.get(symbol) : null);
 }
 function dividends(symbol) {
-  return cached('div:' + symbol, 12 * 3600e3, async () => {
+  return cachedSource('div:' + symbol, 12 * 3600e3, async () => {
     const t = await getText('api.nasdaq.com', '/api/quote/' + encodeURIComponent(symbol) + '/dividends?assetclass=stocks', 1e6, true);
     const d = t && JSON.parse(t).data;
     if (!d) return null;
@@ -879,7 +895,7 @@ function dividends(symbol) {
   });
 }
 function stocktwits(symbol) {
-  return cached('twits:' + symbol, 30 * 60e3, async () => {
+  return cachedSource('twits:' + symbol, 30 * 60e3, async () => {
     const t = await getText('api.stocktwits.com', '/api/2/streams/symbol/' + encodeURIComponent(symbol) + '.json', 2e6, true);
     const j = t && JSON.parse(t);
     if (!j || !Array.isArray(j.messages)) return null;
@@ -889,7 +905,7 @@ function stocktwits(symbol) {
 // Analyst consensus: yearly EPS forecasts, revisions, average price target
 // and the buy/hold/sell mix (Nasdaq's public analyst pages).
 function analystForward(symbol) {
-  return cached('fwd:' + symbol, 12 * 3600e3, async () => {
+  return cachedSource('fwd:' + symbol, 12 * 3600e3, async () => {
     const s = encodeURIComponent(symbol);
     const [a, b] = await Promise.all([
       getText('api.nasdaq.com', `/api/analyst/${s}/earnings-forecast`, 1e6, true).catch(() => null),
@@ -910,7 +926,7 @@ function analystForward(symbol) {
 }
 // Short interest, twice a month (FINRA's figures, via Nasdaq's quote pages).
 function shortInterest(symbol) {
-  return cached('si:' + symbol, 12 * 3600e3, async () => {
+  return cachedSource('si:' + symbol, 12 * 3600e3, async () => {
     const t = await getText('api.nasdaq.com', '/api/quote/' + encodeURIComponent(symbol) + '/short-interest?assetClass=stocks', 1e6, true);
     const rows = t && (((JSON.parse(t).data || {}).shortInterestTable || {}).rows);
     if (!Array.isArray(rows) || !rows.length) return null;
@@ -943,7 +959,7 @@ function secCiks() {
 }
 function secFilings(symbol) {
   if (!SEC_UA || symbol.includes('/')) return Promise.resolve(null);
-  return cached('sec8k:' + symbol, 3 * 3600e3, async () => {
+  return cachedSource('sec8k:' + symbol, 3 * 3600e3, async () => {
     const cik = (await secCiks()).get(symbol.replace('.', '-'));
     if (!cik) return [];
     const j = await secGet('data.sec.gov', '/submissions/CIK' + cik + '.json', 8e6);
@@ -965,7 +981,7 @@ const extra = (name, fn) => EXTRAS_OFF.has(name) ? null : fn();
 // never invent a move. Cached a week per company and kind of event.
 async function pastEvents(symbol, kind, titles) {
   if (!ANTHROPIC_API_KEY) return null;
-  return cached('precev:' + symbol + ':' + kind, 7 * 86400e3, async () => {
+  return cachedSource('precev:' + symbol + ':' + kind, 7 * 86400e3, async () => {
     const name = TICKER_NAMES[symbol] || symbol;
     const system = 'You list dated historical events for a public company. Respond with ONLY a JSON object {"events":[{"date":"YYYY-MM-DD","name":"short name"}]}. '
       + 'List up to 6 past events of the given kind for this company, most comparable to the current one first (for a flagship product launch: earlier flagship launches, same franchise first). '
@@ -986,7 +1002,7 @@ async function pastEvents(symbol, kind, titles) {
 }
 // Ten years of daily closes from Nasdaq, used when the main feed has fewer.
 function nasdaqHistory(symbol) {
-  return cached('nqhist:' + symbol, 24 * 3600e3, async () => {
+  return cachedSource('nqhist:' + symbol, 24 * 3600e3, async () => {
     const day = (t) => new Date(t).toISOString().slice(0, 10);
     const cls = /^(SPY|QQQ|IWM|DIA|VOO|IVV|VTI)$/.test(symbol) ? 'etf' : 'stocks';
     const t = await getText('api.nasdaq.com', `/api/quote/${encodeURIComponent(symbol)}/historical?assetclass=${cls}&fromdate=2006-01-01&todate=${day(Date.now())}&limit=9999`, 8e6, true);
@@ -1016,6 +1032,27 @@ async function precedentFor(symbol, facts, barsP, spyP, strategy) {
   const H = strategy === 'daytrade' ? 5 : 252;
   return { kind: top.kind, measured: DRV.measureEvents(bars, spy, ev, H) };
 }
+const DRIVER_WAIT_MS = Number(process.env.DRIVER_WAIT_MS || 6000);
+// Starts every source the weighing needs without waiting on any of them. The
+// chart request calls this, so by the time the browser has drawn the chart
+// and asked for the reading, the slow sources (Nasdaq, the precedent lookup)
+// are already in flight or cached; the reading joins them instead of starting
+// them. Only for signed-in readers, who are the only ones shown a reading.
+function warmDrivers(symbol, strategy) {
+  if (symbol.includes('/')) return;
+  const quiet = (f) => { try { Promise.resolve(f()).catch(() => {}); } catch (e) {} };
+  const facts = Promise.resolve(companyFacts(symbol)).catch(() => null);
+  for (const id of ['DGS10', 'DTWEXBGS', 'BAMLH0A0HYM2', 'DFII10', 'NFCI', 'DCOILWTICO']) quiet(() => fredSeries(id));
+  quiet(() => extra('sec', () => secFilings(symbol)));
+  quiet(() => extra('options', () => optionChain(symbol)));
+  quiet(() => extra('shorts', () => shortInterest(symbol)));
+  quiet(() => extra('dividends', () => dividends(symbol)));
+  quiet(() => extra('social', () => stocktwits(symbol)));
+  quiet(() => extra('forward', () => analystForward(symbol)));
+  const live = !!STOCK_API_KEY;
+  quiet(() => facts.then(f => precedentFor(symbol, f, live ? fetchLive(symbol, '1day').catch(() => null) : null,
+    live ? fetchLive('SPY', '1day').catch(() => null) : null, strategy)));
+}
 const closesOf = (d) => d && Array.isArray(d.prices) ? d.prices.map(p => p.close) : null;
 async function gatherDrivers(symbol, rating, strategy) {
   const safe = (pr) => Promise.resolve(pr).catch(() => null);
@@ -1029,7 +1066,9 @@ async function gatherDrivers(symbol, rating, strategy) {
   // against one timer threw away every source that had answered whenever a
   // single slow one (usually the precedent check) ran past it, which left
   // the chart deciding the "everything weighed" lean by itself.
-  const deadline = new Promise(r => setTimeout(() => r(null), 12000).unref());
+  // Six seconds: a source still out by then usually answers into its cache
+  // for the next reader, and a dead one is now remembered as dead.
+  const deadline = new Promise(r => setTimeout(() => r(null), DRIVER_WAIT_MS).unref());
   const timely = (pr) => pr ? Promise.race([Promise.resolve(pr).catch(() => null), deadline]) : null;
   const work = Promise.all([
     factsP,
