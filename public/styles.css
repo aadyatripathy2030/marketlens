@@ -2692,3 +2692,35 @@ html.tablet .nav-link, html.tablet .nav-more { padding: 8px 10px; }
 .earn-past { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
 .earn-chip { font-family: var(--font-num); font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border-strong); }
 .earn-chip.up { color: var(--good); } .earn-chip.dn { color: var(--bad); }
+
+/* ---- Accuracy labels (Nov 23 2026) ----
+   Green-edged "tested" tags on the parts that hold up, amber "high risk"
+   tags on everything that is about a coin flip on direction. */
+.conf-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; letter-spacing: .01em; line-height: 1;
+  padding: 5px 9px; border-radius: 999px; border: 1px solid; white-space: nowrap; vertical-align: middle; text-transform: none; }
+.conf-tag::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.conf-tag.good { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); background: color-mix(in srgb, var(--good) 10%, transparent); }
+.conf-tag.risk { color: #e0a03a; border-color: color-mix(in srgb, #e0a03a 45%, transparent); background: color-mix(in srgb, #e0a03a 10%, transparent); }
+:root[data-theme="light"] .conf-tag.risk { color: #9a5b00; }
+.conf-tag.sm { font-size: 10.5px; padding: 4px 7px; margin-left: 6px; }
+.section-h > .conf-tag { margin-left: 8px; }
+.card > .conf-tag, .ai-score-info > .conf-tag, .verdict > .conf-tag { margin: 6px 0 10px; }
+.verdict > .conf-tag { margin: 8px 0 0; }
+/* Home: what it gets right. */
+.best-lead { color: var(--muted); max-width: 62ch; margin: -8px 0 24px; }
+.best { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.best-item { display: block; padding: 20px; border: 1px solid var(--border); border-radius: 16px; color: var(--text); text-decoration: none; background: var(--card); }
+.best-item:hover { border-color: var(--border-strong); }
+.best-num { font-size: 34px; font-weight: 600; letter-spacing: -.02em; margin: 14px 0 6px; font-variant-numeric: tabular-nums; }
+.best-h { font-size: 17px; margin: 0 0 8px; }
+.best-item p { font-size: 14px; color: var(--muted); margin: 0; line-height: 1.55; }
+.best-warn { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; margin-top: 20px; padding: 16px 20px; border: 1px dashed color-mix(in srgb, #e0a03a 40%, transparent); border-radius: 16px; }
+.best-warn p { margin: 0; font-size: 14px; color: var(--muted); }
+.best-warn b { color: var(--text); }
+.best-warn a { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+@media (max-width: 900px) { .best { grid-template-columns: 1fr; } }
+html.phone .best-num { font-size: 28px; }
+/* The reading's label carries a tag now; on narrow screens the levels go
+   under the call instead of being squeezed beside it. */
+.home-call-k .conf-tag { display: inline-flex; }
+@media (max-width: 560px) { .home-call { grid-template-columns: 1fr; } .home-call-k .conf-tag { margin: 6px 0 0; } .home-call-k { display: flex; flex-direction: column; align-items: flex-start; } }
