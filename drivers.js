@@ -36,9 +36,9 @@ const EVENTS = [
   [/\bfda (approv|clears|grants)|receives? fda approval/i, 0.8, 'an FDA approval'],
   [/\b(complete response letter|fda (reject|declin)|fails? (phase|trial)|trial fail)/i, -0.8, 'an FDA setback'],
   [/\b(wins?|awarded|secures?|lands?) .{0,40}\b(contract|deal|order)\b/i, 0.4, 'a contract win'],
-  [/\b(launch(es|ed|ing)?|release date|releas(es|ed|ing)|debuts?|arrives?|goes on sale|hits (stores|shelves)|pre-?orders?)\b/i, 0.35, 'a major product launch',
+  [/\b(launch(es|ed|ing)?|release date|releas(es|ed|ing)|debuts?|arrives?|goes on sale|hits (stores|shelves)|pre-?orders?)\b/i, 0.1, 'a major product launch',
     /\b(results|earnings|quarter(ly)?|report|statement|guidance|outlook|data|filing|offering|notes)\b/i],
-  [/\b(recall|outage|cyberattack|data breach|hack(ed)?)\b/i, -0.4, 'an outage or recall'],
+  [/\b(recall|outage|cyberattack|data breach|hack(ed)?)\b/i, -0.15, 'an outage or recall'],
   [/\b(lawsuit|sued|class action)\b/i, -0.2, 'a lawsuit'],
   // 5. Earnings and guidance
   [/\b(raises?|raised|lifts?|boosts?|ups) (its |full-year |annual |fy )?(guidance|outlook|forecast)/i, 0.7, 'raised guidance'],
@@ -52,8 +52,8 @@ const EVENTS = [
   // 8. Ownership
   [/\b(activist|takes? .{0,20}stake|13d)\b/i, 0.4, 'an activist stake'],
   [/\block-?up (expir|end)/i, -0.3, 'a lock-up expiry'],
-  [/\b(added to|join(s|ing)?|inclusion in) (the )?s&p 500\b/i, 0.6, 'S&P 500 inclusion'],
-  [/\b(removed from|drop(ped|s)? from|exits?) (the )?s&p 500\b/i, -0.5, 'S&P 500 removal'],
+  [/\b(added to|join(s|ing)?|inclusion in) (the )?s&p 500\b/i, 0.1, 'S&P 500 inclusion'],
+  [/\b(removed from|drop(ped|s)? from|exits?) (the )?s&p 500\b/i, -0.1, 'S&P 500 removal'],
   // 9-10. Listing, leadership, governance
   [/\b(delist|delisting notice|non-?compliance notice)\b/i, -0.7, 'a delisting notice'],
   [/\b(cfo|chief financial officer) (resigns?|departs?|steps down|exits?|to leave)/i, -0.5, 'a CFO exit'],
@@ -76,6 +76,15 @@ const FILINGS = [
   [/^NT 10-[KQ]/, -0.6, 'a late annual or quarterly report'],
 ];
 
+// 8-K item codes from SEC EDGAR: the company's own filing, dated, so it does
+// not depend on how a headline is worded. Phrases match EVENTS where the
+// event is the same, so a filing and its headline count once.
+const ITEMS = {
+  '1.03': [-1, 'debt distress'], '2.04': [-0.6, 'debt distress'], '3.01': [-0.7, 'a delisting notice'],
+  '4.02': [-0.9, 'an accounting problem'], '4.01': [-0.4, 'an auditor change'], '2.06': [-0.3, 'an asset write-down'],
+  '5.02': [-0.15, 'a leadership change'], '1.05': [-0.15, 'an outage or recall'], '1.01': [0.1, 'a major agreement'],
+};
+
 function newsDriver(news, filings, now) {
   const hits = [];
   for (const n of news || []) {
@@ -87,6 +96,10 @@ function newsDriver(news, filings, now) {
   for (const f of filings || []) {
     const form = String(f.form || '');
     for (const [re, v, say] of FILINGS) if (re.test(form)) { hits.push({ v, say }); break; }
+    if (f.items) {
+      const fade = f.date ? clamp(1 - (now - Date.parse(f.date)) / (21 * DAY), 0.3, 1) : 1;
+      for (const code of String(f.items).split(',').map(x => x.trim())) if (ITEMS[code]) hits.push({ v: ITEMS[code][0] * fade, say: ITEMS[code][1], title: '' });
+    }
   }
   if (!hits.length) return null;
   // One headline repeated by ten outlets is one event: dedupe by phrase,
@@ -103,15 +116,19 @@ function newsDriver(news, filings, now) {
 }
 
 // 5. Earnings surprise, with post-earnings drift fading over ~60 days.
-function earningsDriver(hist, now) {
+// The jump on the day is real; the slow drift after it has faded for all but
+// small companies since the mid-2000s, so on larger ones the surprise only
+// counts for the days right after the report.
+function earningsDriver(hist, now, mcapM) {
   const last = (hist || []).filter(e => num(e.actual) != null && num(e.estimate) != null)
     .sort((a, b) => String(b.period).localeCompare(String(a.period)))[0];
   if (!last) return null;
   const est = num(last.estimate), act = num(last.actual);
   const pct = est !== 0 ? (act - est) / Math.abs(est) * 100 : (act > 0 ? 10 : -10);
   const age = (now - Date.parse(last.period)) / DAY - 30;     // period is quarter end; report ~30d later
-  if (age > 90) return null;
-  const fade = clamp(1 - Math.max(0, age) / 90, 0.2, 1);
+  const span = mcapM != null && mcapM >= 2000 ? 10 : 60;
+  if (age > span) return null;
+  const fade = clamp(1 - Math.max(0, age) / span, 0.2, 1);
   const v = clamp(pct / 10, -1, 1) * fade;
   return { key: 'earnings', v, w: 0.10, say: pct >= 0 ? 'an earnings beat' : 'an earnings miss' };
 }
@@ -196,16 +213,31 @@ function ratesDriver(t10, pe, beta) {
   const v = clamp(-c / 0.4 * sens, -1, 1);
   return { key: 'rates', v, w: 0.06, say: v > 0.3 ? 'falling bond yields' : v < -0.3 ? 'rising bond yields' : null };
 }
-function dollarDriver(usd) {
+// Foreign sales share by sector: a strong dollar hurts tech and materials far
+// more than utilities or banks.
+function dollarSens(ind) {
+  const s = String(ind || '');
+  if (/semiconductor|technology|software|materials|chemical|machinery|pharma|biotech/i.test(s)) return 1.5;
+  if (/utilit|bank|real estate|reit|insurance|retail|telecom/i.test(s)) return 0.3;
+  return 1;
+}
+function dollarDriver(usd, ind) {
   const c = usd && usd.length > 25 ? usd[usd.length - 1] / usd[usd.length - 21] - 1 : null;
   if (c == null) return null;
-  const v = clamp(-c / 0.03, -1, 1);
+  const v = clamp(-c / 0.03 * dollarSens(ind), -1, 1);
   return { key: 'dollar', v, w: 0.03, say: v < -0.4 ? 'a strong dollar' : v > 0.4 ? 'a weaker dollar' : null };
 }
-function creditDriver(hy) {
+// High-yield spreads plus the Chicago Fed's financial conditions index
+// (weekly; above zero is tighter than average), which leads stock drawdowns.
+function creditDriver(hy, nfci) {
   const c = hy && hy.length > 25 ? hy[hy.length - 1] - hy[hy.length - 21] : null;
-  if (c == null) return null;
-  const v = clamp(-c / 0.6, -1, 1);
+  const n = nfci && nfci.length > 6 ? nfci[nfci.length - 1] : null;
+  const nc = n != null ? n - nfci[nfci.length - 5] : null;
+  if (c == null && n == null) return null;
+  const parts = [];
+  if (c != null) parts.push(clamp(-c / 0.6, -1, 1));
+  if (n != null) parts.push(clamp(-(n + 0.3) / 0.4 - (nc || 0) / 0.15, -1, 1));
+  const v = clamp(parts.reduce((a, b) => a + b, 0) / parts.length, -1, 1);
   return { key: 'credit', v, w: 0.05, say: v < -0.3 ? 'widening credit spreads' : v > 0.3 ? 'calmer credit markets' : null };
 }
 // 16 / 18. Fear: a spike above normal is a headwind; panic extremes are
@@ -226,30 +258,30 @@ function cryptoDriver(symbol, btc) {
   const v = clamp(0.6 * clamp(ret(btc, 20) / 0.15, -1, 1) + 0.4 * (btc[btc.length - 1] > smaLast(btc, 50) ? 1 : -1), -1, 1);
   return { key: 'bitcoin', v, w: 0.14, say: v > 0 ? 'Bitcoin strength' : 'Bitcoin weakness' };
 }
-// 17. Technicals: the chart score already on the page.
+// 17. Technicals: the chart score already on the page. ChartGauge's own test
+// (indicators.js) found it had no relationship with later returns, and
+// indicator rules have failed out of sample since the 1980s, so it barely
+// counts; momentum below carries the price trend instead.
 function chartDriver(rating) {
   if (!rating || rating.score == null) return null;
   const v = clamp((rating.score - 50) / 40, -1, 1);
-  return { key: 'chart', v, w: 0.14, say: v > 0.3 ? 'an uptrend on the chart' : v < -0.3 ? 'a downtrend on the chart' : null };
+  return { key: 'chart', v, w: 0.03, say: v > 0.3 ? 'an uptrend on the chart' : v < -0.3 ? 'a downtrend on the chart' : null };
 }
 
 // 19. Timing and seasonality. Third Friday = monthly options expiry; March,
 // June, September and December's are quad witching.
 function thirdFriday(y, m) { const d = new Date(Date.UTC(y, m, 1)); const off = (5 - d.getUTCDay() + 7) % 7; return new Date(Date.UTC(y, m, 1 + off + 14)); }
-function timingDriver(now, ytd) {
+// Of the calendar rules, only November-April beating May-October has held up
+// after publication, and it is small. The rest (September, Santa, January)
+// are almanac lore, and options expiry changes how much a stock moves, not
+// which way, so it is reported but does not vote.
+function timingDriver(now) {
   const d = new Date(now), m = d.getUTCMonth(), day = d.getUTCDate();
-  let v = 0, say = null;
-  if (m === 8) { v = -0.4; say = 'a weak season'; }                         // September
-  else if (m === 10 || m === 3 || m === 6) v = 0.3;                         // Nov, Apr, Jul
-  else if (m === 11 && day >= 20) { v = 0.4; say = 'the year-end rally window'; }
-  else if (m === 0) v = ytd != null && ytd < -0.2 ? 0.4 : 0.2;              // January effect
-  else if (m >= 4 && m <= 9) v = -0.1;                                      // "sell in May"
-  // December tax-loss selling hits the year's losers before the 20th.
-  if (m === 11 && day < 20 && ytd != null && ytd < -0.2) { v = -0.4; say = 'year-end tax-loss selling'; }
+  const v = (m >= 10 || m <= 3) ? 0.3 : -0.2, say = null;
   const tf = thirdFriday(d.getUTCFullYear(), m);
   const toOpex = (tf - Date.UTC(d.getUTCFullYear(), m, day)) / DAY;
   const opex = toOpex >= 0 && toOpex <= 4 ? ([2, 5, 8, 11].includes(m) ? 'quad witching' : 'options expiry') : null;
-  return { key: 'timing', v, w: 0.04, say, opex };
+  return { key: 'timing', v, w: 0.02, say, opex };
 }
 
 // Upcoming events that make any lean less reliable (5, 19).
@@ -275,6 +307,10 @@ function optionsDriver(o, now, symbol) {
   if (!o || !Array.isArray(o.options) || !(o.price > 0)) return null;
   const S = o.price;
   let cv = 0, pv = 0, cPrem = 0, pPrem = 0, gex = 0;
+  // For skew: per expiry 2-9 weeks out, the at-the-money call IV and the IV
+  // of the put struck nearest 95% of the price; and call minus put IV at
+  // the same near-the-money strikes.
+  const byExp = new Map();
   const oiByStrike = new Map();
   let nextExp = Infinity;
   for (const r of o.options) {
@@ -292,6 +328,27 @@ function optionsDriver(o, now, symbol) {
     gex += (k.put ? -1 : 1) * g * oi * 100 * S * S * 0.01;
     if (days >= 0 && days < nextExp) nextExp = days;
     if (days >= 0 && days <= 7) oiByStrike.set(k.strike, (oiByStrike.get(k.strike) || 0) + oi);
+    const iv = num(r.iv);
+    if (days >= 14 && days <= 63 && iv > 0.01 && iv < 5) {
+      if (!byExp.has(k.exp)) byExp.set(k.exp, new Map());
+      const row = byExp.get(k.exp).get(k.strike) || {};
+      row[k.put ? 'p' : 'c'] = iv; row.oi = (row.oi || 0) + oi;
+      byExp.get(k.exp).set(k.strike, row);
+    }
+  }
+  let skew = null, cpSpread = null;
+  {
+    const sk = [], sp = []; let spW = 0;
+    for (const strikes of byExp.values()) {
+      const ks = [...strikes.keys()];
+      if (ks.length < 5) continue;
+      const near = (t, side) => ks.filter(x => strikes.get(x)[side] != null).sort((a, b) => Math.abs(a - t) - Math.abs(b - t))[0];
+      const atm = near(S, 'c'), otm = near(0.95 * S, 'p');
+      if (atm != null && otm != null && Math.abs(otm - 0.95 * S) / S < 0.03 && Math.abs(atm - S) / S < 0.03) sk.push(strikes.get(otm).p - strikes.get(atm).c);
+      for (const x of ks) { const row = strikes.get(x); if (row.c != null && row.p != null && Math.abs(x - S) / S < 0.05) { const wt = 1 + row.oi; sp.push((row.c - row.p) * wt); spW += wt; } }
+    }
+    if (sk.length) skew = avg(sk);
+    if (sp.length && spW) cpSpread = sp.reduce((a, b) => a + b, 0) / spW;
   }
   if (cv + pv < 200) return null;
   const pcr = pv / Math.max(1, cv);
@@ -301,25 +358,42 @@ function optionsDriver(o, now, symbol) {
   const vBig = big > 250000 ? clamp((cPrem - pPrem) / big, -1, 1) : 0;
   const ivUp = num(o.iv30ChangePct);
   const vIv = ivUp != null ? clamp(-ivUp / 25, -1, 0.3) : 0;
-  const v = clamp(0.4 * vPcr + 0.45 * vBig + 0.15 * vIv, -1, 1);
-  const say = vBig > 0.4 && big > 250000 ? 'large call buying in options'
-    : vBig < -0.4 && big > 250000 ? 'large put buying in options'
-    : vPcr > 0.5 ? 'heavy call volume' : vPcr < -0.5 ? 'heavy put volume' : null;
+  // Steep put skew predicts underperformance for months (Xing-Zhang-Zhao);
+  // calls priced richer than puts at the same strike predicts gains over the
+  // next week (Cremers-Weinbaum). Typical stock skew is about +3 IV points.
+  const vSkew = skew != null ? clamp(-(skew - 0.03) / 0.06, -1, 1) : null;
+  const vSpread = cpSpread != null ? clamp((cpSpread + 0.005) / 0.03, -1, 1) : null;
+  const parts = [[vSkew, 0.4], [vSpread, 0.3], [vBig, 0.12], [vPcr, 0.1], [vIv, 0.08]].filter(x => x[0] != null);
+  const v = clamp(parts.reduce((a, x) => a + x[0] * x[1], 0) / parts.reduce((a, x) => a + x[1], 0), -1, 1);
+  // The phrase always matches the direction of the vote.
+  const cands = [
+    [vSkew, 'little demand for downside protection in options', 'options traders paying up for downside protection'],
+    [vSpread, 'calls priced richer than puts', 'puts priced richer than calls'],
+    [big > 250000 ? vBig : 0, 'large call buying in options', 'large put buying in options'],
+    [vPcr, 'heavy call volume', 'heavy put volume'],
+  ];
+  const hit = cands.find(c => c[0] != null && Math.abs(c[0]) > 0.5 && Math.sign(c[0]) === Math.sign(v));
+  const say = hit ? (v > 0 ? hit[1] : hit[2]) : null;
   // Pinning: the biggest open-interest strike in the coming week, if it is near.
   let pin = null, best = 0;
   for (const [k, oi] of oiByStrike) if (oi > best && Math.abs(k - S) / S < 0.05) { best = oi; pin = k; }
-  return { key: 'options', v, w: 0.08, say, gamma: gex < 0 ? 'short' : 'long', pin: best > 5000 ? pin : null };
+  return { key: 'options', v, w: 0.08, say, skew, cpSpread, gamma: gex < 0 ? 'short' : 'long', pin: best > 5000 ? pin : null };
 }
 
-// 15. Short selling: FINRA's daily share of volume sold short, recent week
-// against its own month. Market makers keep the level near half on most
-// names, so only the change carries anything.
-function shortDriver(ratios) {
-  const r = (ratios || []).filter(x => x != null);
-  if (r.length < 12) return null;
-  const recent = avg(r.slice(-5)), base = avg(r.slice(0, -5));
-  const v = clamp(-(recent - base) / 0.08, -1, 1);
-  return { key: 'shorts', v, w: 0.04, say: v < -0.4 ? 'rising short selling' : v > 0.4 ? 'falling short selling' : null };
+// 15. Short interest, reported twice a month: days to cover (shares short
+// over average daily volume) and its change. Heavily shorted stocks tend to
+// do worse; FINRA's daily short volume is not short interest and is no
+// longer used.
+function shortDriver(si) {
+  const r = (si || []).filter(x => x && x.dtc != null);
+  if (r.length < 2) return null;
+  const dtc = r[0].dtc;
+  const old = r[Math.min(4, r.length - 1)];
+  const ch = old.interest > 0 ? r[0].interest / old.interest - 1 : 0;
+  let v = dtc > 8 ? -0.5 : dtc > 5 ? -0.25 : dtc < 2 ? 0.1 : 0;
+  v += ch > 0.25 ? -0.3 : ch < -0.25 ? 0.2 : 0;
+  v = clamp(v, -1, 1);
+  return { key: 'shorts', v, w: 0.05, say: v <= -0.4 ? (ch > 0.25 ? 'rising short interest' : 'heavy short interest') : v >= 0.2 ? 'short sellers backing off' : null, dtc };
 }
 
 // 3. Dividends: a change in the payout, and the mechanical drop on the
@@ -346,7 +420,7 @@ function socialDriver(msgs, now) {
   if (tagged.length < 10) return null;
   const bull = tagged.filter(m => m.s === 'Bullish').length / tagged.length;
   const v = clamp((bull - 0.65) / 0.3, -1, 1);
-  return { key: 'social', v, w: 0.04, say: v > 0.5 ? 'bullish chatter online' : v < -0.5 ? 'bearish chatter online' : null };
+  return { key: 'social', v, w: 0.015, say: v > 0.5 ? 'bullish chatter online' : v < -0.5 ? 'bearish chatter online' : null };
 }
 
 // 6 / 11. What analysts expect next, from Nasdaq's consensus pages: earnings
@@ -382,16 +456,113 @@ function forwardDriver(f, price) {
   return { key: 'forward', v, w: 0.16, say, growth: g };
 }
 
+// ---- From price history ----
+const dailyRets = (c) => { const r = []; for (let i = 1; i < c.length; i++) if (c[i - 1] > 0) r.push(c[i] / c[i - 1] - 1); return r; };
+const sd = (a) => { if (a.length < 2) return null; const m = avg(a); return Math.sqrt(a.reduce((s2, x) => s2 + (x - m) ** 2, 0) / (a.length - 1)); };
+
+// 12-1 momentum (the past year, skipping the latest month), scaled by the
+// stock's own volatility, and how close it trades to its 52-week high. Both
+// replicate across decades and markets, unlike indicator rules.
+function momentumDriver(closes) {
+  if (!closes || closes.length < 260) return null;
+  const n = closes.length, last = closes[n - 1];
+  const mom = closes[n - 22] / closes[n - 253] - 1;
+  const vol = sd(dailyRets(closes.slice(-127))) * Math.sqrt(252);
+  if (!(vol > 0)) return null;
+  const hi = Math.max(...closes.slice(-252));
+  const prox = last / hi;
+  const vMom = clamp(mom / vol, -1, 1);
+  const vHi = clamp((prox - 0.85) / 0.15, -1, 1);
+  const v = clamp(0.6 * vMom + 0.4 * vHi, -1, 1);
+  const say = v > 0.3 ? (prox > 0.95 ? 'trading near its 52-week high' : 'strong momentum over the past year')
+    : v < -0.3 ? (prox < 0.7 ? 'trading far below its 52-week high' : 'weak momentum over the past year') : null;
+  return { key: 'momentum', v, w: 0.12, say };
+}
+// Lottery-like stocks (a huge single-day jump, wild swings of their own) do
+// worse afterwards on average: the MAX and idiosyncratic-volatility effects.
+// It only ever pulls down.
+function lotteryDriver(closes, spy) {
+  if (!closes || closes.length < 25) return null;
+  const r = dailyRets(closes.slice(-22));
+  const max = Math.max(...r);
+  let ivol = null;
+  if (spy && spy.length >= 25) {
+    const m = dailyRets(spy.slice(-22));
+    const k = Math.min(r.length, m.length);
+    ivol = sd(r.slice(-k).map((x, i) => x - m.slice(-k)[i])) * Math.sqrt(252);
+  }
+  const v = -clamp(Math.max((max - 0.07) / 0.1, ivol != null ? (ivol - 0.5) / 0.6 : 0, 0), 0, 0.7);
+  if (v > -0.05) return null;
+  return { key: 'lottery', v, w: 0.05, say: v < -0.3 ? 'lottery-like recent swings' : null };
+}
+// Same-month seasonality (Heston-Sadka): a stock that beat the market in a
+// given calendar month in past years tends to again, measured on up to 20
+// years of its own history against the S&P 500.
+function seasonDriver(bars, spy, now) {
+  if (!Array.isArray(bars) || bars.length < 1300 || !Array.isArray(spy) || spy.length < 1300) return null;
+  const month = new Date(now).getUTCMonth();
+  const monthly = (arr) => {
+    const out = new Map(); let prevKey = null, prevClose = null, start = null;
+    for (const b of arr) {
+      const d = String(b.date).slice(0, 7);
+      if (d !== prevKey) { if (prevKey && start > 0) out.set(prevKey, prevClose / start - 1); start = prevClose; prevKey = d; }
+      prevClose = b.close;
+    }
+    return out;
+  };
+  const a = monthly(bars), m = monthly(spy);
+  const same = [], all = [];
+  const thisYear = new Date(now).getUTCFullYear();
+  for (const [k, r] of a) {
+    if (!m.has(k) || r == null || !Number.isFinite(r)) continue;
+    const ex = r - m.get(k);
+    const [y, mo] = k.split('-').map(Number);
+    if (y >= thisYear) continue;
+    all.push(ex);
+    if (mo - 1 === month) same.push(ex);
+  }
+  if (same.length < 5 || all.length < 60) return null;
+  const v = clamp((avg(same) - avg(all)) / 0.03, -1, 1);
+  return { key: 'season', v, w: 0.04, say: v > 0.4 ? 'its usual strength this time of year' : v < -0.4 ? 'its usual weakness this time of year' : null, years: same.length };
+}
+// Oil: up for producers, down for airlines and heavy fuel users.
+function oilDriver(ind, oil) {
+  const s = String(ind || '');
+  const sign = /oil|gas|energy/i.test(s) ? 1 : /airline|chemical|trucking|cruise/i.test(s) ? -1 : 0;
+  if (!sign || !oil || oil.length < 25) return null;
+  const c = oil[oil.length - 1] / oil[oil.length - 21] - 1;
+  const v = clamp(sign * c / 0.1, -1, 1);
+  return { key: 'oil', v, w: 0.1, say: Math.abs(v) < 0.3 ? null : (c > 0 ? 'rising oil prices' : 'falling oil prices') };
+}
+
+// Fed decisions and the monthly jobs report: days when the whole market can
+// swing. Like earnings, they change how much a stock may move, not which
+// way, so a near one only makes the read less certain. 2026 FOMC dates from
+// the Fed's calendar; payrolls are normally the first Friday.
+const FOMC = ['2026-01-28', '2026-03-18', '2026-04-29', '2026-06-17', '2026-07-29', '2026-09-16', '2026-10-28', '2026-12-09'];
+function macroRisk(now) {
+  const today = new Date(now).toISOString().slice(0, 10);
+  const days = (d) => Math.round((Date.parse(d) - Date.parse(today)) / DAY);
+  const f = FOMC.find(d => days(d) >= 0 && days(d) <= 2);
+  if (f) return { kind: 'a Fed decision', days: days(f) };
+  const d = new Date(now);
+  for (const add of [0, 1, 2]) {
+    const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + add));
+    if (t.getUTCDay() === 5 && t.getUTCDate() <= 7) return { kind: 'the jobs report', days: add };
+  }
+  return null;
+}
+
 // Each horizon cares about different forces (the timeframe table): the long
 // run is earnings growth and rates; days are events, macro, options and
 // sentiment. Multipliers on each driver's base weight.
 const HORIZON = {
-  longterm: { precedent: 1.5, chart: 0.5, news: 0.8, earnings: 0.7, analysts: 1.2, insiders: 1, fundamentals: 1.5, forward: 1.8,
+  longterm: { momentum: 1.2, lottery: 1, season: 0.4, oil: 1, precedent: 1.2, chart: 0.5, news: 0.8, earnings: 0.7, analysts: 1.2, insiders: 1, fundamentals: 1.5, forward: 1.8,
     market: 0.8, relative: 0.6, rates: 1.5, dollar: 1, credit: 1, fear: 0.6, bitcoin: 1, timing: 0.3,
-    options: 0.3, shorts: 0.5, dividend: 1, social: 0.3 },
-  daytrade: { precedent: 1, chart: 1.3, news: 1.2, earnings: 1, analysts: 0.6, insiders: 0.6, fundamentals: 0.3, forward: 0.3,
+    options: 0.6, shorts: 1, dividend: 1, social: 0.3 },
+  daytrade: { momentum: 0.6, lottery: 0.6, season: 0.8, oil: 1.2, precedent: 1, chart: 1, news: 1.2, earnings: 1, analysts: 0.6, insiders: 0.6, fundamentals: 0.3, forward: 0.3,
     market: 1.2, relative: 1, rates: 0.8, dollar: 0.8, credit: 0.8, fear: 1.2, bitcoin: 1.2, timing: 1.5,
-    options: 1.6, shorts: 1.2, dividend: 1, social: 1.3 },
+    options: 1.2, shorts: 0.8, dividend: 1, social: 1 },
 };
 
 // ---- Precedent: what this stock did after its own past events of the same
@@ -434,10 +605,12 @@ function precedentDriver(p, strategy) {
   const wts = m.map((x, i) => 1 / (1 + 0.3 * (x.rank != null ? x.rank : i)));
   const avgEx = m.reduce((a, x, i) => a + x.excess * wts[i], 0) / wts.reduce((a, b) => a + b, 0);
   const scale = strategy === 'daytrade' ? 0.04 : 0.25;          // a 25-point beat over a year is a full vote
-  const v = clamp(avgEx / scale, -1, 1);
+  // Two to six events is a small sample, so the vote shrinks toward nothing
+  // unless several agree: 2 events count 40%, 6 count 67%.
+  const v = clamp(avgEx / scale, -1, 1) * (m.length / (m.length + 3));
   const noun = KIND_NOUN[p.kind] || 'similar events';
   const say = v > 0.25 ? `how it rose after past ${noun}` : v < -0.25 ? `how it fell after past ${noun}` : null;
-  return { key: 'precedent', v, w: 0.14, say, avgExcess: avgEx, n: m.length };
+  return { key: 'precedent', v, w: 0.08, say, avgExcess: avgEx, n: m.length };
 }
 
 // ---- Combine ----
@@ -446,13 +619,9 @@ function weigh(input) {
   const m = input.metric || {};
   const beta = num(m.beta), pe = num(m.peTTM ?? m.peBasicExclExtraTTM);
   const closes = input.closes || null;
-  let ytd = null;
-  if (input.bars && input.bars.length) {
-    const y = String(new Date(now).getUTCFullYear());
-    const first = input.bars.find(b => String(b.date || '').startsWith(y));
-    if (first && first.close > 0) ytd = input.bars[input.bars.length - 1].close / first.close - 1;
-  }
-  const timing = timingDriver(now, ytd);
+  const timing = timingDriver(now);
+  const ind = input.profile && input.profile.finnhubIndustry;
+  const mcapM = num(m.marketCapitalization) ?? (input.profile ? num(input.profile.marketCapitalization) : null);
   const last = closes && closes.length ? closes[closes.length - 1] : (input.options && input.options.price) || null;
   // Backup when Nasdaq's consensus pages do not answer (they can block cloud
   // servers): Finnhub's latest buy/hold/sell counts, which the server already
@@ -469,20 +638,24 @@ function weigh(input) {
     precedentDriver(input.precedent, input.strategy),
     chartDriver(input.rating),
     newsDriver(input.news, input.filings, now),
-    earningsDriver(input.earnings, now),
+    earningsDriver(input.earnings, now, mcapM),
     analystDriver(input.recs),
     insiderDriver(input.insiders, now),
     fundamentalsDriver(input.metric, fwd ? fwd.growth : null),
     marketDriver(input.spy, beta),
     relativeDriver(closes, input.spy),
-    ratesDriver(input.t10, pe, beta),
-    dollarDriver(input.usd),
-    creditDriver(input.hy),
+    ratesDriver(input.real10 || input.t10, pe, beta),
+    dollarDriver(input.usd, ind),
+    creditDriver(input.hy, input.nfci),
+    momentumDriver(closes),
+    lotteryDriver(closes, input.spy),
+    seasonDriver(input.bars, input.spyBars, now),
+    oilDriver(ind, input.oil),
     vixDriver(input.vixRatio),
     cryptoDriver(input.symbol, input.btc),
     timing,
     optionsDriver(input.options, now, input.symbol),
-    shortDriver(input.shortRatios),
+    shortDriver(input.shortInterest),
     dividendDriver(input.dividends, now),
     socialDriver(input.social, now),
   ].filter(Boolean);
@@ -496,6 +669,8 @@ function weigh(input) {
   // Earnings within days: the report itself can swamp everything else,
   // far more over the next few days than over the next year.
   if (risk) score *= input.strategy === 'daytrade' ? 0.5 : 0.85;
+  const macro = macroRisk(now);
+  if (macro && input.strategy === 'daytrade') score *= 0.8;
   const lean = score >= 0.1 ? 'up' : score <= -0.1 ? 'down' : 'mixed';
   const dir = lean === 'up' ? 1 : lean === 'down' ? -1 : 0;
   // The few reasons named in public: strongest pushes in the lean's
@@ -510,7 +685,7 @@ function weigh(input) {
     lean, label: lean === 'up' ? 'Leans up' : lean === 'down' ? 'Leans down' : 'Mixed',
     score: Math.round(score * 100), count: ds.length,
     reasons: forIt.map(d => d.say), against: against.map(d => d.say),
-    earningsIn: risk ? risk.days : null, opex: timing.opex,
+    earningsIn: risk ? risk.days : null, opex: timing.opex, macro: macro ? macro.kind : null,
     exDivIn: (ds.find(d => d.key === 'dividend') || {}).exIn ?? null,
     gamma: (ds.find(d => d.key === 'options') || {}).gamma || null,
     pin: (ds.find(d => d.key === 'options') || {}).pin || null,
@@ -522,4 +697,4 @@ function weigh(input) {
   };
 }
 
-module.exports = { weigh, measureEvents, precedentDriver, KIND_NOUN, forwardDriver, HORIZON, EVENTS, CRYPTO_LINKED, optionsDriver, shortDriver, dividendDriver, socialDriver, parseOcc, newsDriver, timingDriver, thirdFriday };
+module.exports = { momentumDriver, lotteryDriver, seasonDriver, oilDriver, macroRisk, ITEMS, weigh, measureEvents, precedentDriver, KIND_NOUN, forwardDriver, HORIZON, EVENTS, CRYPTO_LINKED, optionsDriver, shortDriver, dividendDriver, socialDriver, parseOcc, newsDriver, timingDriver, thirdFriday };

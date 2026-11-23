@@ -785,7 +785,7 @@ function companyFacts(symbol) {
     const day = (t) => new Date(t).toISOString().slice(0, 10), now = Date.now();
     const s = encodeURIComponent(symbol);
     const safe = (pr) => pr.catch(() => null);
-    const [news, recs, earn, cal, ins, met, fil] = await Promise.all([
+    const [news, recs, earn, cal, ins, met, fil, prof] = await Promise.all([
       safe(fetchFinnhubNews(symbol)),
       safe(finnhubGet(`/stock/recommendation?symbol=${s}`)),
       safe(finnhubGet(`/stock/earnings?symbol=${s}`)),
@@ -793,6 +793,7 @@ function companyFacts(symbol) {
       safe(finnhubGet(`/stock/insider-transactions?symbol=${s}`)),
       safe(finnhubGet(`/stock/metric?symbol=${s}&metric=all`)),
       safe(finnhubGet(`/stock/filings?symbol=${s}&from=${day(now - 30 * 86400e3)}&to=${day(now)}`)),
+      safe(finnhubGet(`/stock/profile2?symbol=${s}`)),
     ]);
     const next = cal && Array.isArray(cal.earningsCalendar)
       ? cal.earningsCalendar.map(e => e.date).filter(Boolean).sort()[0] || null : null;
@@ -804,6 +805,7 @@ function companyFacts(symbol) {
       insiders: ins && Array.isArray(ins.data) ? ins.data.slice(0, 200) : [],
       metric: met && met.metric ? met.metric : null,
       filings: Array.isArray(fil) ? fil.slice(0, 60).map(f => ({ form: f.form })) : [],
+      profile: prof && prof.finnhubIndustry ? { finnhubIndustry: prof.finnhubIndustry, marketCapitalization: prof.marketCapitalization } : null,
     };
   });
 }
@@ -832,7 +834,7 @@ function optionChain(symbol) {
     const now = Date.now();
     const keep = (d.options || []).filter(r => {
       const k = DRV.parseOcc(r.option); return k && (k.exp - now) / 86400e3 <= 60 && (k.exp - now) / 86400e3 >= -1;
-    }).map(r => ({ option: r.option, volume: r.volume, open_interest: r.open_interest, bid: r.bid, ask: r.ask, gamma: r.gamma }));
+    }).map(r => ({ option: r.option, volume: r.volume, open_interest: r.open_interest, bid: r.bid, ask: r.ask, gamma: r.gamma, iv: r.iv }));
     return { price: Number(d.current_price) || Number(d.close) || null, iv30ChangePct: Number(d.iv30_change_percent), options: keep };
   });
 }
@@ -906,6 +908,54 @@ function analystForward(symbol) {
     };
   });
 }
+// Short interest, twice a month (FINRA's figures, via Nasdaq's quote pages).
+function shortInterest(symbol) {
+  return cached('si:' + symbol, 12 * 3600e3, async () => {
+    const t = await getText('api.nasdaq.com', '/api/quote/' + encodeURIComponent(symbol) + '/short-interest?assetClass=stocks', 1e6, true);
+    const rows = t && (((JSON.parse(t).data || {}).shortInterestTable || {}).rows);
+    if (!Array.isArray(rows) || !rows.length) return null;
+    const n = (x) => Number(String(x || '').replace(/,/g, ''));
+    return rows.slice(0, 8).map(r => ({ date: r.settlementDate, interest: n(r.interest), dtc: Number(r.daysToCover) || null }));
+  });
+}
+// SEC EDGAR 8-K item codes from the last month. The SEC asks every
+// automated client to name itself with a contact address, so this runs only
+// when SEC_USER_AGENT is set (for example "ChartGauge you@example.com").
+const SEC_UA = process.env.SEC_USER_AGENT || '';
+function secGet(host, path, cap) {
+  return new Promise((resolve, reject) => {
+    const r = https.request({ method: 'GET', hostname: host, path, headers: { 'User-Agent': SEC_UA, Accept: 'application/json' } }, resp => {
+      if (resp.statusCode !== 200) { resp.resume(); return reject(new Error('sec ' + resp.statusCode)); }
+      let d = ''; resp.setEncoding('utf8');
+      resp.on('data', c => { d += c; if (d.length > cap) r.destroy(new Error('too large')); });
+      resp.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { reject(e); } });
+    });
+    r.on('error', reject); r.setTimeout(15000, () => r.destroy(new Error('upstream timeout'))); r.end();
+  });
+}
+function secCiks() {
+  return cached('sec:ciks', 7 * 86400e3, async () => {
+    const j = await secGet('www.sec.gov', '/files/company_tickers.json', 5e6);
+    const m = new Map();
+    for (const k of Object.keys(j || {})) m.set(String(j[k].ticker).toUpperCase(), String(j[k].cik_str).padStart(10, '0'));
+    return m;
+  });
+}
+function secFilings(symbol) {
+  if (!SEC_UA || symbol.includes('/')) return Promise.resolve(null);
+  return cached('sec8k:' + symbol, 3 * 3600e3, async () => {
+    const cik = (await secCiks()).get(symbol.replace('.', '-'));
+    if (!cik) return [];
+    const j = await secGet('data.sec.gov', '/submissions/CIK' + cik + '.json', 8e6);
+    const r = (j && j.filings && j.filings.recent) || {};
+    const out = [], cutoff = Date.now() - 30 * 86400e3;
+    for (let i = 0; i < (r.form || []).length && i < 200; i++) {
+      if (Date.parse(r.filingDate[i]) < cutoff) break;
+      if (/^8-K/.test(r.form[i]) && r.items && r.items[i]) out.push({ form: r.form[i], date: r.filingDate[i], items: r.items[i] });
+    }
+    return out;
+  });
+}
 const EXTRAS_OFF = new Set(String(process.env.DRIVER_EXTRAS_OFF || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean));
 const extra = (name, fn) => EXTRAS_OFF.has(name) ? null : fn();
 // ---- Precedent: past events of the same kind for this company ----
@@ -950,7 +1000,9 @@ function nasdaqHistory(symbol) {
 async function precedentFor(symbol, facts, barsP, spyP, strategy) {
   const nd = DRV.newsDriver(facts && facts.news, facts && facts.filings, Date.now());
   const top = nd && nd.top;
-  if (!top || Math.abs(top.v) < 0.15) return null;          // only for an event that matters
+  // Only for an event that matters, or one whose past record is the point
+  // (a launch now barely votes by itself; its history is what can count).
+  if (!top || (Math.abs(top.v) < 0.15 && !DRV.KIND_NOUN[top.kind])) return null;
   const ev = await pastEvents(symbol, top.kind, top.titles).catch((e) => { logError(e); return null; });
   if (!ev || ev.length < 2) return null;
   const longest = async (p, sym) => {
@@ -987,8 +1039,12 @@ async function gatherDrivers(symbol, rating, strategy) {
     crypto ? null : safe(fredSeries('DGS10')),
     crypto ? null : safe(fredSeries('DTWEXBGS')),
     crypto ? null : safe(fredSeries('BAMLH0A0HYM2')),
+    crypto ? null : safe(fredSeries('DFII10')),
+    crypto ? null : safe(fredSeries('NFCI')),
+    crypto ? null : safe(fredSeries('DCOILWTICO')),
+    crypto ? null : safe(extra('sec', () => secFilings(symbol))),
     crypto ? null : safe(extra('options', () => optionChain(symbol))),
-    crypto ? null : safe(extra('shorts', () => shortRatios(symbol))),
+    crypto ? null : safe(extra('shorts', () => shortInterest(symbol))),
     crypto ? null : safe(extra('dividends', () => dividends(symbol))),
     crypto ? null : safe(extra('social', () => stocktwits(symbol))),
     crypto ? null : safe(extra('forward', () => analystForward(symbol))),
@@ -996,17 +1052,20 @@ async function gatherDrivers(symbol, rating, strategy) {
   ].map(timely));
   // A slow source must not hold up the summary: whatever arrived in time is used.
   const got = await work;
-  const [facts, bars, spy, btc, t10, usd, hy, options, shortR, divs, social, forward, precedent] = got;
+  const [facts, bars, spy, btc, t10, usd, hy, real10, nfci, oil, sec, options, shortI, divs, social, forward, precedent] = got;
   const vixRatio = vixData && vixData.ratio.length ? vixData.ratio[vixData.ratio.length - 1] : null;
   if (!vixData) loadVix();
   const out = DRV.weigh(Object.assign({}, facts || {}, {
     symbol, rating, bars: bars ? bars.prices : null, closes: closesOf(bars),
     spy: closesOf(spy), btc: closesOf(btc), t10, usd, hy, vixRatio: crypto ? null : vixRatio,
-    options, shortRatios: shortR, dividends: divs, social, forward, strategy, precedent,
+    real10, nfci, oil, spyBars: spy && spy.prices ? spy.prices : null,
+    filings: [...((facts && facts.filings) || []), ...(sec || [])],
+    options, shortInterest: shortI, dividends: divs, social, forward, strategy, precedent,
   }));
   // Which sources answered, for the admin check (never sent to readers).
   if (out) out.sources = { finnhub: !!facts, bars: !!bars, spy: !!spy, fred: !!(t10 && usd && hy), vix: vixRatio != null,
-    options: !!(options && options.options && options.options.length), shorts: !!shortR, dividends: !!divs,
+    options: !!(options && options.options && options.options.length), shorts: !!shortI, sec: SEC_UA ? !!sec : 'off',
+    realYield: !!real10, nfci: !!nfci, oil: !!oil, profile: !!(facts && facts.profile), dividends: !!divs,
     social: !!(social && social.length), forward: !!forward,
     precedent: precedent ? precedent.measured.length : 'none' };
   if (out) {
@@ -1027,7 +1086,15 @@ const AI_GUARD = 'Rules that always apply: never tell the reader to buy, sell or
 // event that could swamp it. Nothing else is listed.
 // The overall lean travels with every report so the page's headline reading
 // can show it instead of the chart-only lean.
-const leanOf = (p) => p.drivers ? { label: p.drivers.label, tone: p.drivers.lean === 'up' ? 'bullish' : p.drivers.lean === 'down' ? 'bearish' : 'neutral' } : null;
+// The gauge shows it on 0-100 (50 is balanced), with the few strongest
+// pushes each way; the rest of the weighing stays server-side.
+const leanOf = (p) => p.drivers ? {
+  label: p.drivers.label, tone: p.drivers.lean === 'up' ? 'bullish' : p.drivers.lean === 'down' ? 'bearish' : 'neutral',
+  gauge: Math.max(0, Math.min(100, Math.round(50 + p.drivers.score / 2))),
+  up: p.drivers.lean === 'down' ? p.drivers.against : p.drivers.reasons,
+  down: p.drivers.lean === 'down' ? p.drivers.reasons : p.drivers.against,
+  count: p.drivers.count,
+} : null;
 const joinAnd = (a) => a.length <= 1 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1];
 function ruleBasedReport(p) {
   const d = p.drivers, r = p.rating || {};
@@ -1048,6 +1115,7 @@ function ruleBasedReport(p) {
   else if (d.exDivIn != null) two = `It goes ex-dividend ${d.exDivIn === 0 ? 'today' : d.exDivIn === 1 ? 'tomorrow' : 'in ' + d.exDivIn + ' days'}, which trims the price by the payout.`;
   else if (d.opex && d.pin) two = `This week's ${d.opex} can pin it near $${d.pin}.`;
   else if (d.opex) two = `This week's ${d.opex} can pin the price near big strikes.`;
+  else if (d.macro) two = `${d.macro.replace(/^./, c => c.toUpperCase())} is due within days and can move the whole market.`;
   else if (d.gamma === 'short') two = 'Options positioning can make moves bigger than usual.';
   return { summary: (one + (two ? ' ' + two : '')).replace(/^./, c => c.toUpperCase()), bull: [], bear: [], conclusion: '', lean: leanOf(p) };
 }
@@ -1101,7 +1169,7 @@ function reportPrompt(p) {
   const system = 'You write the one-glance summary on a stock page for active traders. Respond with ONLY a JSON object: {"summary": string}. The summary is AT MOST two short sentences, about 30 words in total. Sentence one: which way the stock leans overall (up, down or mixed) and the one to three strongest reasons, in plain words. Sentence two, only if useful: the main thing pushing the other way, or an upcoming event that could override it. Name only the reasons given to you; never list the other factors, never mention scores, weights or how many factors were weighed, and never invent news, numbers or targets. Say "leans up/down", never "will". Write in plain sentences and do not use em dashes. ' + AI_GUARD;
   const user = `STOCK: ${p.symbol}\nHORIZON: ${p.strategy === 'daytrade' ? 'the next few days' : 'the long term'}\n`
     + (d ? `OVERALL LEAN: ${d.label}\n${d.lean === 'mixed' ? 'STRONGEST PUSH UP' : 'STRONGEST REASONS FOR IT'}: ${d.reasons.join('; ') || 'none stand out'}\n${d.lean === 'mixed' ? 'STRONGEST PUSH DOWN' : 'PUSHING THE OTHER WAY'}: ${d.against.join('; ') || 'nothing notable'}\n`
-         + (d.earningsIn != null ? `EARNINGS DUE IN ${d.earningsIn} DAYS\n` : '') + (d.opex ? `THIS WEEK: ${d.opex}${d.pin ? ', biggest nearby strike $' + d.pin : ''}\n` : '')
+         + (d.earningsIn != null ? `EARNINGS DUE IN ${d.earningsIn} DAYS\n` : '') + (d.opex ? `THIS WEEK: ${d.opex}${d.pin ? ', biggest nearby strike $' + d.pin : ''}\n` : '') + (d.macro ? `DUE WITHIN DAYS: ${d.macro}\n` : '')
          + (d.exDivIn != null ? `EX-DIVIDEND IN ${d.exDivIn} DAYS\n` : '')
          + (d.gamma === 'short' ? 'OPTIONS POSITIONING MAY AMPLIFY MOVES\n' : '')
          + (d.precedent ? `PAST ${d.precedent.kind.toUpperCase()} FOR THIS COMPANY (stock vs the S&P 500 over the following ${p.strategy === 'daytrade' ? 'week' : 'year'}): ${d.precedent.events.map(e => `${e.name} ${e.year}: ${e.excess >= 0 ? '+' : ''}${e.excess} points`).join('; ')}. You may name one as the reason, e.g. "after GTA V in 2013 it beat the market by 40 points". Say it is the past, not a promise.\n` : '')

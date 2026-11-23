@@ -301,7 +301,7 @@
       : action === 'Sell'
         ? `<span class="none">did worse than</span> simply being invested: its average return was ${by} points below the base rate, and it was higher less often`
         : `<span class="none">made no difference</span> versus simply being invested: the gap from the base rate is inside the margin of error`;
-    el.innerHTML = `Measured on this symbol's own history: at scores near <b>${rt.score}</b>, it was higher `
+    el.innerHTML = `Measured on this symbol's own history: at chart scores near <b>${rt.score}</b>, it was higher `
       + `${e.horizon} bars later <b>${e.winRate}%</b> of the time across <b>${e.n}</b> past occurrences. `
       + `On any bar it was higher <b>${e.baseWinRate}%</b> of the time, so this setup ${verdict}.`;
   }
@@ -2016,6 +2016,8 @@
       arc.style.strokeDashoffset = GAUGE_C * (1 - (rt.score || 0) / 100);
       arc.style.stroke = rt.tone === 'bullish' ? 'var(--good)' : rt.tone === 'bearish' ? 'var(--bad)' : 'var(--ai)';
       countUp('gScore', rt.score, (v) => String(Math.round(v)));
+      $('aiLead').textContent = 'Indicator score';
+      $('leanFactors').classList.add('hidden');
       $('aiRec').textContent = rt.label || '—';
       $('aiRec').className = 'ai-rec ' + (rt.tone || 'neutral');
       const conf = agreePct(rt.agreeing, rt.groupCount);
@@ -2184,7 +2186,25 @@
     $('vAction').textContent = lean.label;
     $('verdict').className = 'verdict ' + (lean.tone || 'neutral');
     const chart = (call && call.label) || rt.label;
-    $('vMeta').textContent = [chart ? 'Chart alone: ' + chart.toLowerCase() : '', rt.score != null ? `score ${rt.score}/100` : ''].filter(Boolean).join(' · ');
+    $('vMeta').textContent = [lean.gauge != null ? `score ${lean.gauge}/100` : '', chart ? 'chart alone: ' + chart.toLowerCase() : ''].filter(Boolean).join(' · ');
+    // The gauge shows the same weighing: company events, analysts, momentum,
+    // options, short interest, rates, credit, the market and the rest, with
+    // the few strongest pushes each way named underneath.
+    if (lean.gauge != null) {
+      const GAUGE_C = 2 * Math.PI * 52, arc = $('gaugeArc');
+      arc.style.strokeDashoffset = GAUGE_C * (1 - lean.gauge / 100);
+      arc.style.stroke = lean.tone === 'bullish' ? 'var(--good)' : lean.tone === 'bearish' ? 'var(--bad)' : 'var(--ai)';
+      countUp('gScore', lean.gauge, (x) => String(Math.round(x)));
+      $('aiLead').textContent = 'Everything weighed' + (lean.count ? ` (${lean.count} factors)` : '');
+      $('aiRec').textContent = lean.label;
+      $('aiRec').className = 'ai-rec ' + (lean.tone || 'neutral');
+      const cap = (x) => x.replace(/^./, c => c.toUpperCase());
+      const parts = [];
+      if (lean.up && lean.up.length) parts.push(`<span class="lf-up">Up: ${esc(lean.up.map(cap).join(', '))}</span>`);
+      if (lean.down && lean.down.length) parts.push(`<span class="lf-down">Down: ${esc(lean.down.map(cap).join(', '))}</span>`);
+      $('leanFactors').innerHTML = parts.join('');
+      $('leanFactors').classList.toggle('hidden', !parts.length);
+    }
   }
   function applyReport(j) {
     applyLean(j.lean);

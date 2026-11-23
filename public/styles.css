@@ -574,6 +574,9 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .ai-score-lead { font-size: 13px; font-weight: 500; color: var(--muted); margin-bottom: 6px; }
 .ai-rec { font-size: 24px; font-weight: 700; line-height: 1.1; }
 .ai-rec.bullish { color: var(--good); } .ai-rec.bearish { color: var(--bad); } .ai-rec.neutral { color: var(--text); }
+.lean-factors { margin: 6px 0 0; font-size: 13px; line-height: 1.45; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+.lean-factors .lf-up::before, .lean-factors .lf-down::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.lean-factors .lf-up::before { background: var(--good); } .lean-factors .lf-down::before { background: var(--bad); }
 .ai-score-meta { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-top: 8px; }
 .ai-score-meta b { color: var(--text); font-weight: 700; }
 .ai-score-meta .risk-Low { color: var(--good); } .ai-score-meta .risk-Moderate { color: var(--warn); }
