@@ -367,7 +367,7 @@
       `<div class="levels-grid">${rows.join('')}</div>`
       + (O ? `<p class="lv-odds-note">The chances are simulated from this symbol's own past daily moves at today's volatility. They measure distance, not direction: a far target is reached less often. Checked on 2016 to 2026 prices, the stated chances matched what happened to within 3 points. Past moves do not guarantee future ones.</p>` : '')
       + `<p class="lv-links"><a href="/practice" class="lv-practice" id="lvPractice">Practice this trade with pretend money &rarr;</a>`
-      + `<span>New to stops and R? <a href="/learn/risk" data-lesson="risk">Risk Management</a> · <a href="/learn/levels" data-lesson="levels">Support and Resistance</a></span></p>`;
+      + `<span>New to stops and R? <a href="/learn/risk" data-lesson="risk">Risk Management</a> · <a href="/learn/technical" data-lesson="technical">Indicators and Patterns</a></span></p>`;
     const t1 = targetsFor(L)[0];
     practicePlan = { symbol: d.symbol, side: dirWord, stop: f(L.stop), target: t1 ? f(t1.price) : null };
     $('levelsBody').querySelectorAll('.tp-btn').forEach(b => b.addEventListener('click', () => {
@@ -900,7 +900,7 @@
     { v: 'watchlist', t: 'Watchlist', d: 'The stocks you follow, with live prices and one-click analysis.' },
     { v: 'alerts', t: 'Alerts',    d: 'Set a target above or below the current price and get flagged when a stock crosses it.', badge: 'alertBadge' },
     { v: 'practice', t: 'Practice',  d: 'A practice account with pretend money, so you can rehearse position sizing against your own risk limits. Nothing here touches a broker.' },
-    { v: 'learn', t: 'Learn',     d: 'Nineteen short lessons with quizzes, split by whether they apply to day trading or long-term investing.' },
+    { v: 'learn', t: 'Learn',     d: 'Twenty-six short lessons with quizzes, from protecting your money first to what the evidence says about charts and trading.' },
     { v: 'compare', t: 'Compare',   d: 'Put two or more companies side by side on valuation, margins, growth and debt.' },
     { v: 'screener', t: 'Screener',  d: 'Filter a curated list of stocks by sector, market capitalization and price.' },
     { v: 'pricing', t: 'Billing',   d: 'What a free account includes, what Pro adds, and what each billing period works out to per month.' },
@@ -4572,6 +4572,7 @@
   }
   function openLesson(id) {
     if (!LESSONS.length) { $('learnHost').innerHTML = skelLines(6); ensureLessons().then(() => LESSONS.length ? openLesson(id) : renderLearnGrid()); return; }
+    id = ({ levels: 'technical', growth: 'styles', value: 'styles' })[id] || id;
     const l = LESSONS.find(x => x.id === id); if (!l) return renderLearnGrid();
     toTop();
     let html = `<div class="learn-detail"><button type="button" class="link-btn learn-back" id="learnBack">← All lessons</button>`;

@@ -4909,7 +4909,7 @@ const VIEW_SEO = {
   'watchlist': { view: 'watchlist', noindex: true, title: 'Your watchlist | ChartGauge',
     desc: 'Keep the stocks you follow in one place, with live prices and one-click analysis.' },
   'learn': { view: 'learn', title: 'Learn trading and investing: free lessons with quizzes | ChartGauge',
-    desc: 'Nineteen short lessons, each with a quiz, on market basics, technical and fundamental analysis, valuation, financial statements, risk management, order types, candlesticks, volume, trading psychology, costs and index funds.' },
+    desc: 'Twenty-six short lessons, each with a quiz: market basics, emergency funds, compounding, risk, diversification and index funds, fees, accounts and taxes, investor behavior, scams, order types, financial statements, valuation, what moves a stock, the real odds in short-term trading, what tests show about charts and indicators, margin, options and speculation.' },
   'practice': { view: 'practice', title: 'Paper trading: practice with pretend money | ChartGauge',
     desc: 'A practice account with a starting balance you choose. Fills use the live price, positions update in real time, and a risk meter checks the book against your limits. No real money.' },
   'verify': { view: 'verify', noindex: true, title: 'Enter your sign-in code | ChartGauge',
@@ -4932,6 +4932,8 @@ function lessonSeo(id) {
   };
 }
 
+// Lessons that were merged into another, old id -> new id.
+const LESSON_MOVED = { levels: 'technical', growth: 'styles', value: 'styles' };
 // The lessons file is the client's, loaded here so one copy feeds both.
 let LESSONS = [], LESSON_INDEX = {};
 try {
@@ -4963,7 +4965,7 @@ const FEATURED = ['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AMD','NFLX'
 // When the lessons were first published and last revised (git history of
 // public/lessons.js). Update LESSONS_MODIFIED when the lessons change.
 const LESSONS_PUBLISHED = '2026-07-27';
-const LESSONS_MODIFIED = '2026-11-08';
+const LESSONS_MODIFIED = '2026-11-23';
 
 const esc = (v) => String(v == null ? '' : v)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -5564,6 +5566,11 @@ const server = http.createServer(async (req, res) => {
     // TRACK_RECORD=off takes the public record down again; old links land on home.
     if (!TRACK_RECORD_ON && /^\/accuracy\/?$/.test(url) && (req.method === 'GET' || req.method === 'HEAD')) {
       res.writeHead(301, { Location: '/' }); return res.end();
+    }
+    // Lessons merged into others keep their old addresses working.
+    const movedLesson = /^\/learn\/([a-z]+)\/?$/.exec(url);
+    if (movedLesson && LESSON_MOVED[movedLesson[1]] && (req.method === 'GET' || req.method === 'HEAD')) {
+      res.writeHead(301, { Location: '/learn/' + LESSON_MOVED[movedLesson[1]] }); return res.end();
     }
     if (url.startsWith('/api/')) {
       usage.total++;
