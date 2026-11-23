@@ -2116,6 +2116,7 @@
     if (lastData.locked || !call || !call.action) { $('homeCall').classList.add('hidden'); return; }
     $('homeCallV').textContent = call.label || call.action;
     $('homeCallV').className = 'home-call-v ' + (call.tone || 'neutral');
+    markRisk($('homeCall'), leanAccuracy(lastData, call.label));
     const t = L ? targetsFor(L)[0] : null;
     $('homeCallLv').innerHTML = L
       ? `<span><i class="lv-dot bad"></i>Stop <b>${esc(pxFmt(L.stop))}</b></span>`
@@ -2193,6 +2194,31 @@
   // The headline reading shows the lean with everything weighed (chart,
   // company news, analysts, market, options, timing) once the report brings
   // it; the chart-only lean moves to the small line beneath.
+  // ---- Accuracy tag, per stock (Nov 23 2026) ----
+  // How often the lean being shown has been right on this stock: the fair
+  // chance of a higher price after setups like this (calibrated, so it is
+  // the figure that held up on later years) for "up", or 100 minus it for
+  // "down". Under 40: "High risk · likely inaccurate". 40 to 55: a neutral
+  // "About a coin flip". Above 55, or a mixed reading (no call): no tag.
+  const RISK_BELOW = 40, FLIP_BELOW = 55;
+  const dirOf = (label) => /\bup\b/i.test(label || '') ? 'up' : /\bdown\b/i.test(label || '') ? 'down' : null;
+  function leanAccuracy(d, label) {
+    const f = d && d.call && d.call.freq, dir = dirOf(label);
+    if (!f || f.est == null || !dir) return null;
+    return dir === 'up' ? f.est : 100 - f.est;
+  }
+  function markRisk(scope, acc) {
+    if (!scope) return;
+    const mode = acc == null ? null : acc < RISK_BELOW ? 'risk' : acc < FLIP_BELOW ? 'flip' : null;
+    scope.classList.toggle('risk-on', mode === 'risk');
+    scope.classList.toggle('flip-on', mode === 'flip');
+    scope.querySelectorAll('.conf-tag.risk.dyn').forEach(t => {
+      t.classList.toggle('flip', mode === 'flip');
+      const base = mode === 'flip' ? 'About a coin flip' : 'High risk · likely inaccurate';
+      t.textContent = mode && t.classList.contains('num') ? `${base} (${mode === 'flip' ? '' : 'right about '}${acc} in 100 on this stock)` : base;
+      t.title = mode ? `Readings like this have been right about ${acc} times in 100 on this stock.` : '';
+    });
+  }
   function showChartCall(d) {
     const rt = d.rating || {}, v = d.verdict || {}, call = d.call;
     $('vKicker').textContent = 'Indicators';
@@ -2201,7 +2227,9 @@
       const fq = call.freq;
       $('vMeta').textContent = [rt.score != null ? `score ${rt.score}/100` : '', fq ? `higher after ${fq.up} of 100 similar setups (any day: ${fq.base})` + (fq.est != null && fq.est !== fq.up ? ` · fair chance about ${fq.est} in 100` : '') : ''].filter(Boolean).join(' · ');
       $('verdict').className = 'verdict ' + (call.tone || 'neutral');
+      markRisk($('result'), leanAccuracy(d, call.label));
     } else {
+      markRisk($('result'), null);
       $('vAction').textContent = rt.label || v.action || (d.signal && d.signal.label) || '';
       $('vMeta').textContent = rt.score != null ? rt.score + '/100'
         : rt.insufficient ? '' : (v.score != null ? 'score ' + v.score : '');
@@ -2220,6 +2248,7 @@
     $('vKicker').textContent = 'Everything weighed';
     $('vAction').textContent = lean.label;
     $('verdict').className = 'verdict ' + (lean.tone || 'neutral');
+    markRisk($('result'), leanAccuracy(d, lean.label));
     const chart = (call && call.label) || rt.label;
     $('vMeta').textContent = [lean.gauge != null ? `score ${lean.gauge}/100` : '', chart ? 'chart alone: ' + chart.toLowerCase() : ''].filter(Boolean).join(' · ');
     // The gauge shows the same weighing: company events, analysts, momentum,
