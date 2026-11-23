@@ -2733,3 +2733,13 @@ html.phone .best-num { font-size: 28px; }
 .flip-on .conf-tag.risk.dyn { display: inline-flex; }
 .conf-tag.risk.flip { color: var(--muted); border-color: var(--border-strong); background: var(--wash, rgba(255,255,255,.04)); }
 :root[data-theme="light"] .conf-tag.risk.flip { color: var(--muted); }
+/* Home: three stocks to start with. */
+.start-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.start-card { display: flex; flex-direction: column; gap: 4px; padding: 20px; border: 1px solid var(--border); border-radius: 16px; background: var(--card); color: var(--text); text-decoration: none; }
+.start-card:hover { border-color: var(--border-strong); }
+.start-sym { font-size: 24px; font-weight: 600; letter-spacing: -.01em; }
+.start-name { font-size: 14px; color: var(--muted); }
+.start-px { margin-top: 12px; font-size: 16px; font-variant-numeric: tabular-nums; min-height: 24px; }
+.start-px .up { color: var(--good); } .start-px .down { color: var(--bad); }
+.start-go { margin-top: 14px; font-size: 14px; font-weight: 600; color: var(--accent); }
+@media (max-width: 760px) { .start-grid { grid-template-columns: 1fr; gap: 10px; } .start-card { flex-direction: row; flex-wrap: wrap; align-items: baseline; column-gap: 10px; padding: 16px; } .start-px { margin: 0 0 0 auto; } .start-go { flex-basis: 100%; margin-top: 8px; } }

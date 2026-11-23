@@ -1067,7 +1067,7 @@
   // comes down from above on an ease-out (fast, then settling). Whatever is
   // already in sight when first seen is left alone, so the first view never
   // flickers and live quotes re-rendering in place never replay.
-  const REVEAL_SEL = '.home-chart, .record-h, .record-line, .home-h, .steps > li, .tool, .plan2, .faq, .home-end, .card, .learn-card, .plan-card, .quote-card, .wl-card';
+  const REVEAL_SEL = '.start-card, .home-chart, .record-h, .record-line, .home-h, .steps > li, .tool, .plan2, .faq, .home-end, .card, .learn-card, .plan-card, .quote-card, .wl-card';
   const canReveal = ('IntersectionObserver' in window) && !matchMedia('(prefers-reduced-motion: reduce)').matches;
   let scrollUp = false, lastScrollY = 0;
   const scrollY = () => document.body.scrollTop || document.documentElement.scrollTop || window.scrollY || 0;
@@ -3494,6 +3494,18 @@
     const up = q.changePct >= 0;
     return `<div class="quote-card" data-s="${esc(q.symbol)}"><div class="quote-sym">${esc(q.symbol)}</div><div class="quote-name">${esc(nameOf[q.symbol] || '')}</div><div class="quote-price">${(+q.price).toFixed(2)}</div><div class="quote-chg ${up ? 'up' : 'down'}">${up ? '▲' : '▼'} ${Math.abs(q.changePct).toFixed(2)}%</div></div>`;
   }
+  // Home: live prices on the three starter stocks.
+  (async function fillStart() {
+    const els = document.querySelectorAll('#homeStart [data-px]');
+    if (!els.length) return;
+    const qs = await getQuotes([...els].map(e => e.dataset.px));
+    els.forEach(e => {
+      const q = qs.find(x => x.symbol === e.dataset.px);
+      if (!q || q.price == null) { e.innerHTML = '<span class="muted">Price not in yet</span>'; return; }
+      const up = q.changePct >= 0;
+      e.innerHTML = `<b>${(+q.price).toFixed(2)}</b> <span class="${up ? 'up' : 'down'}">${up ? '▲' : '▼'} ${Math.abs(q.changePct).toFixed(2)}%</span>`;
+    });
+  })();
   function bindQuoteCards(el) { el.querySelectorAll('.quote-card').forEach(c => c.addEventListener('click', () => goAnalyze(c.dataset.s))); }
   let marketsLoaded = false;
   async function loadMarkets() {
