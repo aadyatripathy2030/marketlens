@@ -2608,3 +2608,79 @@ html.touch #chart { touch-action: pan-y; }
 .hint-touch { display: none; }
 html.touch .hint-touch { display: block; }
 html.touch .hint-mouse { display: none; }
+
+/* ===================================================================
+   Device layouts (Nov 23 2026). Phones get an app-style layout, tablets
+   a roomier one. Both keyed off the classes theme.js puts on <html>.
+   =================================================================== */
+.tabbar { display: none; }
+
+/* ---- Phone ---- */
+/* Bottom tab bar: the main places a thumb away; Menu opens the drawer. */
+html.phone .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 80;
+  padding: 6px max(8px, env(safe-area-inset-left)) calc(6px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-right));
+  background: var(--glass-float, rgba(14,15,20,.94)); border-top: 1px solid var(--border);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+html.weak .tabbar { -webkit-backdrop-filter: none; backdrop-filter: none; }
+.tab-link { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 48px;
+  font: inherit; font-size: 11px; font-weight: 510; letter-spacing: .01em; color: var(--muted); text-decoration: none;
+  background: none; border: 0; border-radius: 12px; cursor: pointer; }
+.tab-link svg { display: block; }
+.tab-link.active { color: var(--text); }
+.tab-link.active svg { stroke-width: 2.2; }
+.tab-link:active { background: var(--wash, rgba(255,255,255,.06)); }
+html.phone body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+html.phone .consent { bottom: calc(76px + env(safe-area-inset-bottom)); }
+html.phone body[data-view="verify"] .tabbar { display: none; }
+html.phone body[data-view="verify"] { padding-bottom: 0; }
+
+/* Header: compact, no hamburger (the tab bar's Menu does that job). */
+html.phone .nav-toggle { display: none; }
+html.phone .topbar { padding: 8px max(16px, env(safe-area-inset-right)) 8px max(16px, env(safe-area-inset-left)); min-height: 52px; }
+html.phone .brand { font-size: 16px; gap: 8px; }
+html.phone .brand-mark { width: 24px; height: 24px; }
+
+/* Home: straight to the search. The long paragraph stays on bigger screens;
+   on a phone the headline and the live SPY reading say it. */
+html.phone .hero-wrap { padding-top: 24px; gap: 24px; }
+html.phone .hero-kicker { font-size: 12px; margin-bottom: 8px; }
+html.phone .hero-h { font-size: 36px; line-height: 1.08; letter-spacing: -.025em; max-width: none; }
+html.phone .hero-sub { display: none; }
+html.phone .hero-search { margin-top: 20px; gap: 10px; }
+html.phone .hero-search .input, html.phone .search .input { min-height: 50px; font-size: 16px; border-radius: 14px; }
+html.phone .hero-search .btn { min-height: 50px; border-radius: 14px; }
+html.phone .hero-assure { font-size: 13px; }
+html.phone .home-sec { padding-top: 48px; }
+html.phone .home-h { font-size: 26px; }
+
+/* Stock page: one swipeable row of example chips, a segmented strategy
+   switch, and the search as one rounded field with its button. */
+html.phone .search { gap: 8px; align-items: stretch; }
+html.phone .search .btn { min-height: 50px; padding: 0 18px; border-radius: 14px; }
+html.phone .examples { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 16px; padding: 0 16px;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, transparent, #000 16px, #000 calc(100% - 24px), transparent); }
+html.phone .examples::-webkit-scrollbar { display: none; }
+html.phone .chip { flex: none; border-radius: 999px; padding: 8px 16px; min-height: 36px; }
+html.phone .strat { min-width: 0; gap: 4px; padding: 4px; border-radius: 14px; background: var(--card); border: 1px solid var(--border); }
+html.phone .strat-btn { padding: 10px 8px; border-radius: 10px; border: 0; background: none; font-size: 14px; }
+html.phone .strat-btn small { display: none; }
+html.phone .strat-btn.active { background: var(--card-hi); color: var(--text); }
+html.phone .card { padding: 16px; border-radius: 16px; margin-bottom: 12px; }
+
+/* Bigger targets for the small controls. */
+html.phone :is(.range-btn, .tp-btn, .ov, .dir-btn) { min-height: 40px; }
+
+/* ---- Tablet ---- */
+/* Enough width for the text nav, so it shows instead of the hamburger. */
+html.tablet .nav { display: flex; }
+html.tablet .nav-toggle { display: none; }
+html.tablet .topbar { min-height: 60px; }
+html.tablet .tools { grid-template-columns: repeat(2, 1fr); }
+html.tablet :is(.btn, .chip, .range-btn, .tp-btn, .ov) { min-height: 44px; }
+html.tablet .card { border-radius: 18px; }
+/* Fixes from the device screenshots. */
+html.phone .strat-btn, html.phone .strat-btn.active { min-height: 0; height: 40px; border: 0; box-shadow: none; }
+html.tablet .topbar-right #modeTag { display: none; }
+html.tablet .nav { margin-left: 12px; gap: 0; }
+html.tablet .nav-link, html.tablet .nav-more { padding: 8px 10px; }
+@media (max-width: 900px) { html.tablet .nav-link[data-view="pricing"] { display: none; } }

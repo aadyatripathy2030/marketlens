@@ -940,6 +940,7 @@
     scrim.hidden = false;
     $('navToggle').setAttribute('aria-expanded', 'true');
     if ($('navMore')) $('navMore').setAttribute('aria-expanded', 'true');
+    if ($('tabMore')) $('tabMore').setAttribute('aria-expanded', 'true');
     const first = drawer.querySelector('.drawer-close');
     if (first) first.focus();
   }
@@ -951,10 +952,12 @@
     scrim.hidden = true;
     $('navToggle').setAttribute('aria-expanded', 'false');
     if ($('navMore')) $('navMore').setAttribute('aria-expanded', 'false');
+    if ($('tabMore')) $('tabMore').setAttribute('aria-expanded', 'false');
     if (lastFocus && lastFocus.focus) lastFocus.focus();
   }
   if ($('navToggle')) $('navToggle').addEventListener('click', () => drawerOpen ? closeDrawer() : openDrawer());
   if ($('navMore')) $('navMore').addEventListener('click', () => drawerOpen ? closeDrawer() : openDrawer());
+  if ($('tabMore')) $('tabMore').addEventListener('click', () => drawerOpen ? closeDrawer() : openDrawer());
   if ($('drawerClose')) $('drawerClose').addEventListener('click', closeDrawer);
   if (scrim) scrim.addEventListener('click', closeDrawer);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && drawerOpen) closeDrawer(); });
@@ -3343,7 +3346,7 @@
     VIEWS.forEach(v => $('view-' + v).classList.toggle('hidden', v !== name));
     currentView = name;
     document.body.dataset.view = name;
-    document.querySelectorAll('.drawer-link, .nav-link').forEach(l => {
+    document.querySelectorAll('.drawer-link, .nav-link, .tab-link[data-view]').forEach(l => {
       const on = l.dataset.view === name;
       l.classList.toggle('active', on);
       if (on) l.setAttribute('aria-current', 'page'); else l.removeAttribute('aria-current');
