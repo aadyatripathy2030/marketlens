@@ -260,16 +260,29 @@
   }
 
   // Probabilistic forecast bands.
-  function renderBands(bands) {
+  // How far this stock has moved on its earnings releases, and whether one
+  // falls inside the ranges (they are then drawn wider; tested, see EARN_K).
+  function earningsNote(e, bands) {
+    if (!e) return '';
+    const when = e.inDays == null ? '' : e.inDays === 0 ? 'today' : e.inDays === 1 ? 'tomorrow' : `in ${e.inDays} trading days`;
+    const nextTxt = e.next && when ? `Next earnings: <b>${esc(fmtDayShort(e.next))}</b> (${when}). ` : '';
+    if (e.typical == null) return nextTxt ? `<p class="earn-note">${nextTxt}</p>` : '';
+    const pc = (x) => (x * 100).toFixed(1) + '%';
+    const wide = bands && bands.some(b => b.earnings);
+    const past = (e.past || []).slice(-8).map(p => `<span class="earn-chip ${p.pct >= 0 ? 'up' : 'dn'}" title="${esc(p.date)}">${p.pct >= 0 ? '+' : ''}${p.pct.toFixed(1)}%</span>`).join('');
+    return `<div class="earn-note"><p>${nextTxt}On its last 8 earnings releases this stock moved a typical <b>±${pc(e.typical)}</b> over two days; 8 in 10 releases should stay within <b>±${pc(e.range80)}</b>.${wide ? ' The ranges above that include the release are drawn wider for it.' : ''}</p>${past ? `<div class="earn-past" aria-label="Two-day moves on the last 8 releases">${past}</div>` : ''}<p class="compare-note">Tested on 5,150 releases by 124 large US stocks, 2016–2026: about 79% stayed inside that band. Ranges built from ordinary days held only about half the time over a release; widened this way, 77–79%. It says how big the move may be, not which way.</p></div>`;
+  }
+  function fmtDayShort(iso) { try { return new Date(iso + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }); } catch (e) { return iso; } }
+  function renderBands(bands, earn) {
     if (!bands || !bands.length) { $('bands').innerHTML = `<p class="compare-note">Ranges are worked out from daily prices. Switch the chart to 1 day to see them.</p>`; return; }
     const lo = Math.min(...bands.map(b => b.low)), hi = Math.max(...bands.map(b => b.high));
     const span = (hi - lo) || 1, pct = (v) => (v - lo) / span * 100;
     $('bands').innerHTML = bands.map(b => {
       const l = pct(b.low), w = Math.max(1, pct(b.high) - l), m = pct(b.mid);
-      return `<div class="band-row"><span class="band-label">${esc(b.label)}</span><div class="band-track"><div class="band-range" style="left:${l}%;width:${w}%"></div><div class="band-mid" style="left:${m}%"></div></div><span class="band-nums"><b>${b.low.toFixed(2)}</b> – <b>${b.high.toFixed(2)}</b></span></div>`;
+      return `<div class="band-row${b.earnings ? ' band-earn' : ''}"><span class="band-label">${esc(b.label)}${b.earnings ? ' <span class="band-e" title="Includes an earnings release">E</span>' : ''}</span><div class="band-track"><div class="band-range" style="left:${l}%;width:${w}%"></div><div class="band-mid" style="left:${m}%"></div></div><span class="band-nums"><b>${b.low.toFixed(2)}</b> – <b>${b.high.toFixed(2)}</b></span></div>`;
     }).join('') + (bands.some(b => b.widened)
       ? `<p class="compare-note">The next-day, one-week and one-month ranges are wider than usual: today’s chart shows a pattern that came before bigger moves in our test (see Patterns on this chart). Without the widening, ranges after these patterns held only 74–77% of the time; with it, about 80%.</p>`
-      : '') + vixNote(bands);
+      : '') + vixNote(bands) + earningsNote(earn, bands);
   }
   // Stocks' ranges out to a month move with the VIX, the market's priced-in
   // volatility, against its average over the past year (see VIX_BETA).
@@ -2054,7 +2067,7 @@
       else $('risk').className = 'risk hidden';
       $('note').textContent = d.note || '';
       $('result').classList.remove('hidden');
-      resetView(); drawChart(); revealChart(); tiles(d); renderTech(d.tech); renderPatterns(d.patterns); renderBands(d.bands); renderLevels(d);
+      resetView(); drawChart(); revealChart(); tiles(d); renderTech(d.tech); renderPatterns(d.patterns); renderBands(d.bands, d.earnings); renderLevels(d);
       { const v = $("verdict"); if (v) { v.classList.remove("cg-settle"); void v.offsetWidth; v.classList.add("cg-settle"); } }
       announce(`Analysis loaded for ${d.symbol || symbol}.`);
       setAnalysisPending();

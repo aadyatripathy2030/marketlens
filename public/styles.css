@@ -2684,3 +2684,11 @@ html.tablet .topbar-right #modeTag { display: none; }
 html.tablet .nav { margin-left: 12px; gap: 0; }
 html.tablet .nav-link, html.tablet .nav-more { padding: 8px 10px; }
 @media (max-width: 900px) { html.tablet .nav-link[data-view="pricing"] { display: none; } }
+
+/* Earnings in the range card (Nov 23 2026). */
+.band-e { display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 4px; border-radius: 4px; font-size: 10px; font-weight: 700; color: var(--bg); background: var(--accent); vertical-align: 1px; }
+.earn-note { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 14px; color: var(--text); }
+.earn-note p { margin: 0 0 8px; }
+.earn-past { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.earn-chip { font-family: var(--font-num); font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border-strong); }
+.earn-chip.up { color: var(--good); } .earn-chip.dn { color: var(--bad); }

@@ -713,7 +713,12 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   // VIX_BETA in indicators.js). Not used for crypto.
   let vix = null;
   if (interval === '1day' && !isPair) { try { vix = await vixFor(data.prices); } catch (e) { logError(e); } }
-  const bands = interval === '1day' ? I.forecastBands(closes, { crypto: isPair, flags, vix }) : [];
+  // Earnings: ranges over a release are widened by how far this stock has
+  // moved on its past releases (tested; see EARN_K in indicators.js).
+  let earn = null;
+  // Live prices only: on demo prices the past moves would be made up.
+  if (interval === '1day' && !isPair && source === 'live') { try { earn = await earningsFor(symbol, data.prices); } catch (e) { logError(e); } }
+  const bands = interval === '1day' ? I.forecastBands(closes, { crypto: isPair, flags, vix, earn }) : [];
   const levels = I.tradeLevels(candles, a.direction);
   // What actually happened, historically, at scores like today's. Roughly 50ms
   // on a full series; null when there is not enough history to say anything.
@@ -729,7 +734,7 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
   // would otherwise write a different row for the same day. The stated
   // chance and the 20-day range go in with it, before the outcome exists.
   if (source === 'live' && interval === '1day') {
-    const rg = I.rangeAt(closes, ACCURACY_HORIZON, { crypto: isPair, flags, vix });
+    const rg = I.rangeAt(closes, ACCURACY_HORIZON, { crypto: isPair, flags, vix, earn });
     // The same reading for day traders: the chance of a higher close on the
     // next trading day, and tomorrow's 80% range, from the same rules.
     let e1 = null;
@@ -754,6 +759,8 @@ async function handleStock(req, res, symbol, strategy, direction, interval) {
     // more than assuming no change at every horizon. The range replaces it.
     forecast: [], horizon: a.horizon,
     tech, rating, bands, levels, edge,
+    earnings: earn && earn.moves ? { next: earn.next, inDays: earn.inDays, typical: earn.moves.typical, range80: earn.moves.range80, past: earn.moves.past }
+      : earn && earn.next ? { next: earn.next, inDays: earn.inDays } : null,
     odds: interval === '1day' && levels ? I.stopTargetOdds(candles, levels, 5) : null,
     // Patterns on the latest bars, each with what our own test measured after
     // it. Daily bars only: that is what the record was measured on.
@@ -972,6 +979,52 @@ function secFilings(symbol) {
     return out;
   });
 }
+// Every past earnings release for a company: the dates of its 8-K filings
+// with item 2.02 (Results of Operations), across the whole EDGAR history,
+// older pages included. Used to measure how far this stock moves on its
+// releases (indicators.js earningsMoves).
+function secEarningsDates(symbol) {
+  if (!SEC_UA || symbol.includes('/')) return Promise.resolve(null);
+  return cachedSource('secearn:' + symbol, 24 * 3600e3, async () => {
+    const cik = (await secCiks()).get(symbol.replace('.', '-'));
+    if (!cik) return [];
+    const j = await secGet('data.sec.gov', '/submissions/CIK' + cik + '.json', 8e6);
+    const dates = new Set();
+    const take = (r) => { for (let i = 0; i < ((r && r.form) || []).length; i++) if (/^8-K/.test(r.form[i]) && /\b2\.02\b/.test((r.items && r.items[i]) || '')) dates.add(r.filingDate[i]); };
+    take(j && j.filings && j.filings.recent);
+    // The recent page holds the last 1,000 filings; a company that files a
+    // lot needs the older pages to reach 8 releases inside five years.
+    for (const f of ((j && j.filings && j.filings.files) || []).slice(0, 3)) {
+      if (dates.size >= 24) break;
+      if (!/^CIK\d{10}-submissions-\d{3}\.json$/.test(f.name || '')) continue;
+      take(await secGet('data.sec.gov', '/submissions/' + f.name, 8e6));
+    }
+    return [...dates].sort();
+  });
+}
+// The next scheduled release (Finnhub's calendar), or null.
+function nextEarningsDate(symbol) {
+  if (!FINNHUB_API_KEY || symbol.includes('/')) return Promise.resolve(null);
+  const facts = dataCache.get('facts:' + symbol);
+  if (facts && facts.value) return Promise.resolve(facts.value.nextEarnings || null);
+  return cachedSource('nextearn:' + symbol, 12 * 3600e3, async () => {
+    const day = (t) => new Date(t).toISOString().slice(0, 10), now = Date.now();
+    const cal = await finnhubGet(`/calendar/earnings?symbol=${encodeURIComponent(symbol)}&from=${day(now - 86400e3)}&to=${day(now + 45 * 86400e3)}`);
+    return cal && Array.isArray(cal.earningsCalendar) ? cal.earningsCalendar.map(e => e.date).filter(Boolean).sort()[0] || null : null;
+  });
+}
+// Both, for a chart: what this stock's releases have done, and how many
+// trading days until the next one. Never holds a chart up for long.
+async function earningsFor(symbol, prices) {
+  if (symbol.includes('/')) return null;
+  const within = (p, ms) => Promise.race([p.catch(() => null), new Promise(r => setTimeout(() => r(null), ms))]);
+  const [dates, next] = await Promise.all([within(secEarningsDates(symbol), 2500), within(nextEarningsDate(symbol), 2500)]);
+  const moves = dates && dates.length ? I.earningsMoves(prices, dates) : null;
+  const lastDay = String((prices[prices.length - 1] || {}).date || '').slice(0, 10);
+  const inDays = next && lastDay && next >= lastDay ? MKT.tradingDaysBetween(lastDay, next) : null;
+  if (!moves && !next) return null;
+  return { moves, next: next || null, inDays };
+}
 const EXTRAS_OFF = new Set(String(process.env.DRIVER_EXTRAS_OFF || '').toLowerCase().split(',').map(x => x.trim()).filter(Boolean));
 const extra = (name, fn) => EXTRAS_OFF.has(name) ? null : fn();
 // ---- Precedent: past events of the same kind for this company ----
@@ -1127,6 +1180,18 @@ const AI_GUARD = 'Rules that always apply: never tell the reader to buy, sell or
 // can show it instead of the chart-only lean.
 // The gauge shows it on 0-100 (50 is balanced), with the few strongest
 // pushes each way; the rest of the weighing stays server-side.
+// The everything-weighed reading goes into the public record beside the
+// chart reading for the same day, so the track record can show whether
+// weighing news, earnings, options and the rest beats the chart alone.
+// Bump WEIGHED_MODEL whenever the driver weights change, so each version
+// is scored on its own readings.
+const WEIGHED_MODEL = process.env.WEIGHED_MODEL || 'weighed-2026-11-23';
+function noteWeighed(p) {
+  const d = p && p.drivers;
+  if (!d || !d.lean || !Number.isFinite(d.score)) return;
+  const gauge = Math.max(0, Math.min(100, Math.round(50 + d.score / 2)));
+  db.recordWeighed(p.symbol, p.strategy, d.lean, gauge, WEIGHED_MODEL).catch(logError);
+}
 const leanOf = (p) => p.drivers ? {
   label: p.drivers.label, tone: p.drivers.lean === 'up' ? 'bullish' : p.drivers.lean === 'down' ? 'bearish' : 'neutral',
   gauge: Math.max(0, Math.min(100, Math.round(50 + p.drivers.score / 2))),
@@ -1279,6 +1344,7 @@ async function handleAnalyzeStream(req, res) {
   const p = cleanReportInput(await readBody(req));
   if (!p) return json(res, 400, { error: 'Missing data.' });
   p.drivers = await gatherDrivers(p.symbol, p.rating, p.strategy).catch((e) => { logError(e); return null; });
+  noteWeighed(p);
   res.writeHead(200, {
     'Content-Type': 'application/x-ndjson; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
@@ -1378,6 +1444,7 @@ async function handleAnalyze(req, res) {
   const p = cleanReportInput(await readBody(req));
   if (!p) return json(res, 400, { error: 'Missing data.' });
   p.drivers = await gatherDrivers(p.symbol, p.rating, p.strategy).catch((e) => { logError(e); return null; });
+  noteWeighed(p);
   if (ANTHROPIC_API_KEY) {
     const { pro, key } = await plan(req);
     let model = AI_MODEL;
@@ -5037,6 +5104,22 @@ function replayHtml(R, when, P, H3, tbl) {
     + tbl(['Stated chance', 'Readings', 'Average stated', 'Actually higher'], a.chance.bins.map(b => [`${b.from}–${b.to}%`, b.n.toLocaleString('en-US'), f(b.said), f(b.happened)]));
   return h;
 }
+// The everything-weighed reading against the chart alone, on the same days.
+function weighedHtml(W, P, H, H3, tbl) {
+  let h = H('Everything weighed vs the chart alone');
+  h += P(`Since 23 November 2026 the headline reading weighs news, earnings, analysts, insiders, options, short interest, the market and the economy, not just the chart. Each of those readings is written down the same way, beside the chart's reading for the same day, so both are scored on exactly the same days. This is the test of whether the extra factors help. ${W ? `<strong>${(W.recorded || 0).toLocaleString('en-US')}</strong> recorded so far.` : ''}`);
+  const one = (w, title, when) => {
+    let x = H3(title);
+    if (!w || w.n < 30) return x + P(`Not enough checked readings yet (${w ? w.n : 0} so far; results are shown from 30).`);
+    const row = (name, s) => [name, (s.up + s.dn).toLocaleString('en-US'), pct1(s.upRose), pct1(s.dnFell), `<strong>${pct1(s.right)}</strong>`];
+    const diff = w.weighed.right != null && w.chart.right != null ? w.weighed.right - w.chart.right : null;
+    return x + P(`On <strong>${w.n.toLocaleString('en-US')}</strong> checked readings the price was higher ${when} ${pct1(w.rose)} of the time, so always guessing up would have been right ${pct1(w.rose)} of the time: that is the bar to beat. ${diff == null ? '' : Math.abs(diff) < 2 ? 'So far the two are about the same.' : diff > 0 ? `So far weighing everything was right ${diff.toFixed(1)} points more often than the chart alone. Small samples swing, so treat it as early.` : `So far weighing everything was right ${(-diff).toFixed(1)} points less often than the chart alone.`}`)
+      + tbl(['Reading', 'Leaned up or down', 'Up, then rose', 'Down, then fell', 'Right overall'], [row('Everything weighed', w.weighed), row('Chart alone', w.chart)]);
+  };
+  h += one(W && W.next, 'Day trading: checked at the next trading day’s close', 'at the next close');
+  h += one(W && W.h20, `Long-term: checked ${ACCURACY_HORIZON} trading days later`, `${ACCURACY_HORIZON} trading days later`);
+  return h;
+}
 function buildAccuracyHtml(st) {
   const P = (t) => `<p>${t}</p>`;
   const H = (t) => `<h2>${t}</h2>`;
@@ -5045,6 +5128,7 @@ function buildAccuracyHtml(st) {
   const next = st.next || { labels: [], graded: 0 };
   let h = P(`Every day a stock's daily chart is opened, ${SITE_NAME} writes down that day's reading: which way the indicators lean, the stated chance of the price being higher, and an 80% price range. Each one is saved before the outcome exists and is never changed afterwards. It is then checked twice against the real closing price: on the next trading day, for day traders, and ${ACCURACY_HORIZON} trading days later, for longer holds. This page shows every checked reading, good or bad.`)
     + P(`So far: <strong>${st.recorded.toLocaleString('en-US')}</strong> readings recorded; <strong>${next.graded.toLocaleString('en-US')}</strong> checked on the next trading day and <strong>${st.graded.toLocaleString('en-US')}</strong> after ${ACCURACY_HORIZON} trading days.${st.oldestPending ? ` The oldest reading still waiting on its ${ACCURACY_HORIZON}-day outcome is from ${esc(st.oldestPending)}.` : ''}`);
+  h += weighedHtml(st.weighed, P, H, H3, tbl);
   const whenNext = 'at the next trading day’s close';
   h += H('Next trading day (day trading)');
   h += P(`Checked against the close of the next trading session (the next day, for crypto), from the price when the reading was made. Next-day chances and ranges started being recorded on 15 November 2026; readings from before then are checked for direction only.`);
@@ -5060,6 +5144,7 @@ function buildAccuracyHtml(st) {
     + `<li>For crypto, from 1 day to 3 months, the range held 77% to 80% from 2016 to 2026. The one-month crypto range is drawn 10% wider than the stock rule gives, because it missed upward rallies in the 2017 and 2020 booms (held 76% from 2016 to 2020); chosen on those years, it then held 80.9% from 2021 to 2026. Crypto ranges stop at 3 months because longer ones held only about 70%.</li>`
     + `<li>Stated chances, tested on 111 large US stocks: a setup that rose, say, 67 times in 100 on a stock's past was followed by a rise about 55 times in 100, close to the stock's usual rate. Pulled toward the usual rate (chosen on 2006 to 2015), stated chances sat 2.4 points from what happened on average from 2016 to 2026, against 3.9 unadjusted; for crypto, 2.1 against 5.9.</li>`
     + `<li>The odds of reaching a target before the stop were within 3 points of what happened, long and short.</li>`
+    + `<li>Earnings releases (tested in November 2026 on 124 large US stocks, release dates from their SEC filings; rules set on 2006 to 2015, checked once on 2016 to 2026). Before, the 80% range made just before a release held only 52% of the time for the next day, 55% for the week and 73% for the month: releases move further than ordinary days. Ranges that include a release are now widened by how far that stock moved on its own last 8 releases; out of sample they held 78% (next day), 77 to 78% (week) and 78 to 79% (month). Separately, 2.06 times the stock's median move on its last 8 releases contained the two-day move on 78.9% of 5,150 releases.</li>`
     + `<li>The indicators' lean, and six well-known chart rules, did not tell which way a large stock would go better than chance. That is why ${SITE_NAME} shows how often setups rose, next to the usual rate, instead of a buy or sell call.</li>`
     + `<li>Ranking the 111 stocks against each other did not reliably help either (tested in November 2026, every 20 trading days, against the average of the 111). The fifth with the best past 12 months (skipping the latest month), the best-known pattern in the research, beat that average over the next 20 trading days 52.4% of the time from 2016 to 2026, and the worst fifth 49.4%. That gap is too small to tell apart from luck. Last month's biggest fallers bounced back no more often than the rest (51.6% against 51.0%). The test used stocks that are large today, which flatters past winners, so the real gap is likely smaller still.</li>`
     + `<li>Earnings releases did not give a reliable lean either (tested in November 2026 on 7,802 releases by 104 of the stocks, dated from their SEC filings). The fifth of releases the market greeted most warmly, measured as the two-day move against the other stocks, went on to beat that average over the next 20 trading days 53.9% of the time from 2006 to 2015, against 48.7% for the coldest fifth: a real gap then. From 2016 to 2026 it shrank to 51.0% against 48.9%, too small to rely on, and over 60 trading days it was gone. That matches research finding that this drift has faded in large stocks since it became widely known.</li></ul>`;

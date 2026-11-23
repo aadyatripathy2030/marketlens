@@ -735,8 +735,70 @@ const slotFor = (days, crypto) => {
 // The 80% range for any horizon in bars. Used by the forward record (20 days).
 function rangeAt(closes, days, opts) {
   if (!closes || closes.length < 61 || !(closes[closes.length - 1] > 0)) return null;
-  return bandFor(closes, volSeries(closes), days, slotFor(days, opts && opts.crypto), opts);
+  const b = bandFor(closes, volSeries(closes), days, slotFor(days, opts && opts.crypto), opts);
+  return opts && !opts.crypto ? widenForEarnings(b, closes[closes.length - 1], days, opts.earn) : b;
 }
+// ---- Earnings ----
+// Ranges built from ordinary days are far too narrow over an earnings
+// release. Tested Nov 23 2026 on 124 large US stocks (8-K item 2.02 dates
+// from SEC EDGAR; rules set on 2006-2015, checked once on 2016-2026): the
+// 80% range made the evening before a release held only 52% (next day),
+// 55% (1 week) and 73% (1 month) of the time.
+//
+// The earnings move: the two-day move around a release (close before the
+// filing day to close after it). 80% of releases moved less than EARN_C
+// times the median of the stock's previous 8 releases: 80.0% on 2006-2015,
+// 78.9% on 5,150 releases from 2016-2026.
+const EARN_C = 2.064;
+// The widening adds the earnings move's extra spread (beyond an ordinary
+// two-day move) to the range in quadrature, times k for the horizon. `ahead`
+// is a release still to come inside the window; `today` is one on the bar
+// the range starts from (half the reaction may still be to come: most large
+// companies report after the close). Out of sample, 2016-2026:
+//   ahead: next day 51.8 -> 77.9%, 1 week 54.5 -> 77.5%, 1 month 72.7 -> 78.1%
+//   today: next day 52.9 -> 78.5%, 1 week 68.0 -> 77.4%, 1 month 77.9 -> 79.4%
+const EARN_K = { ahead: { 1: 0.40, 5: 0.80, 21: 0.45 }, today: { 1: 0.35, 5: 0.25, 21: 0.10 } };
+// What this stock's past releases did, from its bars and the release dates.
+// Needs 8 releases inside the bars. dates: ascending 'YYYY-MM-DD'.
+function earningsMoves(bars, dates) {
+  if (!Array.isArray(bars) || bars.length < 80 || !Array.isArray(dates)) return null;
+  const day = bars.map(b => String(b.date || '').slice(0, 10)), px = bars.map(b => Number(b.close));
+  const idxOf = (d) => { let lo = 0, hi = day.length; while (lo < hi) { const m = (lo + hi) >> 1; if (day[m] < d) lo = m + 1; else hi = m; } return lo; };
+  const moves = []; let lastI = -99;
+  for (const d of dates) {
+    const i = idxOf(d);
+    if (i < 1 || i + 1 >= px.length || i - lastI < 20 || !(px[i - 1] > 0) || !(px[i + 1] > 0)) continue;
+    lastI = i;
+    moves.push({ date: d, move: Math.log(px[i + 1] / px[i - 1]) });
+  }
+  if (moves.length < 8) return null;
+  const last8 = moves.slice(-8), abs = last8.map(m => Math.abs(m.move)).sort((a, b) => a - b);
+  const med = (abs[3] + abs[4]) / 2;
+  // An ordinary two-day spread right now: 60 daily returns.
+  const n = px.length, r = [];
+  for (let k = n - 60; k < n; k++) if (k > 0 && px[k] > 0 && px[k - 1] > 0) r.push(Math.log(px[k] / px[k - 1]));
+  if (r.length < 30) return null;
+  const mu = r.reduce((a, b) => a + b, 0) / r.length;
+  const sd2 = Math.sqrt(2 * r.reduce((a, b) => a + (b - mu) ** 2, 0) / (r.length - 1));
+  const q = EARN_C * med, qn = 1.2816 * sd2;
+  return {
+    typical: Math.exp(med) - 1,            // median move, as a fraction
+    range80: Math.exp(q) - 1,              // 8 in 10 moved less than this
+    extra: Math.max(0, q * q - qn * qn),   // log-space variance to add
+    past: last8.map(m => ({ date: m.date, pct: (Math.exp(m.move) - 1) * 100 })),
+  };
+}
+// Widen a band {low, high} around `last` for a release in its window.
+function widenForEarnings(b, last, days, earn) {
+  if (!b || !earn || !earn.moves || !(earn.moves.extra > 0) || earn.inDays == null) return b;
+  if (earn.inDays < 0 || earn.inDays > days) return b;
+  const slot = days <= 1 ? 1 : days <= 7 ? 5 : days <= 31 ? 21 : 0;
+  const k = slot && EARN_K[earn.inDays === 0 ? 'today' : 'ahead'][slot];
+  if (!k) return b;
+  const L = Math.log(b.low / last), U = Math.log(b.high / last), x = k * earn.moves.extra;
+  return Object.assign({}, b, { low: last * Math.exp(-Math.sqrt(L * L + x)), high: last * Math.exp(Math.sqrt(U * U + x)), earnings: true });
+}
+
 function forecastBands(closes, opts) {
   const n = closes ? closes.length : 0;
   if (n < 61) return [];
@@ -750,7 +812,8 @@ function forecastBands(closes, opts) {
     const widened = !!(opts && opts.flags && opts.flags[n - 1] && WIDEN[slot] > 1);
     const vr = !(opts && opts.crypto) && opts && opts.vix && VIX_BETA[slot] ? opts.vix[n - 1] : 0;
     const vixAdj = vr > 0 ? Math.round((Math.pow(vr, VIX_BETA[slot]) - 1) * 100) : null;
-    return b && { label, days: d, low: b.low, mid: last, high: b.high, chance: 80, widened, vixAdj };
+    const e = b && !(opts && opts.crypto) ? widenForEarnings(b, last, d, opts && opts.earn) : b;
+    return e && { label, days: d, low: e.low, mid: last, high: e.high, chance: 80, widened, vixAdj, earnings: !!e.earnings };
   }).filter(Boolean);
 }
 
@@ -868,6 +931,6 @@ function tradeLevels(candles, direction, atrMult = 1.5) {
 module.exports = {
   sma, rsi, linearForecast, computeSignal, demoCloses, demoCandles, analyze, verdict, STRAT, RISK,
   ema, macd, bollinger, atr, vwap, supportResistance, fibonacci, volatility, trendStrength,
-  techReport, overallRating, forecastBands, tradeLevels, historicalEdge, edgeSignal, headlineCall, calibratedChance, stopTargetOdds, rangeAt,
+  techReport, overallRating, forecastBands, tradeLevels, historicalEdge, edgeSignal, headlineCall, calibratedChance, stopTargetOdds, rangeAt, earningsMoves, EARN_C,
 };
 

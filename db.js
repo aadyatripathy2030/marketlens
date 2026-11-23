@@ -194,6 +194,13 @@ async function init() {
         'out1 DOUBLE PRECISION', 'out1_day TEXT', 'ret1 DOUBLE PRECISION', 'graded1 BIGINT'])
         await pool.query(`ALTER TABLE predictions ADD COLUMN IF NOT EXISTS ${col}`);
       await pool.query('CREATE INDEX IF NOT EXISTS predictions_ungraded1 ON predictions (symbol) WHERE graded1 IS NULL');
+      // Added Nov 23 2026: the everything-weighed reading (news, earnings,
+      // options, macro and the rest, not just the chart), written beside the
+      // chart reading of the same day so the two can be scored on the very
+      // same days. Day-trading readings are graded next day, long-term ones
+      // at the 20-day horizon; w_model names the model that made them.
+      for (const col of ['wd_lean TEXT', 'wd_gauge INTEGER', 'wl_lean TEXT', 'wl_gauge INTEGER', 'w_model TEXT'])
+        await pool.query(`ALTER TABLE predictions ADD COLUMN IF NOT EXISTS ${col}`);
       // Lookups the webhook, the affiliate pages and the purge make by
       // something other than the primary key.
       for (const ix of [
@@ -1269,6 +1276,27 @@ async function recordPrediction(p) {
   if (!mem.preds.has(key)) mem.preds.set(key, { id: key, ...p, created: Date.now(), graded: null });
 }
 
+// The everything-weighed reading joins the row the chart reading wrote for
+// the symbol's latest daily bar. First one in wins, as with the chart
+// reading, and only a row made in the last 36 hours qualifies, so a reading
+// can never land on a day whose outcome is already known.
+async function recordWeighed(symbol, strategy, lean, gauge, model) {
+  if (!symbol || !['up', 'down', 'mixed'].includes(lean) || !Number.isFinite(gauge)) return;
+  const [lc, gc] = strategy === 'daytrade' ? ['wd_lean', 'wd_gauge'] : ['wl_lean', 'wl_gauge'];
+  const since = Date.now() - 36 * 3600e3;
+  if (mode === 'postgres') {
+    await pool.query(
+      `UPDATE predictions SET ${lc}=$2, ${gc}=$3, w_model=COALESCE(w_model, $4)
+       WHERE id = (SELECT id FROM predictions WHERE symbol=$1 ORDER BY day DESC LIMIT 1)
+         AND ${lc} IS NULL AND created >= $5 AND graded1 IS NULL`,
+      [symbol, lean, Math.round(gauge), model, since]);
+    return;
+  }
+  let last = null;
+  for (const p of mem.preds.values()) if (p.symbol === symbol && (!last || p.day > last.day)) last = p;
+  if (last && last[lc] == null && last.created >= since && !last.graded1) { last[lc] = lean; last[gc] = Math.round(gauge); last.w_model = last.w_model || model; }
+}
+
 async function ungradedFor(symbol) {
   if (mode === 'postgres') {
     const r = await pool.query('SELECT id, day, price FROM predictions WHERE symbol=$1 AND graded IS NULL', [symbol]);
@@ -1324,6 +1352,9 @@ async function accuracyStats() {
     rows = r.rows;
     const r1 = await pool.query('SELECT label, ret1 AS ret, price, out1 AS out_price, prob1 AS prob, base1 AS base_prob, lo1 AS band_lo, hi1 AS band_hi FROM predictions WHERE graded1 IS NOT NULL');
     var rows1 = r1.rows;
+    var wrows = (await pool.query(`SELECT label, wd_lean, wl_lean, ret1, ret, graded1, graded, w_model FROM predictions
+      WHERE (wd_lean IS NOT NULL AND graded1 IS NOT NULL) OR (wl_lean IS NOT NULL AND graded IS NOT NULL)`)).rows;
+    var wpending = (await pool.query('SELECT COUNT(*)::int AS n FROM predictions WHERE wd_lean IS NOT NULL OR wl_lean IS NOT NULL')).rows[0].n;
     const t = await pool.query('SELECT COUNT(*)::int AS n FROM predictions');
     var total = t.rows[0].n;
     // The earliest reading still waiting on its outcome, so a record with
@@ -1335,11 +1366,39 @@ async function accuracyStats() {
     rows = [...mem.preds.values()].filter(p => p.graded).map(p => ({ label: p.label, ret: p.ret, price: p.price, out_price: p.out_price, prob: p.prob, base_prob: p.base, band_lo: p.lo, band_hi: p.hi }));
     var rows1 = [...mem.preds.values()].filter(p => p.graded1).map(p => ({ label: p.label, ret: p.ret1, price: p.price, out_price: p.out1, prob: p.prob1, base_prob: p.base1, band_lo: p.lo1, band_hi: p.hi1 }));
     var total = mem.preds.size;
+    var wrows = [...mem.preds.values()].filter(p => (p.wd_lean && p.graded1) || (p.wl_lean && p.graded));
+    var wpending = [...mem.preds.values()].filter(p => p.wd_lean || p.wl_lean).length;
     for (const p of mem.preds.values()) {
       if (!p.graded && (!oldestPending || p.day < oldestPending)) oldestPending = p.day;
     }
   }
-  return Object.assign(summarizeReadings(rows), { recorded: total, oldestPending, next: summarizeReadings(rows1 || []) });
+  return Object.assign(summarizeReadings(rows), { recorded: total, oldestPending, next: summarizeReadings(rows1 || []),
+    weighed: { recorded: wpending, next: weighedVsChart(wrows, 'wd_lean', 'ret1', 'graded1'), h20: weighedVsChart(wrows, 'wl_lean', 'ret', 'graded') } });
+}
+// The everything-weighed lean against the chart's lean, scored on exactly
+// the same readings, so neither gets easier days than the other.
+function chartLean(label) {
+  const l = String(label || '');
+  if (/up|buy/i.test(l)) return 'up';
+  if (/down|sell/i.test(l)) return 'down';
+  return 'mixed';
+}
+function weighedVsChart(rows, leanCol, retCol, gradedCol) {
+  const rs = rows.filter(r => r[leanCol] && r[gradedCol] != null && r[retCol] != null && Number.isFinite(Number(r[retCol])));
+  const score = (leanOf) => {
+    let up = 0, upRose = 0, dn = 0, dnFell = 0;
+    for (const r of rs) {
+      const l = leanOf(r), ret = Number(r[retCol]);
+      if (l === 'up') { up++; if (ret > 0) upRose++; }
+      else if (l === 'down') { dn++; if (ret < 0) dnFell++; }
+    }
+    return { up, dn, mixed: rs.length - up - dn,
+      upRose: up ? upRose / up * 100 : null, dnFell: dn ? dnFell / dn * 100 : null,
+      right: up + dn ? (upRose + dnFell) / (up + dn) * 100 : null };
+  };
+  return { n: rs.length, rose: rs.length ? rs.filter(r => Number(r[retCol]) > 0).length / rs.length * 100 : null,
+    weighed: score(r => r[leanCol]), chart: score(r => chartLean(r.label)),
+    models: [...new Set(rs.map(r => r.w_model).filter(Boolean))] };
 }
 function summarizeReadings(rows) {
   const byLabel = {};
@@ -1388,7 +1447,7 @@ function summarizeReadings(rows) {
 
 module.exports = {
   deleteUser, addFeedback, listFeedback,
-  recordPrediction, ungradedFor, gradePrediction, ungraded1For, gradeNextDay, accuracyStats, latestPrediction,
+  recordPrediction, recordWeighed, ungradedFor, gradePrediction, ungraded1For, gradeNextDay, accuracyStats, latestPrediction,
   bumpUsage, peekUsage,
   getUserByGoogleId, linkGoogleId, createGoogleUser,
   init, storeMode, hasUrl, lastError, verifyPw,
