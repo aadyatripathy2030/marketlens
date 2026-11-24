@@ -3501,7 +3501,8 @@
     const qs = await getQuotes([...els].map(e => e.dataset.px));
     els.forEach(e => {
       const q = qs.find(x => x.symbol === e.dataset.px);
-      if (!q || q.price == null) { e.innerHTML = '<span class="muted">Price not in yet</span>'; return; }
+      // Prices need an account on the live site: signed out, the line goes.
+      if (!q || q.price == null) { e.remove(); return; }
       const up = q.changePct >= 0;
       e.innerHTML = `<b>${(+q.price).toFixed(2)}</b> <span class="${up ? 'up' : 'down'}">${up ? '▲' : '▼'} ${Math.abs(q.changePct).toFixed(2)}%</span>`;
     });
